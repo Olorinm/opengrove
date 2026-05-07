@@ -1,0 +1,14 @@
+{
+  "id": "pack.visual-reference-workflow",
+  "title": "Visual Reference Workflow",
+  "description": "Artifact-native visual reference collection pack for packaging and brand collaboration work.",
+  "source": "pack",
+  "trust": "trusted",
+  "rootDir": "src/packs/bundled/visual-reference-workflow",
+  "skillIds": ["skill.visual-reference-collect", "skill.browser-act-safety", "skill.computer-act-safety"],
+  "toolIds": ["browser.observe", "browser.requestAct", "computer.observe", "computer.requestAction"],
+  "capabilityIds": ["cap.browser-stagehand-act", "cap.computer-use-stage"],
+  "artifactTypes": ["image", "selection", "annotation", "computer_snapshot", "note"],
+  "referenceAssetDirs": [],
+  "tags": ["visual", "reference", "packaging"]
+}

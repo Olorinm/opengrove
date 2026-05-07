@@ -1,0 +1,87 @@
+{
+  "id": "cap.browser-stagehand-act",
+  "title": "Browser Stagehand Act",
+  "version": "0.1.0",
+  "description": "A guarded browser observe/act capability wrapper shaped after Stagehand. V0 only observes and stages actions behind approval.",
+  "source": {
+    "kind": "wrapped-open-source",
+    "project": "Stagehand",
+    "url": "https://github.com/browserbase/stagehand",
+    "license": "MIT"
+  },
+  "activities": ["browser"],
+  "tools": [
+    {
+      "id": "browser.observe",
+      "title": "Observe browser page",
+      "description": "Read lightweight page state as the safe boundary before any browser action.",
+      "activity": "browser",
+      "risk": "read",
+      "input": {
+        "type": "json-schema",
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      "permission": {
+        "mode": "allow",
+        "reason": "Observation is read-only and local."
+      }
+    },
+    {
+      "id": "browser.requestAct",
+      "title": "Request browser action",
+      "description": "Stage a future Stagehand-compatible browser action request. It never mutates the page in V0.",
+      "activity": "browser",
+      "risk": "send",
+      "input": {
+        "type": "json-schema",
+        "schema": {
+          "type": "object",
+          "required": ["instruction"],
+          "properties": {
+            "instruction": { "type": "string" },
+            "target": { "type": "string" },
+            "rationale": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "permission": {
+        "mode": "ask",
+        "reason": "Browser actions can change remote state and must be approved."
+      }
+    }
+  ],
+  "skills": [
+    {
+      "id": "skill.browser-act-safety",
+      "title": "Browser Action Safety",
+      "description": "Use observe before act, stage side-effecting browser actions, and ask before execution.",
+      "format": "markdown-v1",
+      "entry": "skill.md",
+      "activities": ["browser"],
+      "toolIds": ["browser.observe", "browser.requestAct"],
+      "memoryHooks": [],
+      "tags": ["browser", "stagehand", "safety"]
+    }
+  ],
+  "memoryHooks": [],
+  "policy": [
+    {
+      "id": "policy.browser-act.observe",
+      "toolId": "browser.observe",
+      "mode": "allow",
+      "reason": "Observation is read-only."
+    },
+    {
+      "id": "policy.browser-act.request",
+      "toolId": "browser.requestAct",
+      "mode": "ask",
+      "reason": "Any browser action must be visible and approved."
+    }
+  ],
+  "evals": []
+}

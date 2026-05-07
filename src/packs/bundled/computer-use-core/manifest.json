@@ -1,0 +1,14 @@
+{
+  "id": "pack.computer-use-core",
+  "title": "Computer Use Core",
+  "description": "Desktop observation and guarded action pack.",
+  "source": "pack",
+  "trust": "trusted",
+  "rootDir": "src/packs/bundled/computer-use-core",
+  "skillIds": ["skill.computer-act-safety"],
+  "toolIds": ["computer.observe", "computer.requestAction"],
+  "capabilityIds": ["cap.computer-use-stage"],
+  "artifactTypes": ["computer_snapshot", "annotation"],
+  "referenceAssetDirs": [],
+  "tags": ["computer", "desktop"]
+}

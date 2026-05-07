@@ -1,0 +1,14 @@
+{
+  "id": "pack.browser-action-core",
+  "title": "Browser Action Core",
+  "description": "Observation-first browser action pack with staged side effects.",
+  "source": "pack",
+  "trust": "trusted",
+  "rootDir": "src/packs/bundled/browser-action-core",
+  "skillIds": ["skill.browser-act-safety"],
+  "toolIds": ["browser.observe", "browser.requestAct"],
+  "capabilityIds": ["cap.browser-stagehand-act"],
+  "artifactTypes": ["selection", "annotation"],
+  "referenceAssetDirs": [],
+  "tags": ["browser", "action"]
+}
