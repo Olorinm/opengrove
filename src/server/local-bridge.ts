@@ -18,7 +18,7 @@ import {
 } from "./bridge-state.js";
 import { buildContextRecords } from "./trajectory.js";
 import { buildProviderHttpCaptureDiagnostics } from "./provider-http-captures.js";
-import { filterEnabledKnowledgeDocuments, syncKnowledgeVaultFiles } from "./knowledge-files.js";
+import { filterEnabledKnowledgeDocuments, listKnowledgeVaultFolders, syncKnowledgeVaultFiles } from "./knowledge-files.js";
 import { serveStaticRoute } from "./routes/static.js";
 import { handleKnowledgeRoute } from "./routes/knowledge.js";
 import { handleSettingsRoute } from "./routes/settings.js";
@@ -206,6 +206,7 @@ export function startLocalBridgeServer(options: LocalBridgeServerOptions = {}) {
           ok: true,
           kernel: state.kernel,
           knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+          knowledgeFolders: listKnowledgeVaultFolders(state),
           knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
           memory: state.app.memory.list(),
           artifacts: state.app.artifacts.list(),

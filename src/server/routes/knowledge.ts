@@ -7,9 +7,18 @@ import type {
 } from "../../knowledge/types.js";
 import { KNOWLEDGE_INVENTORY_LIMIT, type BridgeState } from "../bridge-types.js";
 import {
+  createKnowledgeFileSystemEntry,
+  deleteKnowledgeFileSystemEntry,
   filterEnabledKnowledgeDocuments,
+  listKnowledgeVaultFolders,
+  moveKnowledgeFileSystemEntry,
+  normalizeKnowledgeFileSystemCreatePayload,
+  normalizeKnowledgeFileSystemDeletePayload,
+  normalizeKnowledgeFileSystemMovePayload,
+  normalizeKnowledgeFileSystemRenamePayload,
   normalizeKnowledgeFilePatchPayload,
   readKnowledgeFile,
+  renameKnowledgeFileSystemEntry,
   syncKnowledgeVaultFiles,
   writeKnowledgeFile,
 } from "../knowledge-files.js";
@@ -46,7 +55,72 @@ export async function handleKnowledgeRoute(options: {
     sendJson(response, 200, {
       ok: true,
       knowledge: filterEnabledKnowledgeDocuments(state, knowledge),
+      knowledgeFolders: listKnowledgeVaultFolders(state),
       ...(includeLedgers ? { ledgers: state.app.knowledge.snapshotLedgers() } : {}),
+    });
+    return true;
+  }
+
+  if (request.method === "POST" && url.pathname === "/knowledge/file-system") {
+    const result = createKnowledgeFileSystemEntry(
+      state,
+      normalizeKnowledgeFileSystemCreatePayload(await readJsonBody(request)),
+    );
+    state.store.saveFrom(state.app);
+    sendJson(response, 200, {
+      ok: true,
+      ...result,
+      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledgeFolders: listKnowledgeVaultFolders(state),
+      knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
+    });
+    return true;
+  }
+
+  if (request.method === "POST" && url.pathname === "/knowledge/file-system/move") {
+    const result = moveKnowledgeFileSystemEntry(
+      state,
+      normalizeKnowledgeFileSystemMovePayload(await readJsonBody(request)),
+    );
+    state.store.saveFrom(state.app);
+    sendJson(response, 200, {
+      ok: true,
+      ...result,
+      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledgeFolders: listKnowledgeVaultFolders(state),
+      knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
+    });
+    return true;
+  }
+
+  if (request.method === "POST" && url.pathname === "/knowledge/file-system/rename") {
+    const result = renameKnowledgeFileSystemEntry(
+      state,
+      normalizeKnowledgeFileSystemRenamePayload(await readJsonBody(request)),
+    );
+    state.store.saveFrom(state.app);
+    sendJson(response, 200, {
+      ok: true,
+      ...result,
+      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledgeFolders: listKnowledgeVaultFolders(state),
+      knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
+    });
+    return true;
+  }
+
+  if (request.method === "POST" && url.pathname === "/knowledge/file-system/delete") {
+    const result = deleteKnowledgeFileSystemEntry(
+      state,
+      normalizeKnowledgeFileSystemDeletePayload(await readJsonBody(request)),
+    );
+    state.store.saveFrom(state.app);
+    sendJson(response, 200, {
+      ok: true,
+      ...result,
+      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledgeFolders: listKnowledgeVaultFolders(state),
+      knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     });
     return true;
   }
@@ -71,6 +145,7 @@ export async function handleKnowledgeRoute(options: {
       ok: true,
       ...result,
       knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledgeFolders: listKnowledgeVaultFolders(state),
       knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     });
     return true;
@@ -88,6 +163,7 @@ export async function handleKnowledgeRoute(options: {
       ok: true,
       result,
       knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledgeFolders: listKnowledgeVaultFolders(state),
       knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     });
     return true;
@@ -105,6 +181,7 @@ export async function handleKnowledgeRoute(options: {
       ok: true,
       document: knowledge,
       knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledgeFolders: listKnowledgeVaultFolders(state),
       knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     });
     return true;

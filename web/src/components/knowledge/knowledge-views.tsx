@@ -7,7 +7,7 @@ import { MarkdownCodeEditor } from "./markdown-code-editor";
 import { MarkdownPreview, MarkdownProperties, insertMarkdownFrontmatterProperty, parseMarkdownFrontmatter, recommendedMarkdownProperties, vaultFileDisplayTitle } from "./markdown-preview";
 import { ArtifactCard } from "../workspace/cards";
 import {
-  artifactImagePreview, artifactKind, artifactTitle, buildKnowledgeInboxItems, buildKnowledgeRelationRows, buildKnowledgeTimeline, buildWikiReferenceGroups, confidenceLabel, extractNativeTargets, knowledgeEditableBody, knowledgeStatusLabel, knowledgeTypeLabel, knowledgeVaultPath, parseTagDraft, relatedArtifactsForKnowledge, relatedKnowledgeForArtifact,
+  artifactImagePreview, artifactKind, artifactTitle, buildKnowledgeInboxItems, buildKnowledgeRelationRows, buildKnowledgeTimeline, buildWikiReferenceGroups, confidenceLabel, extractNativeTargets, isLowConfidence, knowledgeEditableBody, knowledgeStatusLabel, knowledgeTypeLabel, knowledgeVaultPath, needsKnowledgeReview, parseTagDraft, relatedArtifactsForKnowledge, relatedKnowledgeForArtifact, sortKnowledgeDocumentsForView,
 } from "./knowledge-model";
 
 export function KnowledgeLibraryView(props: {
@@ -74,43 +74,25 @@ export function KnowledgeWikiView(props: {
   artifacts: any[];
   skills: any[];
   query: string;
-  selectedTag: string;
-  selectedType: string;
   focusedKnowledgeId: string;
-  onQueryChange(query: string): void;
-  onTagChange(tag: string): void;
-  onTypeChange(type: string): void;
   onFocusKnowledge(knowledgeId: string): void;
   onPatch(knowledgeId: string, patch: Record<string, unknown>, options?: { silent?: boolean }): Promise<void>;
   onFeedback(knowledgeId: string, signal: string, note?: string): void;
 }) {
   const [selectedId, setSelectedId] = useState("");
-  const hasWikiFilter = Boolean(props.query.trim() || props.selectedTag || props.selectedType);
-  const focusedDocumentInResults = props.filteredDocuments.find((document) => document.id === props.focusedKnowledgeId);
-  const focusedDocument =
-    focusedDocumentInResults ||
-    (!hasWikiFilter ? props.documents.find((document) => document.id === props.focusedKnowledgeId) : undefined);
+  const hasWikiFilter = Boolean(props.query.trim());
+  const activeSelectedId = props.focusedKnowledgeId || selectedId;
   const selectedDocument =
-    props.filteredDocuments.find((document) => document.id === selectedId) ||
-    (!hasWikiFilter ? props.documents.find((document) => document.id === selectedId) : undefined) ||
-    focusedDocument ||
-    props.filteredDocuments[0] ||
-    (!hasWikiFilter ? props.documents[0] : undefined);
+    props.documents.find((document) => document?.id === activeSelectedId) ||
+    props.filteredDocuments.find((document) => document?.id === activeSelectedId);
 
   useEffect(() => {
-    if (focusedDocument && props.focusedKnowledgeId !== selectedId) {
+    if (props.focusedKnowledgeId && props.focusedKnowledgeId !== selectedId) {
       setSelectedId(props.focusedKnowledgeId);
-      return;
-    }
-    if (!selectedDocument?.id) {
+    } else if (!props.focusedKnowledgeId && selectedId && !props.documents.some((document) => document?.id === selectedId)) {
       setSelectedId("");
-      return;
     }
-    if (selectedId !== selectedDocument.id) {
-      setSelectedId(selectedDocument.id);
-      props.onFocusKnowledge(selectedDocument.id);
-    }
-  }, [focusedDocument?.id, props.focusedKnowledgeId, selectedDocument?.id, selectedId]);
+  }, [props.focusedKnowledgeId, props.documents, selectedId]);
 
   function openKnowledge(knowledgeId: string) {
     setSelectedId(knowledgeId);
@@ -121,32 +103,134 @@ export function KnowledgeWikiView(props: {
     <section className="view-panel tab-view wiki-view" data-view="wiki">
       <div className="wiki-page-shell">
         <div className="wiki-document-stage">
-          <div className="wiki-page-head">
-            <div>
-              <div className="wiki-page-kicker">Wiki Page</div>
-              <h1>{selectedDocument?.title || "选择一个页面"}</h1>
-            </div>
-            <div className="wiki-page-meta">
-              <span>{props.documents.length} pages</span>
-              <span>{props.filteredDocuments.length} matched</span>
-            </div>
-          </div>
-          <KnowledgeDetailPanel
-            document={selectedDocument}
-            ledgers={props.ledgers}
-            artifacts={props.artifacts}
-            skills={props.skills}
-            onOpenKnowledge={openKnowledge}
-            onPatch={props.onPatch}
-            onFeedback={props.onFeedback}
-          />
+          {selectedDocument ? (
+            <KnowledgeDetailPanel
+              document={selectedDocument}
+              ledgers={props.ledgers}
+              artifacts={props.artifacts}
+              skills={props.skills}
+              surface="wiki"
+              onOpenKnowledge={openKnowledge}
+              onPatch={props.onPatch}
+              onFeedback={props.onFeedback}
+            />
+          ) : (
+            <WikiHomePanel
+              documents={props.documents}
+              filteredDocuments={props.filteredDocuments}
+              hasFilter={hasWikiFilter}
+              query={props.query}
+              onOpenKnowledge={openKnowledge}
+            />
+          )}
         </div>
         <WikiReferencePanel
           document={selectedDocument}
           documents={props.documents}
           artifacts={props.artifacts}
           onOpenKnowledge={openKnowledge}
+          onFeedback={props.onFeedback}
         />
+      </div>
+    </section>
+  );
+}
+
+function WikiHomePanel(props: {
+  documents: any[];
+  filteredDocuments: any[];
+  hasFilter: boolean;
+  query: string;
+  onOpenKnowledge(knowledgeId: string): void;
+}) {
+  const allDocuments = useMemo(
+    () => [...(Array.isArray(props.documents) ? props.documents : [])].filter(Boolean).sort(sortKnowledgeDocumentsForView),
+    [props.documents],
+  );
+  const searchResults = props.filteredDocuments.filter(Boolean).slice(0, 16);
+  const reviewAllDocuments = allDocuments.filter(needsKnowledgeReview);
+  const verifiedAllDocuments = allDocuments.filter((document) => !needsKnowledgeReview(document) && !isLowConfidence(document));
+  const reviewDocuments = reviewAllDocuments.slice(0, 6);
+  const recentDocuments = allDocuments.slice(0, 8);
+  const verifiedDocuments = verifiedAllDocuments.slice(0, 6);
+
+  return (
+    <div className="wiki-home">
+      <header className="wiki-home-hero">
+        <div>
+          <div className="wiki-page-kicker">Wiki</div>
+          <h1>知识入口</h1>
+          <p>这里按可信状态、最近更新和页面关系来浏览知识；需要看真实文件位置时，去资料库。</p>
+        </div>
+        <div className="wiki-page-meta">
+          <span>{props.documents.length} 页面</span>
+          <span>{reviewAllDocuments.length} 待确认</span>
+          <span>{verifiedAllDocuments.length} 已确认</span>
+        </div>
+      </header>
+
+      {props.hasFilter ? (
+        <WikiHomeSection
+          title={`搜索：${props.query.trim()}`}
+          documents={searchResults}
+          emptyText="没有匹配页面。"
+          onOpenKnowledge={props.onOpenKnowledge}
+        />
+      ) : (
+        <>
+          <WikiHomeSection
+            title="待确认"
+            documents={reviewDocuments}
+            emptyText="暂时没有需要确认的页面。"
+            onOpenKnowledge={props.onOpenKnowledge}
+          />
+          <WikiHomeSection
+            title="最近更新"
+            documents={recentDocuments}
+            emptyText="还没有页面。"
+            onOpenKnowledge={props.onOpenKnowledge}
+          />
+          <WikiHomeSection
+            title="已确认"
+            documents={verifiedDocuments}
+            emptyText="还没有稳定页面。"
+            onOpenKnowledge={props.onOpenKnowledge}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function WikiHomeSection(props: {
+  title: string;
+  documents: any[];
+  emptyText: string;
+  onOpenKnowledge(knowledgeId: string): void;
+}) {
+  return (
+    <section className="wiki-home-section">
+      <div className="wiki-home-section-head">
+        <h2>{props.title}</h2>
+        <span>{props.documents.length}</span>
+      </div>
+      <div className="wiki-home-grid">
+        {props.documents.length ? (
+          props.documents.map((document) => (
+            <button
+              className="wiki-home-card"
+              key={document.id}
+              type="button"
+              onClick={() => props.onOpenKnowledge(document.id)}
+            >
+              <span className="wiki-home-card-type">{knowledgeTypeLabel(document.type)}</span>
+              <strong>{document.title || document.slug || document.id}</strong>
+              <small>{[knowledgeStatusLabel(document), formatDate(document.updatedAt), knowledgeVaultPath(document)].filter(Boolean).join(" · ")}</small>
+            </button>
+          ))
+        ) : (
+          <div className="wiki-home-empty">{props.emptyText}</div>
+        )}
       </div>
     </section>
   );
@@ -159,6 +243,7 @@ export function WikiReferencePanel(props: {
   documents: any[];
   artifacts: any[];
   onOpenKnowledge(knowledgeId: string): void;
+  onFeedback?(knowledgeId: string, signal: string, note?: string): void;
 }) {
   const groups = useMemo(
     () => buildWikiReferenceGroups(props.document, props.documents, props.artifacts),
@@ -169,10 +254,30 @@ export function WikiReferencePanel(props: {
   return (
     <aside className="wiki-reference-panel" aria-label="引用关系">
       <section className="wiki-reference-card">
-        <div className="wiki-reference-kicker">References</div>
-        <h2>引用关系</h2>
-        <p>这里显示当前页面的出链、反链和关联产物，用来像 Wiki 一样在知识之间跳转。</p>
+        <div className="wiki-reference-kicker">当前页面</div>
+        <h2>{props.document?.title || "未选择页面"}</h2>
+        <p>{props.document ? knowledgeVaultPath(props.document) : "从左侧搜索或入口卡片打开一个页面。"}</p>
         <div className="wiki-reference-count">{total}</div>
+        {props.document ? (
+          <div className="wiki-reference-meta">
+            <span>{knowledgeTypeLabel(props.document.type)}</span>
+            <span>{knowledgeStatusLabel(props.document)}</span>
+            <span>{formatDate(props.document.updatedAt)}</span>
+          </div>
+        ) : null}
+        {props.document && props.onFeedback ? (
+          <div className="wiki-reference-actions">
+            <button type="button" onClick={() => props.onFeedback?.(props.document.id, "useful", "wiki_reference_panel")}>
+              有用
+            </button>
+            <button type="button" onClick={() => props.onFeedback?.(props.document.id, "corrected", "wiki_reference_panel")}>
+              不准确
+            </button>
+            <button type="button" onClick={() => props.onFeedback?.(props.document.id, "stale", "wiki_reference_panel")}>
+              过期
+            </button>
+          </div>
+        ) : null}
       </section>
       {groups.map((group) => (
         <section className="wiki-reference-card" key={group.id}>
@@ -376,6 +481,7 @@ export function KnowledgeDetailPanel(props: {
   ledgers: any;
   artifacts: any[];
   skills: any[];
+  surface?: "library" | "wiki";
   onOpenKnowledge?(knowledgeId: string): void;
   onPatch(knowledgeId: string, patch: Record<string, unknown>, options?: { silent?: boolean }): Promise<void>;
   onFeedback(knowledgeId: string, signal: string, note?: string): void;
@@ -383,7 +489,7 @@ export function KnowledgeDetailPanel(props: {
   const [draftTitle, setDraftTitle] = useState("");
   const [draftBody, setDraftBody] = useState("");
   const [draftTags, setDraftTags] = useState("");
-  const [editorMode, setEditorMode] = useState<"preview" | "source">("preview");
+  const [editorMode, setEditorMode] = useState<"preview" | "source">("source");
   const [saveState, setSaveState] = useState<"idle" | "queued" | "saving" | "saved" | "error">("idle");
   const [savedSnapshot, setSavedSnapshot] = useState({ title: "", body: "", tagsKey: "" });
   const draftRef = useRef({ title: "", body: "", tagsKey: "" });
@@ -430,7 +536,7 @@ export function KnowledgeDetailPanel(props: {
       draftRef.current.tagsKey === savedSnapshotRef.current.tagsKey;
     savedSnapshotRef.current = nextSnapshot;
     setSavedSnapshot(nextSnapshot);
-    if (documentChanged || (draftMatchesSaved && editorMode === "preview")) {
+    if (documentChanged || draftMatchesSaved) {
       setDraftTitle(nextTitle);
       setDraftBody(nextBody);
       setDraftTags(nextTags);
@@ -438,7 +544,7 @@ export function KnowledgeDetailPanel(props: {
   }, [file?.updatedAt, props.document?.id, props.document?.updatedAt]);
 
   useEffect(() => {
-    setEditorMode("preview");
+    setEditorMode("source");
     setSaveState("idle");
   }, [props.document?.id]);
 
@@ -497,7 +603,10 @@ export function KnowledgeDetailPanel(props: {
   const fileVaultSegments = fileVaultPath.split("/");
   const fileDisplayTitle = vaultFileDisplayTitle(fileVaultSegments[fileVaultSegments.length - 1], draftTitle || document.title);
   const fileFormat = (file?.format || document.format || "markdown") as string;
-  const frontmatterProperties = fileFormat === "markdown" ? parseMarkdownFrontmatter(draftBody)?.properties ?? [] : [];
+  const textStats = markdownTextStats(draftBody);
+  const parsedFrontmatter = fileFormat === "markdown" ? parseMarkdownFrontmatter(draftBody) : undefined;
+  const frontmatterProperties = parsedFrontmatter?.properties ?? [];
+  const editorBody = parsedFrontmatter?.body ?? draftBody;
   const recommendedProperties = fileFormat === "markdown"
     ? recommendedMarkdownProperties(document, fileVaultPath, frontmatterProperties)
     : [];
@@ -521,7 +630,7 @@ export function KnowledgeDetailPanel(props: {
         : "已保存";
 
   return (
-    <div className="knowledge-document-area">
+    <div className="knowledge-document-area" data-surface={props.surface || "library"}>
       <section className="knowledge-page-editor md-note-editor" aria-label="Markdown 页面编辑器" data-mode={editorMode}>
         <div className="knowledge-editor-toolbar md-editor-toolbar">
           <div className="md-breadcrumb" title={filePath}>
@@ -563,13 +672,22 @@ export function KnowledgeDetailPanel(props: {
           <div className="knowledge-edit-note">读取本地文件失败：{fileQuery.error instanceof Error ? fileQuery.error.message : String(fileQuery.error)}</div>
         ) : null}
         {editorMode === "source" ? (
-          <MarkdownCodeEditor
-            value={draftBody}
-            format={fileFormat}
-            autoFocus
-            onChange={setDraftBody}
-            placeholder="写下 Markdown 内容"
-          />
+          <>
+            <MarkdownProperties
+              properties={frontmatterProperties}
+              recommendations={recommendedProperties}
+              onActivate={() => setEditorMode("source")}
+              onAddProperty={(property) => setDraftBody((current) => insertMarkdownFrontmatterProperty(current, property))}
+            />
+            <MarkdownCodeEditor
+              key={`${document.id}:${parsedFrontmatter ? "frontmatter" : "plain"}`}
+              value={editorBody}
+              format={fileFormat}
+              autoFocus={false}
+              onChange={(nextBody) => setDraftBody((current) => replaceMarkdownEditableBody(current, nextBody))}
+              placeholder="写下 Markdown 内容"
+            />
+          </>
         ) : (
           <>
             <MarkdownProperties
@@ -586,6 +704,12 @@ export function KnowledgeDetailPanel(props: {
             />
           </>
         )}
+        <div className="md-editor-status" aria-label="文档状态">
+          <span>0 条反向链接</span>
+          <span>{editorMode === "source" ? "实时阅览" : "阅读视图"}</span>
+          <span>{textStats.words} 个词</span>
+          <span>{textStats.characters} 个字符</span>
+        </div>
       </section>
 
       <aside className="knowledge-properties-panel">
@@ -667,6 +791,30 @@ export function KnowledgeDetailPanel(props: {
       </aside>
     </div>
   );
+}
+
+function markdownTextStats(text: string): { words: number; characters: number } {
+  const stripped = text
+    .replace(/^---[\s\S]*?\n---\s*/m, "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
+    .replace(/\[[^\]]+]\([^)]*\)/g, " ")
+    .replace(/[#>*_`~\-\[\]()+|]/g, " ");
+  const compact = stripped.replace(/\s+/g, "");
+  const cjkCount = (compact.match(/[\u3400-\u9fff]/g) || []).length;
+  const latinWords = stripped.match(/[A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*/g) || [];
+  return {
+    words: cjkCount + latinWords.length,
+    characters: compact.length,
+  };
+}
+
+function replaceMarkdownEditableBody(text: string, nextBody: string): string {
+  const normalized = text.replace(/\r\n/g, "\n");
+  if (!normalized.startsWith("---\n")) return nextBody;
+  const end = normalized.indexOf("\n---\n", 4);
+  if (end < 0) return nextBody;
+  return `${normalized.slice(0, end + 5)}${nextBody}`;
 }
 
 

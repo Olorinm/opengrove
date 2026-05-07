@@ -260,10 +260,18 @@ export interface ExecutionRecord {
   [key: string]: unknown;
 }
 
+export interface KnowledgeFolderRecord {
+  path: string;
+  backing?: "vault" | "native";
+  originPath?: string;
+  [key: string]: unknown;
+}
+
 export interface InventoryResponse {
   ok: boolean;
   kernel?: string;
   knowledge: KnowledgeDocumentRecord[];
+  knowledgeFolders?: KnowledgeFolderRecord[];
   knowledgeLedgers?: Record<string, unknown>;
   memory: KnowledgeDocumentRecord[];
   artifacts: ArtifactRecord[];
@@ -389,6 +397,7 @@ export interface AskFinalPayload {
   answer?: string;
   approvals?: ApprovalRecord[];
   knowledge?: KnowledgeDocumentRecord[];
+  knowledgeFolders?: KnowledgeFolderRecord[];
   knowledgeLedgers?: Record<string, unknown>;
   memory?: KnowledgeDocumentRecord[];
   artifacts?: ArtifactRecord[];

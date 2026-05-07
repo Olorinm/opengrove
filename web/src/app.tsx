@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, MouseEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { PanelRightClose, PanelRightOpen, Search } from "lucide-react";
+import { FilePlus2, FolderPlus, ListChevronsDownUp, ListChevronsUpDown, PanelRightClose, PanelRightOpen, Search } from "lucide-react";
 import type {
   AttachmentPayload,
   ApprovalPolicy,
@@ -12,6 +12,8 @@ import type {
   ContextArtifactPayload,
   HealthResponse,
   KernelPreference,
+  KnowledgeDocumentRecord,
+  KnowledgeFolderRecord,
   MessageContext,
   SandboxPolicy,
   SkillRecord,
@@ -100,9 +102,16 @@ export function App() {
   const [focusedKnowledgeId, setFocusedKnowledgeId] = useState("");
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const [wikiQuery, setWikiQuery] = useState("");
-  const [wikiTag, setWikiTag] = useState("");
-  const [wikiType, setWikiType] = useState("");
   const [librarySearchOpen, setLibrarySearchOpen] = useState(false);
+  const [vaultActionRootPath, setVaultActionRootPath] = useState("OpenGrove");
+  const [vaultAllFoldersOpen, setVaultAllFoldersOpen] = useState(false);
+  const [vaultExpandRequest, setVaultExpandRequest] = useState({ id: 0, open: false });
+  const [vaultEditingPath, setVaultEditingPath] = useState("");
+  const [vaultDeleteDialog, setVaultDeleteDialog] = useState<null | {
+    path: string;
+    kind: "folder" | "file";
+    name: string;
+  }>(null);
   const [projectMenuOpenId, setProjectMenuOpenId] = useState("");
   const [projectCollapsedIds, setProjectCollapsedIds] = useState<string[]>([]);
   const [projectCollapseSnapshotIds, setProjectCollapseSnapshotIds] = useState<string[]>([]);
@@ -180,6 +189,7 @@ export function App() {
   const events = eventsQuery.data?.events ?? [];
   const artifacts = inventory?.artifacts ?? [];
   const knowledge = inventory?.knowledge ?? [];
+  const knowledgeFolders = inventory?.knowledgeFolders ?? [];
   const knowledgeLedgers = inventory?.knowledgeLedgers ?? emptyKnowledgeLedgers();
   const memory = inventory?.memory ?? [];
   const skills = inventory?.skills ?? [];
@@ -220,8 +230,8 @@ export function App() {
     [knowledge, knowledgeQuery],
   );
   const wikiDocuments = useMemo(
-    () => filterWikiDocuments(knowledge, wikiQuery, wikiTag, wikiType),
-    [knowledge, wikiQuery, wikiTag, wikiType],
+    () => filterWikiDocuments(knowledge, wikiQuery, "", ""),
+    [knowledge, wikiQuery],
   );
   const currentProjectTitle = useMemo(
     () => projects.find((project) => project.id === projectId)?.title || APP_PRODUCT_NAME,
@@ -406,6 +416,76 @@ export function App() {
     },
   });
 
+  const createKnowledgeFileSystemMutation = useMutation({
+    mutationFn: (payload: { kind: "note" | "folder"; parentPath?: string; name?: string; startRename?: boolean }) =>
+      postJson<any>("/knowledge/file-system", payload),
+    onSuccess(result, variables) {
+      mergeFinalDataIntoCache(queryClient, result);
+      if (result.document?.id) {
+        setFocusedKnowledgeId(result.document.id);
+        queryClient.invalidateQueries({ queryKey: ["knowledge-file", result.document.id] });
+      }
+      if (variables.startRename && typeof result.entry?.path === "string") {
+        setVaultEditingPath(result.entry.path);
+      }
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    },
+    onError(error) {
+      appendMessage("system", `创建本地文件失败：${error instanceof Error ? error.message : String(error)}`);
+    },
+  });
+
+  const moveKnowledgeFileSystemMutation = useMutation({
+    mutationFn: (payload: { sourcePath: string; targetParentPath: string }) =>
+      postJson<any>("/knowledge/file-system/move", payload),
+    onSuccess(result) {
+      mergeFinalDataIntoCache(queryClient, result);
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    },
+    onError(error) {
+      appendMessage("system", `移动本地文件失败：${error instanceof Error ? error.message : String(error)}`);
+    },
+  });
+
+  const renameKnowledgeFileSystemMutation = useMutation({
+    mutationFn: (payload: { sourcePath: string; name: string }) =>
+      postJson<any>("/knowledge/file-system/rename", payload),
+    onSuccess(result) {
+      setVaultEditingPath("");
+      mergeFinalDataIntoCache(queryClient, result);
+      const renamedPath = typeof result.entry?.path === "string" ? result.entry.path : "";
+      const renamedDocument = Array.isArray(result.knowledge)
+        ? result.knowledge.find((document: KnowledgeDocumentRecord) => document?.metadata?.vaultPath === renamedPath)
+        : undefined;
+      if (renamedDocument?.id) {
+        setFocusedKnowledgeId(String(renamedDocument.id));
+        queryClient.invalidateQueries({ queryKey: ["knowledge-file", renamedDocument.id] });
+      }
+      queryClient.invalidateQueries({ queryKey: ["knowledge-file"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    },
+    onError(error) {
+      appendMessage("system", `重命名本地文件失败：${error instanceof Error ? error.message : String(error)}`);
+    },
+  });
+
+  const deleteKnowledgeFileSystemMutation = useMutation({
+    mutationFn: (payload: { sourcePath: string }) =>
+      postJson<any>("/knowledge/file-system/delete", payload),
+    onSuccess(result) {
+      const deletedIds = Array.isArray(result.deletedKnowledgeIds) ? result.deletedKnowledgeIds : [];
+      if (deletedIds.includes(focusedKnowledgeId)) {
+        setFocusedKnowledgeId("");
+      }
+      setVaultDeleteDialog(null);
+      mergeFinalDataIntoCache(queryClient, result);
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    },
+    onError(error) {
+      appendMessage("system", `删除本地文件失败：${error instanceof Error ? error.message : String(error)}`);
+    },
+  });
+
   const bridgeStatus = healthQuery.data?.ok
     ? {
         status: "online",
@@ -426,6 +506,33 @@ export function App() {
 
   async function patchKnowledgePage(knowledgeId: string, patch: Record<string, unknown>, options: { silent?: boolean } = {}) {
     await patchKnowledgeMutation.mutateAsync({ knowledgeId, patch, silent: options.silent });
+  }
+
+  function createVaultEntry(kind: "note" | "folder", parentPath: string) {
+    createKnowledgeFileSystemMutation.mutate({
+      kind,
+      parentPath,
+      name: "未命名",
+      startRename: true,
+    });
+  }
+
+  function moveVaultEntry(sourcePath: string, targetParentPath: string) {
+    if (!sourcePath || !targetParentPath || sourcePath === targetParentPath) return;
+    moveKnowledgeFileSystemMutation.mutate({ sourcePath, targetParentPath });
+  }
+
+  function renameVaultEntry(sourcePath: string, name: string) {
+    if (!sourcePath || !name.trim()) {
+      setVaultEditingPath("");
+      return;
+    }
+    renameKnowledgeFileSystemMutation.mutate({ sourcePath, name: name.trim() });
+  }
+
+  function requestDeleteVaultEntry(path: string, kind: "folder" | "file", name: string) {
+    if (!path) return;
+    setVaultDeleteDialog({ path, kind, name });
   }
 
   async function handleAttachmentInputChange(event: ChangeEvent<HTMLInputElement>) {
@@ -862,15 +969,47 @@ export function App() {
                   <div className="sidebar-space-kicker">Vault</div>
                   <div className="sidebar-space-title">资料库</div>
                 </div>
-                <button
-                  className={clsx("sidebar-mini-action", showLibrarySearch && "active")}
-                  type="button"
-                  onClick={toggleLibrarySearch}
-                  aria-label={showLibrarySearch ? "关闭文件搜索" : "搜索文件"}
-                  title={showLibrarySearch ? "关闭文件搜索" : "搜索文件"}
-                >
-                  <Search size={13} />
-                </button>
+                <div className="sidebar-space-actions" aria-label="资料库操作">
+                  <button
+                    className="sidebar-mini-action"
+                    type="button"
+                    onClick={() => createVaultEntry("note", vaultActionRootPath)}
+                    aria-label="新建笔记"
+                    title={`在 ${vaultActionRootPath} 根目录新建笔记`}
+                  >
+                    <FilePlus2 size={13} />
+                  </button>
+                  <button
+                    className="sidebar-mini-action"
+                    type="button"
+                    onClick={() => createVaultEntry("folder", vaultActionRootPath)}
+                    aria-label="新建文件夹"
+                    title={`在 ${vaultActionRootPath} 根目录新建文件夹`}
+                  >
+                    <FolderPlus size={13} />
+                  </button>
+                  <button
+                    className="sidebar-mini-action"
+                    type="button"
+                    onClick={() => setVaultExpandRequest((current) => ({
+                      id: current.id + 1,
+                      open: !vaultAllFoldersOpen,
+                    }))}
+                    aria-label={vaultAllFoldersOpen ? "全部收起" : "全部展开"}
+                    title={vaultAllFoldersOpen ? "全部收起" : "全部展开"}
+                  >
+                    {vaultAllFoldersOpen ? <ListChevronsDownUp size={13} /> : <ListChevronsUpDown size={13} />}
+                  </button>
+                  <button
+                    className={clsx("sidebar-mini-action", showLibrarySearch && "active")}
+                    type="button"
+                    onClick={toggleLibrarySearch}
+                    aria-label={showLibrarySearch ? "关闭文件搜索" : "搜索文件"}
+                    title={showLibrarySearch ? "关闭文件搜索" : "搜索文件"}
+                  >
+                    <Search size={13} />
+                  </button>
+                </div>
               </div>
               {showLibrarySearch ? (
                 <label className="sidebar-library-search">
@@ -885,8 +1024,20 @@ export function App() {
               ) : null}
               <VaultSidebarPanel
                 documents={vaultDocuments}
+                folders={knowledgeFolders as KnowledgeFolderRecord[]}
                 focusedKnowledgeId={focusedKnowledgeId}
                 forceOpen={Boolean(knowledgeQuery.trim())}
+                expandRequest={vaultExpandRequest}
+                editingPath={vaultEditingPath}
+                onActiveRootChange={setVaultActionRootPath}
+                onAllFoldersOpenChange={setVaultAllFoldersOpen}
+                onCancelRename={() => setVaultEditingPath("")}
+                onCreateFolder={(parentPath) => createVaultEntry("folder", parentPath)}
+                onCreateNote={(parentPath) => createVaultEntry("note", parentPath)}
+                onDeleteEntry={requestDeleteVaultEntry}
+                onMoveEntry={moveVaultEntry}
+                onRenameEntry={renameVaultEntry}
+                onStartRename={setVaultEditingPath}
                 onFocusKnowledge={(knowledgeId) => {
                   setFocusedKnowledgeId(knowledgeId);
                   setView("library");
@@ -1134,12 +1285,7 @@ export function App() {
             artifacts={artifacts}
             skills={skills}
             query={wikiQuery}
-            selectedTag={wikiTag}
-            selectedType={wikiType}
             focusedKnowledgeId={focusedKnowledgeId}
-            onQueryChange={setWikiQuery}
-            onTagChange={setWikiTag}
-            onTypeChange={setWikiType}
             onFocusKnowledge={setFocusedKnowledgeId}
             onPatch={patchKnowledgePage}
             onFeedback={sendKnowledgeFeedback}
@@ -1171,6 +1317,34 @@ export function App() {
           onClose={() => setSettingsOpen(false)}
           onSave={(payload) => settingsMutation.mutate(payload)}
         />
+      ) : null}
+
+      {vaultDeleteDialog ? (
+        <>
+          <div className="modal-overlay" onClick={() => setVaultDeleteDialog(null)} />
+          <div className="modal-shell" role="presentation">
+            <div className="modal-card vault-create-dialog">
+              <div>
+                <div className="modal-title">删除{vaultDeleteDialog.kind === "folder" ? "文件夹" : "笔记"}</div>
+                <div className="vault-create-dialog-subtitle">
+                  {vaultDeleteDialog.name} 会从本地资料库移除。
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button className="ghost-button" type="button" onClick={() => setVaultDeleteDialog(null)}>
+                  取消
+                </button>
+                <button
+                  className="danger-button"
+                  type="button"
+                  onClick={() => deleteKnowledgeFileSystemMutation.mutate({ sourcePath: vaultDeleteDialog.path })}
+                >
+                  删除
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       ) : null}
     </div>
   );

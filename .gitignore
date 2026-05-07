@@ -6,6 +6,7 @@ docs/
 web-dist/
 .claude/
 .codex/
+.obsidian/
 .cache/
 .pytest_cache/
 __pycache__/

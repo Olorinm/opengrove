@@ -1075,8 +1075,48 @@ body {
   gap: 8px;
 }
 
+.vault-create-dialog {
+  width: min(360px, calc(100vw - 32px));
+  gap: 14px;
+}
+
+.vault-create-dialog-subtitle {
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.vault-create-dialog-field {
+  display: grid;
+  gap: 7px;
+  color: #676962;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.vault-create-dialog-field input {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fffefa;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  padding: 0 10px;
+}
+
+.vault-create-dialog-field input:focus {
+  border-color: #8b8f83;
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(88, 91, 82, 0.12);
+}
+
 .ghost-button,
-.primary-button {
+.primary-button,
+.danger-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1122,8 +1162,22 @@ body {
   outline: 0;
 }
 
+.danger-button {
+  border-color: #b94a3c;
+  background: #b94a3c;
+  color: #fffefa;
+}
+
+.danger-button:hover,
+.danger-button:focus-visible {
+  border-color: #943225;
+  background: #943225;
+  outline: 0;
+}
+
 .ghost-button:disabled,
-.primary-button:disabled {
+.primary-button:disabled,
+.danger-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }

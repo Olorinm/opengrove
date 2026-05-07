@@ -159,6 +159,7 @@ export function mergeFinalDataIntoCache(queryClient: QueryClient, finalData: Ask
       ? {
           ...previous,
           knowledge: finalData.knowledge ?? previous.knowledge,
+          knowledgeFolders: finalData.knowledgeFolders ?? previous.knowledgeFolders,
           knowledgeLedgers: finalData.knowledgeLedgers ?? previous.knowledgeLedgers,
           memory: finalData.memory ?? previous.memory,
           artifacts: finalData.artifacts ?? previous.artifacts,

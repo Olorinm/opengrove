@@ -1,7 +1,16 @@
-import { useMemo, useState } from "react";
-import type { CSSProperties } from "react";
-import { ChevronRight, FileText, Folder, Search } from "lucide-react";
-import { summarize } from "../../format";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, DragEvent, KeyboardEvent } from "react";
+import { ChevronRight, FilePlus2, FileText, Folder, FolderPlus, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
+import {
+  isLowConfidence,
+  knowledgeDisplaySummary,
+  knowledgeStatusLabel,
+  knowledgeTypeGlyph,
+  knowledgeTypeLabel,
+  knowledgeVaultPath,
+  needsKnowledgeReview,
+  sortKnowledgeDocumentsForView,
+} from "../knowledge/knowledge-model";
 
 type VaultTreeNode = {
   id: string;
@@ -12,12 +21,38 @@ type VaultTreeNode = {
   children: VaultTreeNode[];
 };
 
+type VaultFolderRecord = {
+  path: string;
+  backing?: "vault" | "native";
+  originPath?: string;
+};
+
+type VaultFolderState = {
+  path: string;
+  defaultOpen: boolean;
+};
+
 export function VaultSidebarPanel(props: {
   documents: any[];
+  folders?: VaultFolderRecord[];
   focusedKnowledgeId: string;
   forceOpen?: boolean;
+  expandRequest?: { id: number; open: boolean };
+  editingPath?: string;
+  onCreateFolder(parentPath: string): void;
+  onCreateNote(parentPath: string): void;
+  onCancelRename(): void;
+  onDeleteEntry(sourcePath: string, kind: "folder" | "file", name: string): void;
+  onActiveRootChange?(path: string): void;
+  onAllFoldersOpenChange?(open: boolean): void;
   onFocusKnowledge(knowledgeId: string): void;
+  onMoveEntry(sourcePath: string, targetParentPath: string): void;
+  onRenameEntry(sourcePath: string, name: string): void;
+  onStartRename(sourcePath: string): void;
 }) {
+  const [menuPath, setMenuPath] = useState("");
+  const [selectedFolderPath, setSelectedFolderPath] = useState("");
+  const [dropTargetPath, setDropTargetPath] = useState("");
   const [openPaths, setOpenPaths] = useState<Record<string, boolean>>({
     OpenGrove: true,
     "OpenGrove/skills": true,
@@ -25,10 +60,49 @@ export function VaultSidebarPanel(props: {
     Claude: true,
     Hermes: true,
   });
-  const tree = useMemo(() => buildVaultTree(props.documents), [props.documents]);
+  const tree = useMemo(() => buildVaultTree(props.documents, props.folders ?? []), [props.documents, props.folders]);
+  const folderStates = useMemo(() => collectVaultFolderStates(tree), [tree]);
+  const folderPaths = useMemo(() => folderStates.map((folder) => folder.path), [folderStates]);
+  const focusedFolderPath = useMemo(
+    () => parentVaultPath(props.documents.find((document) => document?.id === props.focusedKnowledgeId)),
+    [props.documents, props.focusedKnowledgeId],
+  );
+  const activeRootPath = rootVaultPath(selectedFolderPath || focusedFolderPath || tree[0]?.path || "OpenGrove");
 
   function toggleNode(path: string, currentlyOpen: boolean) {
+    setSelectedFolderPath(path);
     setOpenPaths((current) => ({ ...current, [path]: !currentlyOpen }));
+  }
+
+  const allFoldersOpen = folderStates.length > 0 &&
+    folderStates.every((folder) => props.forceOpen || (openPaths[folder.path] ?? folder.defaultOpen));
+
+  useEffect(() => {
+    props.onActiveRootChange?.(activeRootPath);
+  }, [activeRootPath, props.onActiveRootChange]);
+
+  useEffect(() => {
+    props.onAllFoldersOpenChange?.(allFoldersOpen);
+  }, [allFoldersOpen, props.onAllFoldersOpenChange]);
+
+  useEffect(() => {
+    if (!props.expandRequest) return;
+    setOpenPaths(Object.fromEntries(folderPaths.map((path) => [path, props.expandRequest!.open])));
+  }, [props.expandRequest?.id, props.expandRequest?.open, folderPaths]);
+
+  useEffect(() => {
+    if (!props.editingPath) return;
+    const parentPaths = parentVaultPathsFromTreePath(props.editingPath);
+    setOpenPaths((current) => ({
+      ...current,
+      ...Object.fromEntries(parentPaths.map((path) => [path, true])),
+    }));
+  }, [props.editingPath]);
+
+  function moveEntryToFolder(sourcePath: string, targetFolderPath: string) {
+    if (!isDroppableVaultTarget(sourcePath, targetFolderPath)) return;
+    setDropTargetPath("");
+    props.onMoveEntry(sourcePath, targetFolderPath);
   }
 
   return (
@@ -42,7 +116,20 @@ export function VaultSidebarPanel(props: {
               forceOpen={props.forceOpen}
               key={node.id}
               node={node}
+              dropTargetPath={dropTargetPath}
+              editingPath={props.editingPath}
+              menuPath={menuPath}
+              onCancelRename={props.onCancelRename}
+              onCreateFolder={props.onCreateFolder}
+              onCreateNote={props.onCreateNote}
+              onDeleteEntry={props.onDeleteEntry}
               onFocusKnowledge={props.onFocusKnowledge}
+              onOpenMenu={setMenuPath}
+              onRenameEntry={props.onRenameEntry}
+              onStartRename={props.onStartRename}
+              onMoveEntry={moveEntryToFolder}
+              onSelectFolder={setSelectedFolderPath}
+              onSetDropTarget={setDropTargetPath}
               onToggleNode={toggleNode}
               openPaths={openPaths}
             />
@@ -63,11 +150,17 @@ export function WikiSidebarPanel(props: {
   onQueryChange(query: string): void;
   onOpenKnowledge(knowledgeId: string): void;
 }) {
-  const recentDocuments = useMemo(
-    () => [...props.documents].filter(Boolean).sort(sortKnowledgeDocumentsForView).slice(0, 8),
+  const allDocuments = useMemo(
+    () => [...props.documents].filter(Boolean).sort(sortKnowledgeDocumentsForView),
     [props.documents],
   );
-  const visibleDocuments = props.query.trim() ? props.filteredDocuments : recentDocuments;
+  const reviewDocuments = useMemo(() => allDocuments.filter(needsKnowledgeReview).slice(0, 6), [allDocuments]);
+  const recentDocuments = useMemo(() => allDocuments.slice(0, 8), [allDocuments]);
+  const verifiedDocuments = useMemo(
+    () => allDocuments.filter((document) => !needsKnowledgeReview(document) && !isLowConfidence(document)).slice(0, 6),
+    [allDocuments],
+  );
+  const isSearching = Boolean(props.query.trim());
 
   return (
     <section className="sidebar-panel-space wiki-sidebar-panel" aria-label="Wiki">
@@ -86,9 +179,58 @@ export function WikiSidebarPanel(props: {
           placeholder="搜索或跳转页面"
         />
       </label>
-      <div className="wiki-sidebar-section-title">{props.query.trim() ? "搜索结果" : "最近页面"}</div>
+      {isSearching ? (
+        <WikiSidebarSection
+          title="搜索结果"
+          documents={props.filteredDocuments}
+          focusedKnowledgeId={props.focusedKnowledgeId}
+          emptyText="没有匹配页面。"
+          onOpenKnowledge={props.onOpenKnowledge}
+        />
+      ) : (
+        <>
+          <WikiSidebarSection
+            title="待确认"
+            documents={reviewDocuments}
+            focusedKnowledgeId={props.focusedKnowledgeId}
+            emptyText="没有待确认页面。"
+            onOpenKnowledge={props.onOpenKnowledge}
+          />
+          <WikiSidebarSection
+            title="最近页面"
+            documents={recentDocuments}
+            focusedKnowledgeId={props.focusedKnowledgeId}
+            emptyText="还没有页面。"
+            onOpenKnowledge={props.onOpenKnowledge}
+          />
+          <WikiSidebarSection
+            title="已确认"
+            documents={verifiedDocuments}
+            focusedKnowledgeId={props.focusedKnowledgeId}
+            emptyText="还没有已确认页面。"
+            onOpenKnowledge={props.onOpenKnowledge}
+          />
+        </>
+      )}
+    </section>
+  );
+}
+
+function WikiSidebarSection(props: {
+  title: string;
+  documents: any[];
+  focusedKnowledgeId: string;
+  emptyText: string;
+  onOpenKnowledge(knowledgeId: string): void;
+}) {
+  return (
+    <div className="wiki-sidebar-section">
+      <div className="wiki-sidebar-section-title">
+        <span>{props.title}</span>
+        <strong>{props.documents.length}</strong>
+      </div>
       <div className="wiki-sidebar-result-list">
-        {visibleDocuments.map((document) => (
+        {props.documents.map((document) => (
           <button
             className="wiki-sidebar-result"
             data-active={document.id === props.focusedKnowledgeId ? "true" : "false"}
@@ -99,13 +241,17 @@ export function WikiSidebarPanel(props: {
             <span className="wiki-sidebar-glyph">{knowledgeTypeGlyph(document.type)}</span>
             <span className="wiki-sidebar-result-main">
               <strong>{document.title || document.slug || document.id}</strong>
-              <small>{[knowledgeTypeLabel(document.type), knowledgeDisplaySummary(document, 54)].filter(Boolean).join(" · ")}</small>
+              <small>
+                {[knowledgeTypeLabel(document.type), knowledgeStatusLabel(document), knowledgeDisplaySummary(document, 48)]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </small>
             </span>
           </button>
         ))}
-        {!visibleDocuments.length ? <div className="sidebar-library-empty">没有匹配页面。</div> : null}
+        {!props.documents.length ? <div className="sidebar-library-empty">{props.emptyText}</div> : null}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -115,26 +261,185 @@ function VaultTreeNodeView(props: {
   forceOpen?: boolean;
   node: VaultTreeNode;
   openPaths: Record<string, boolean>;
+  dropTargetPath: string;
+  editingPath?: string;
+  menuPath: string;
+  onCancelRename(): void;
+  onCreateFolder(parentPath: string): void;
+  onCreateNote(parentPath: string): void;
+  onDeleteEntry(sourcePath: string, kind: "folder" | "file", name: string): void;
   onFocusKnowledge(knowledgeId: string): void;
+  onMoveEntry(sourcePath: string, targetParentPath: string): void;
+  onOpenMenu(path: string): void;
+  onRenameEntry(sourcePath: string, name: string): void;
+  onStartRename(sourcePath: string): void;
+  onSelectFolder(path: string): void;
+  onSetDropTarget(path: string): void;
   onToggleNode(path: string, currentlyOpen: boolean): void;
 }) {
   const isFolder = props.node.kind === "folder";
   const nodeOpen = props.forceOpen || (props.openPaths[props.node.path] ?? props.depth < 1);
   const style: CSSProperties = { paddingLeft: `${7 + props.depth * 12}px` };
+  const canDragFolder = isFolder && props.depth > 0;
+  const canModify = !isFolder || props.depth > 0;
+  const isEditing = props.editingPath === props.node.path;
+  const menuOpen = props.menuPath === props.node.path;
+  const displayName = isFolder ? props.node.name : displayVaultFileName(props.node.name);
+  const [draftName, setDraftName] = useState(displayName);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!isEditing) return;
+    setDraftName(displayName);
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+  }, [displayName, isEditing]);
+
+  function startDrag(event: DragEvent<HTMLElement>, path: string) {
+    event.dataTransfer.setData("text/plain", path);
+    event.dataTransfer.effectAllowed = "move";
+  }
+
+  function handleFolderDragOver(event: DragEvent<HTMLElement>) {
+    const sourcePath = event.dataTransfer.getData("text/plain");
+    if (sourcePath && !isDroppableVaultTarget(sourcePath, props.node.path)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    props.onSetDropTarget(props.node.path);
+  }
+
+  function handleFolderDrop(event: DragEvent<HTMLElement>) {
+    const sourcePath = event.dataTransfer.getData("text/plain");
+    if (!isDroppableVaultTarget(sourcePath, props.node.path)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    props.onMoveEntry(sourcePath, props.node.path);
+  }
+
+  function commitRename() {
+    const nextName = draftName.trim();
+    if (!nextName || nextName === displayName) {
+      props.onCancelRename();
+      return;
+    }
+    props.onRenameEntry(props.node.path, nextName);
+  }
+
+  function handleNodeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (isEditing) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    if (isFolder) {
+      props.onToggleNode(props.node.path, Boolean(nodeOpen));
+    } else {
+      props.onSelectFolder(parentVaultPath(props.node.document));
+      props.node.document?.id && props.onFocusKnowledge(props.node.document.id);
+    }
+  }
+
+  const label = isEditing ? (
+    <input
+      ref={inputRef}
+      className="sidebar-tree-rename-input"
+      value={draftName}
+      onChange={(event) => setDraftName(event.target.value)}
+      onClick={(event) => event.stopPropagation()}
+      onBlur={commitRename}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commitRename();
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          props.onCancelRename();
+        }
+      }}
+    />
+  ) : (
+    <span>{displayName}</span>
+  );
+
+  const actionMenu = menuOpen ? (
+    <div className="sidebar-tree-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+      {isFolder ? (
+        <>
+          <button type="button" role="menuitem" onClick={() => {
+            props.onOpenMenu("");
+            props.onCreateNote(props.node.path);
+          }}>
+            <FilePlus2 size={13} />
+            <span>新建笔记</span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => {
+            props.onOpenMenu("");
+            props.onCreateFolder(props.node.path);
+          }}>
+            <FolderPlus size={13} />
+            <span>新建文件夹</span>
+          </button>
+        </>
+      ) : null}
+      {canModify ? (
+        <>
+          {isFolder ? <div className="sidebar-tree-menu-separator" /> : null}
+          <button type="button" role="menuitem" onClick={() => {
+            props.onOpenMenu("");
+            props.onStartRename(props.node.path);
+          }}>
+            <Pencil size={13} />
+            <span>重命名</span>
+          </button>
+          <button className="danger" type="button" role="menuitem" onClick={() => {
+            props.onOpenMenu("");
+            props.onDeleteEntry(props.node.path, props.node.kind, displayName);
+          }}>
+            <Trash2 size={13} />
+            <span>删除</span>
+          </button>
+        </>
+      ) : null}
+    </div>
+  ) : null;
+
   if (isFolder) {
     return (
       <div className="sidebar-vault-tree-item">
-        <button
+        <div
           className="sidebar-library-file sidebar-tree-folder"
+          data-drop-target={props.dropTargetPath === props.node.path ? "true" : "false"}
+          draggable={canDragFolder}
+          role="button"
           style={style}
-          type="button"
+          tabIndex={0}
+          onDragLeave={() => props.onSetDropTarget("")}
+          onDragOver={handleFolderDragOver}
+          onDragStart={(event) => canDragFolder ? startDrag(event, props.node.path) : event.preventDefault()}
+          onDrop={handleFolderDrop}
           onClick={() => props.onToggleNode(props.node.path, Boolean(nodeOpen))}
+          onKeyDown={handleNodeKeyDown}
           aria-expanded={nodeOpen}
         >
           <ChevronRight className="sidebar-tree-chevron" size={13} data-open={nodeOpen ? "true" : "false"} />
           <Folder size={13} />
-          <span>{props.node.name}</span>
-        </button>
+          {label}
+          <button
+            className="sidebar-tree-more"
+            type="button"
+            aria-label={`${props.node.name} 操作`}
+            aria-expanded={menuOpen}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              props.onOpenMenu(menuOpen ? "" : props.node.path);
+            }}
+          >
+            <MoreHorizontal size={13} />
+          </button>
+          {actionMenu}
+        </div>
         {nodeOpen ? (
           <div className="sidebar-vault-tree-children">
             {props.node.children.map((child) => (
@@ -144,7 +449,20 @@ function VaultTreeNodeView(props: {
                 forceOpen={props.forceOpen}
                 key={child.id}
                 node={child}
+                dropTargetPath={props.dropTargetPath}
+                editingPath={props.editingPath}
+                menuPath={props.menuPath}
+                onCancelRename={props.onCancelRename}
+                onCreateFolder={props.onCreateFolder}
+                onCreateNote={props.onCreateNote}
+                onDeleteEntry={props.onDeleteEntry}
                 onFocusKnowledge={props.onFocusKnowledge}
+                onOpenMenu={props.onOpenMenu}
+                onRenameEntry={props.onRenameEntry}
+                onStartRename={props.onStartRename}
+                onMoveEntry={props.onMoveEntry}
+                onSelectFolder={props.onSelectFolder}
+                onSetDropTarget={props.onSetDropTarget}
                 onToggleNode={props.onToggleNode}
                 openPaths={props.openPaths}
               />
@@ -156,22 +474,49 @@ function VaultTreeNodeView(props: {
   }
 
   return (
-    <button
+    <div
       className="sidebar-library-file sidebar-tree-file"
       data-active={props.node.document?.id === props.focusedKnowledgeId ? "true" : "false"}
+      draggable={!isEditing}
+      role="button"
       style={style}
-      type="button"
-      onClick={() => props.node.document?.id && props.onFocusKnowledge(props.node.document.id)}
+      onDragStart={(event) => startDrag(event, props.node.path)}
+      onClick={() => {
+        if (isEditing) return;
+        props.onSelectFolder(parentVaultPath(props.node.document));
+        props.node.document?.id && props.onFocusKnowledge(props.node.document.id);
+      }}
+      onKeyDown={handleNodeKeyDown}
+      tabIndex={0}
       title={props.node.path}
     >
       <FileText size={13} />
-      <span>{props.node.name}</span>
-    </button>
+      {label}
+      <button
+        className="sidebar-tree-more"
+        type="button"
+        aria-label={`${displayName} 操作`}
+        aria-expanded={menuOpen}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          props.onOpenMenu(menuOpen ? "" : props.node.path);
+        }}
+      >
+        <MoreHorizontal size={13} />
+      </button>
+      {actionMenu}
+    </div>
   );
 }
 
-function buildVaultTree(documents: any[]): VaultTreeNode[] {
+function buildVaultTree(documents: any[], folders: VaultFolderRecord[] = []): VaultTreeNode[] {
   const root: VaultTreeNode = { id: "vault", name: "vault", kind: "folder", path: "", children: [] };
+  for (const folder of folders) {
+    const path = safeVaultTreePath(folder?.path);
+    if (!path) continue;
+    ensureVaultFolderNode(root, path.split("/"));
+  }
   for (const document of documents) {
     if (!document?.id) continue;
     const path = knowledgeVaultPath(document);
@@ -203,204 +548,78 @@ function buildVaultTree(documents: any[]): VaultTreeNode[] {
   return root.children;
 }
 
+function ensureVaultFolderNode(root: VaultTreeNode, segments: string[]): VaultTreeNode {
+  let current = root;
+  let currentPath = "";
+  for (const segment of segments) {
+    currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+    let child = current.children.find((item) => item.name === segment && item.kind === "folder");
+    if (!child) {
+      child = {
+        id: `folder:${currentPath}`,
+        name: segment,
+        kind: "folder",
+        path: currentPath,
+        children: [],
+      };
+      current.children.push(child);
+    }
+    current = child;
+  }
+  return current;
+}
+
+function parentVaultPath(document: any): string {
+  const path = document ? safeVaultTreePath(knowledgeVaultPath(document)) : "";
+  const segments = path.split("/").filter(Boolean);
+  if (segments.length <= 1) return segments[0] || "";
+  return segments.slice(0, -1).join("/");
+}
+
+function parentVaultPathsFromTreePath(path: string): string[] {
+  const segments = safeVaultTreePath(path).split("/").filter(Boolean);
+  const parents: string[] = [];
+  for (let index = 1; index < segments.length; index += 1) {
+    parents.push(segments.slice(0, index).join("/"));
+  }
+  return parents;
+}
+
+function rootVaultPath(path: string): string {
+  return safeVaultTreePath(path).split("/").filter(Boolean)[0] || "OpenGrove";
+}
+
+function isDroppableVaultTarget(sourcePath: string, targetFolderPath: string): boolean {
+  const source = safeVaultTreePath(sourcePath);
+  const target = safeVaultTreePath(targetFolderPath);
+  if (!source || !target || source === target) return false;
+  if (rootVaultPath(source) !== rootVaultPath(target)) return false;
+  return !target.startsWith(`${source}/`);
+}
+
+function safeVaultTreePath(path: unknown): string {
+  if (typeof path !== "string") return "";
+  return path.replace(/\\/g, "/").split("/").map((segment) => segment.trim()).filter(Boolean).join("/");
+}
+
+function displayVaultFileName(name: string): string {
+  return name.replace(/\.(?:md|markdown|mdx)$/i, "");
+}
+
+function collectVaultFolderStates(nodes: VaultTreeNode[], depth = 0): VaultFolderState[] {
+  const folders: VaultFolderState[] = [];
+  for (const node of nodes) {
+    if (node.kind !== "folder") continue;
+    folders.push({ path: node.path, defaultOpen: depth < 1 });
+    folders.push(...collectVaultFolderStates(node.children, depth + 1));
+  }
+  return folders;
+}
+
 function sortVaultTree(nodes: VaultTreeNode[]): void {
   nodes.sort((left, right) => {
     if (left.kind !== right.kind) return left.kind === "folder" ? -1 : 1;
     return left.name.localeCompare(right.name, "zh-CN");
   });
   nodes.forEach((node) => sortVaultTree(node.children));
-}
-
-function knowledgeVaultPath(document: any): string {
-  const explicitVaultPath = safeVaultPath(document?.metadata?.vaultPath);
-  if (explicitVaultPath) return explicitVaultPath;
-  const sourceRoot = knowledgeSourceRoot(document);
-  if (isSkillFileDocument(document)) {
-    return `${sourceRoot}/skills/${safePathSegment(document.metadata?.skillName || document.metadata?.skillId || "skill")}/${String(document.metadata.skillFilePath || "file.md")}`;
-  }
-  if (document?.type === "skill") {
-    return `${sourceRoot}/skills/${safePathSegment(document.metadata?.skillName || document.title || document.id)}/SKILL.md`;
-  }
-  if (needsKnowledgeReview(document)) {
-    return `${sourceRoot}/inbox/${knowledgeFileName(document)}`;
-  }
-  if (document?.type === "memory") {
-    return `${sourceRoot}/memories/${knowledgeFileName(document)}`;
-  }
-  if (document?.type === "artifact_ref") {
-    return `${sourceRoot}/artifacts/${knowledgeFileName(document)}`;
-  }
-  if (document?.type === "project_doc") {
-    return `${sourceRoot}/projects/${knowledgeFileName(document)}`;
-  }
-  if (document?.type === "profile") {
-    return `${sourceRoot}/profiles/${knowledgeFileName(document)}`;
-  }
-  if (document?.type === "routine") {
-    return `${sourceRoot}/routines/${knowledgeFileName(document)}`;
-  }
-  if (document?.type === "source") {
-    return `${sourceRoot}/sources/${knowledgeFileName(document)}`;
-  }
-  return `${sourceRoot}/notes/${knowledgeFileName(document)}`;
-}
-
-function knowledgeSourceRoot(document: any): string {
-  const metadata = document?.metadata ?? {};
-  const explicit = metadata.kernelId || metadata.kernel || metadata.sourceKernel;
-  if (typeof explicit === "string" && explicit.trim()) {
-    return normalizeKnowledgeSourceRoot(explicit);
-  }
-  const haystack = [
-    metadata.skillRoot,
-    metadata.entry,
-    metadata.sourceFilePath,
-    metadata.sourceFileOriginPath,
-    ...(document?.sourceRefs ?? []).map((ref: any) => ref?.locator || ""),
-  ].filter(Boolean).join("\n").replace(/\\/g, "/").toLowerCase();
-  if (haystack.includes("/.claude/") || haystack.includes("/claude.md")) return "Claude";
-  if (haystack.includes("/.hermes/")) return "Hermes";
-  if (haystack.includes("/.codex/") || haystack.includes("/.agents/skills/")) return "Codex";
-  return "OpenGrove";
-}
-
-function normalizeKnowledgeSourceRoot(value: string): string {
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "claude" || normalized === "claude-code" || normalized === "claude code") return "Claude";
-  if (normalized === "codex") return "Codex";
-  if (normalized === "hermes") return "Hermes";
-  return "OpenGrove";
-}
-
-function isSkillFileDocument(document: any): boolean {
-  return Boolean(document?.metadata?.parentSkillId && document?.metadata?.skillFilePath);
-}
-
-function knowledgeFileName(document: any): string {
-  const base = safePathSegment(document?.slug || document?.title || document?.id || "untitled");
-  const extension = document?.format === "json" ? ".json" : document?.format === "plain" ? ".txt" : ".md";
-  return base.endsWith(extension) ? base : `${base}${extension}`;
-}
-
-function safePathSegment(value: unknown): string {
-  return String(value || "untitled")
-    .replace(/[\\/:*?"<>|#\n\r\t]+/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase() || "untitled";
-}
-
-function safeVaultPath(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const normalized = value.replace(/\\/g, "/").split("/").filter(Boolean).join("/");
-  if (!normalized || normalized.startsWith("/") || normalized.includes("../") || normalized === "..") return undefined;
-  return normalized;
-}
-
-function sortKnowledgeDocumentsForView(left: any, right: any): number {
-  const priorityDelta = knowledgeDisplayPriority(left) - knowledgeDisplayPriority(right);
-  if (priorityDelta !== 0) return priorityDelta;
-  return String(right?.updatedAt || "").localeCompare(String(left?.updatedAt || ""));
-}
-
-function knowledgeDisplayPriority(document: any): number {
-  if (!document) return 99;
-  if (document.type === "memory") return 0;
-  if (document.type === "project_doc" || document.type === "note" || document.type === "profile") return 1;
-  if (document.type === "artifact_ref") return 2;
-  if (document.type === "source") return 3;
-  if (document.type === "skill" && !isSystemSkillDocument(document)) return 4;
-  if (document.type === "routine") return 5;
-  if (document.type === "skill") return 8;
-  return 6;
-}
-
-function isSystemSkillDocument(document: any): boolean {
-  if (document?.type !== "skill") return false;
-  const source = String(document?.metadata?.source || "");
-  const skillRoot = String(document?.metadata?.skillRoot || "");
-  const entry = String(document?.metadata?.entry || "");
-  return source === "system" || source === "bundled" || skillRoot.includes("/.codex/skills/.system/") || entry.includes("/.codex/skills/.system/");
-}
-
-function knowledgeDisplaySummary(document: any, maxLength = 140): string {
-  const body = String(document?.body || "").trim();
-  if (!body) return "";
-  if (document?.type === "artifact_ref") {
-    const preview = extractLabeledLine(body, "Preview text");
-    const title = extractLabeledLine(body, "Title");
-    const dataText = extractJsonTextField(extractLabeledLine(body, "Data"));
-    return summarize([preview, dataText, title].find(Boolean) || body, maxLength);
-  }
-  if (document?.type === "skill") {
-    const description = extractLabeledLine(body, "Description");
-    const when = extractLabeledLine(body, "When to use");
-    return summarize([description, when].filter(Boolean).join(" · ") || body, maxLength);
-  }
-  return summarize(body, maxLength);
-}
-
-function extractLabeledLine(body: string, label: string): string {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = body.match(new RegExp(`(?:^|\\n)${escaped}:\\s*([^\\n]+)`, "i"));
-  return match?.[1]?.trim() || "";
-}
-
-function extractJsonTextField(value: string): string {
-  if (!value.trim().startsWith("{")) return "";
-  try {
-    const parsed = JSON.parse(value);
-    return typeof parsed?.text === "string" ? parsed.text : "";
-  } catch {
-    return "";
-  }
-}
-
-function needsKnowledgeReview(document: any): boolean {
-  if (!document) return false;
-  if (document.lifecycle && document.lifecycle !== "active") return true;
-  if (document.type === "source" && document.metadata?.organizerRole === "raw_evidence") return true;
-  if (isLowConfidence(document)) return true;
-  return false;
-}
-
-function isLowConfidence(document: any): boolean {
-  const confidence = numericConfidence(document?.confidence);
-  return typeof confidence === "number" && confidence < 0.65;
-}
-
-function numericConfidence(value: unknown): number | undefined {
-  if (typeof value !== "number" || Number.isNaN(value)) return undefined;
-  return Math.max(0, Math.min(1, value));
-}
-
-function knowledgeTypeLabel(type: string | undefined): string {
-  return (
-    {
-      skill: "能力",
-      memory: "记忆",
-      note: "笔记",
-      project_doc: "项目资料",
-      artifact_ref: "产物引用",
-      routine: "流程",
-      profile: "画像",
-      source: "来源",
-    }[type || ""] || type || "页面"
-  );
-}
-
-function knowledgeTypeGlyph(type: string | undefined): string {
-  return (
-    {
-      skill: "✦",
-      memory: "●",
-      note: "◇",
-      project_doc: "□",
-      artifact_ref: "▣",
-      routine: "↻",
-      profile: "◎",
-      source: "⌁",
-    }[type || ""] || "·"
-  );
 }

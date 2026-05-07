@@ -79,16 +79,29 @@ function buildMarkdownLivePreviewDecorations(view: EditorView): DecorationSet {
         decorations.push(Decoration.mark({ class: headingClass }).range(node.from, node.to));
       }
       if (syntaxMarkNodes.has(name)) {
-        decorations.push(
-          Decoration.mark({ class: onActiveLine ? "cm-md-syntax cm-md-syntax-active" : "cm-md-syntax cm-md-syntax-muted" }).range(node.from, node.to),
-        );
+        const hiddenTo = inactiveSyntaxEnd(view, name, node.to);
+        decorations.push(onActiveLine
+          ? Decoration.mark({ class: "cm-md-syntax cm-md-syntax-active" }).range(node.from, node.to)
+          : Decoration.replace({}).range(node.from, hiddenTo));
       }
       if (name === "URL" && !onActiveLine) {
-        decorations.push(Decoration.mark({ class: "cm-md-link-url-muted" }).range(node.from, node.to));
+        decorations.push(Decoration.replace({}).range(node.from, node.to));
       }
     },
   });
   return Decoration.set(decorations, true);
+}
+
+function inactiveSyntaxEnd(view: EditorView, nodeName: string, to: number): number {
+  if (nodeName !== "HeaderMark" && nodeName !== "ListMark" && nodeName !== "QuoteMark") return to;
+  const line = view.state.doc.lineAt(to);
+  let next = to;
+  while (next < line.to) {
+    const char = view.state.sliceDoc(next, next + 1);
+    if (char !== " " && char !== "\t") break;
+    next += 1;
+  }
+  return next;
 }
 
 function markdownFrontmatterEnd(text: string): number {
@@ -204,7 +217,7 @@ export function MarkdownCodeEditor(props: MarkdownCodeEditorProps) {
     const view = viewRef.current;
     if (!view) return;
     const currentValue = view.state.doc.toString();
-    if (props.value === currentValue || props.value === valueRef.current) return;
+    if (props.value === currentValue) return;
     valueRef.current = props.value;
     view.dispatch({
       changes: { from: 0, to: currentValue.length, insert: props.value },

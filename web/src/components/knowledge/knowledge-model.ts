@@ -154,7 +154,7 @@ export function filterKnowledgeDocuments(documents: any[], activeFilter: Knowled
 export function filterVaultDocuments(documents: any[], query: string): any[] {
   const needle = query.trim().toLowerCase();
   const base = (Array.isArray(documents) ? documents.filter(Boolean) : []).filter(
-    (document) => !isAutoToolResultArtifact(document),
+    (document) => document.type !== "artifact_ref" && !isAutoToolResultArtifact(document),
   );
   if (!needle) {
     return base.sort((left, right) => knowledgeVaultPath(left).localeCompare(knowledgeVaultPath(right), "zh-CN"));
