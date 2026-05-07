@@ -40,6 +40,7 @@ import {
   resolveCodexApprovalPolicy,
   resolveCodexApprovalsReviewer,
   resolveCodexSandboxMode,
+  resolveCodexServiceTier,
   resolveReasoningEffort,
   toCodexSandboxPolicy,
 } from "./codex/policy.js";
@@ -82,6 +83,7 @@ export class CodexRuntime implements AgentRuntime {
     const sandbox = resolveCodexSandboxMode(request, this.options.sandbox);
     const approvalPolicy = resolveCodexApprovalPolicy(request.approvalPolicy, this.options.approvalPolicy);
     const approvalsReviewer = resolveCodexApprovalsReviewer(this.options.approvalsReviewer);
+    const serviceTier = resolveCodexServiceTier(request.requestedServiceTier, this.options.serviceTier);
     const developerInstructions = buildCodexDeveloperInstructions();
     const turnInput = buildCodexTurnInput(request);
     const turnInputItems = buildCodexTurnInputItems(request, turnInput);
@@ -114,6 +116,7 @@ export class CodexRuntime implements AgentRuntime {
       dynamicToolsFingerprint: toolBridge.fingerprint,
       approvalPolicy,
       approvalsReviewer,
+      serviceTier,
     });
     const sessionTrace: AgentSessionTrace = {
       provider: "codex",
@@ -230,7 +233,7 @@ export class CodexRuntime implements AgentRuntime {
           approvalsReviewer,
           sandboxPolicy: toCodexSandboxPolicy(sandbox),
           model,
-          ...(this.options.serviceTier ? { serviceTier: this.options.serviceTier } : {}),
+          ...(serviceTier ? { serviceTier } : {}),
           ...(resolveReasoningEffort(request.requestedEffort)
             ? { effort: resolveReasoningEffort(request.requestedEffort) }
             : {}),
@@ -341,6 +344,7 @@ export class CodexRuntime implements AgentRuntime {
       sandbox: CodexSandboxMode;
       approvalPolicy: CodexApprovalPolicy;
       approvalsReviewer: CodexApprovalsReviewer;
+      serviceTier?: string;
     },
   ): Promise<CodexThreadBinding> {
     this.loadBindings();
@@ -357,6 +361,7 @@ export class CodexRuntime implements AgentRuntime {
           sandbox: options.sandbox,
           config: CODEX_THREAD_CONFIG_OVERRIDES,
           persistExtendedHistory: true,
+          ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
         });
         const threadId = response.thread?.id ?? existing.threadId;
         const binding = {
@@ -387,7 +392,7 @@ export class CodexRuntime implements AgentRuntime {
       config: CODEX_THREAD_CONFIG_OVERRIDES,
       experimentalRawEvents: true,
       persistExtendedHistory: true,
-      ...(this.options.serviceTier ? { serviceTier: this.options.serviceTier } : {}),
+      ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
     });
     const threadId = response.thread?.id;
     if (!threadId) {

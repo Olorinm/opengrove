@@ -16,6 +16,7 @@ import {
   createBridgeState,
   getBridgeSettingsSnapshot,
 } from "./bridge-state.js";
+import { getBridgeRuntimeControls } from "./kernel-selection.js";
 import { buildContextRecords } from "./trajectory.js";
 import { buildProviderHttpCaptureDiagnostics } from "./provider-http-captures.js";
 import { filterEnabledKnowledgeDocuments, listKnowledgeVaultFolders, syncKnowledgeVaultFiles } from "./knowledge-files.js";
@@ -90,6 +91,7 @@ export function startLocalBridgeServer(options: LocalBridgeServerOptions = {}) {
           time: new Date().toISOString(),
           kernel: state.kernel,
           settings: getBridgeSettingsSnapshot(state),
+          runtimeControls: getBridgeRuntimeControls(state),
           tokenRequired: Boolean(security.bridgeToken),
         });
         return;

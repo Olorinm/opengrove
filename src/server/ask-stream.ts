@@ -48,6 +48,9 @@ export async function streamAskResponse(
     const events: AgentEvent[] = [];
     for await (const event of state.app.runTurn(payload.question, {
       sessionId: payload.threadId,
+      requestedModelId: payload.model,
+      requestedEffort: payload.effort,
+      requestedServiceTier: payload.serviceTier,
       sandbox: payload.sandbox,
       approvalPolicy: payload.approvalPolicy,
       signal: abortController.signal,

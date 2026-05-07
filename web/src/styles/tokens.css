@@ -1,18 +1,18 @@
 :root {
   /* ── Color ── */
-  --c-bg: #fffefa;
-  --c-surface: #f7f6f2;
-  --c-surface-hover: #eeece6;
-  --c-surface-active: #e9e6de;
+  --c-bg: #fafaf9;
+  --c-surface: #f5f5f4;
+  --c-surface-hover: #efefed;
+  --c-surface-active: #e8e8e6;
 
-  --c-text: #20221d;
-  --c-text-2: #343630;
-  --c-text-3: #4f514a;
-  --c-muted: #8a8d86;
-  --c-faint: #a8aaa3;
+  --c-text: #1c1c1a;
+  --c-text-2: #2e2e2c;
+  --c-text-3: #52524e;
+  --c-muted: #8c8c8a;
+  --c-faint: #acacaa;
 
-  --c-border: #e7e3da;
-  --c-border-strong: #d4d0c7;
+  --c-border: #e8e8e6;
+  --c-border-strong: #d6d6d4;
 
   --c-accent: #c94f24;
   --c-accent-hover: #b3441f;
@@ -26,9 +26,9 @@
   --font-mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
 
   --fw-normal: 400;
-  --fw-medium: 520;
-  --fw-semibold: 650;
-  --fw-bold: 720;
+  --fw-medium: 480;
+  --fw-semibold: 600;
+  --fw-bold: 660;
 
   --fs-xs: 11px;
   --fs-sm: 12px;
@@ -55,15 +55,15 @@
 
   /* ── Radius ── */
   --r-sm: 6px;
-  --r-md: 8px;
-  --r-lg: 12px;
-  --r-xl: 16px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
   --r-pill: 999px;
 
   /* ── Elevation ── */
-  --shadow-sm: 0 2px 8px rgba(72, 65, 50, 0.06);
-  --shadow-md: 0 8px 22px rgba(72, 65, 50, 0.1);
-  --shadow-lg: 0 18px 48px rgba(72, 65, 50, 0.15);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 24px 80px rgba(0, 0, 0, 0.08);
 
   /* ── Motion ── */
   --dur-fast: 120ms;

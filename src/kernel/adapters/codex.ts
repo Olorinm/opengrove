@@ -377,7 +377,7 @@ export const CODEX_KERNEL_CONTRACT: KernelAdapterContract = {
         redaction: "raw",
         notes: [
           "Injects proxy and CA environment variables into the codex app-server child process.",
-          "Use npm run capture:provider -- start to run the mitmproxy archive service first.",
+          "OpenGrove auto-starts the local mitmproxy archive service when provider capture is enabled.",
           "Verified with Codex 0.128.0-alpha.1: captures ChatGPT HTTP calls and Responses WebSocket frames when CODEX_CA_CERTIFICATE points at the mitm CA.",
         ],
       },

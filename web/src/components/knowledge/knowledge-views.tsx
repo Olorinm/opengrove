@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { File as FileIcon, FileText, Image as ImageIcon, Pencil } from "lucide-react";
+import { File as FileIcon, Image as ImageIcon } from "lucide-react";
 import { bridgeHeaders, fetchJson } from "../../bridge";
 import { formatDate } from "../../format";
 import { MarkdownCodeEditor } from "./markdown-code-editor";
@@ -49,6 +49,7 @@ export function KnowledgeLibraryView(props: {
         <div className="knowledge-shell obsidian-vault">
           <KnowledgeDetailPanel
             document={selectedDocument}
+            documents={props.documents}
             ledgers={props.ledgers}
             artifacts={props.artifacts}
             skills={props.skills}
@@ -106,6 +107,7 @@ export function KnowledgeWikiView(props: {
           {selectedDocument ? (
             <KnowledgeDetailPanel
               document={selectedDocument}
+              documents={props.documents}
               ledgers={props.ledgers}
               artifacts={props.artifacts}
               skills={props.skills}
@@ -478,6 +480,7 @@ export function ArtifactSpaceView(props: {
 
 export function KnowledgeDetailPanel(props: {
   document: any | undefined;
+  documents: any[];
   ledgers: any;
   artifacts: any[];
   skills: any[];
@@ -618,6 +621,14 @@ export function KnowledgeDetailPanel(props: {
   const relatedArtifacts = relatedArtifactsForKnowledge(document, props.artifacts);
   const relatedSkill = document.type === "skill" ? props.skills.find((skill) => skill?.id === document.metadata?.skillId || skill?.name === document.metadata?.skillName) : undefined;
   const relationRows = buildKnowledgeRelationRows(document, relatedArtifacts);
+  function openMarkdownLink(href: string): boolean {
+    const targetPath = resolveMarkdownLinkVaultPath(href, fileVaultPath);
+    if (!targetPath) return false;
+    const targetDocument = findKnowledgeDocumentByVaultPath(props.documents, targetPath);
+    if (!targetDocument?.id) return true;
+    props.onOpenKnowledge?.(targetDocument.id);
+    return true;
+  }
 
   const saveLabel = fileQuery.isFetching
     ? "同步中"
@@ -628,6 +639,7 @@ export function KnowledgeDetailPanel(props: {
           ? "保存中"
           : "未保存"
         : "已保存";
+  const showSaveState = fileQuery.isFetching || saveState === "saving" || saveState === "error";
 
   return (
     <div className="knowledge-document-area" data-surface={props.surface || "library"}>
@@ -641,17 +653,11 @@ export function KnowledgeDetailPanel(props: {
             ))}
           </div>
           <div className="knowledge-editor-actions">
-            <span className="md-save-state" data-state={isDirty ? saveState : "saved"}>
-              {saveLabel}
-            </span>
-            <button
-              className="md-icon-button"
-              type="button"
-              title={editorMode === "preview" ? "切换到编辑视图" : "切换到阅读视图"}
-              onClick={() => setEditorMode(editorMode === "preview" ? "source" : "preview")}
-            >
-              {editorMode === "preview" ? <Pencil size={17} /> : <FileText size={17} />}
-            </button>
+            {showSaveState ? (
+              <span className="md-save-state" data-state={saveState}>
+                {saveLabel}
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -685,6 +691,7 @@ export function KnowledgeDetailPanel(props: {
               format={fileFormat}
               autoFocus={false}
               onChange={(nextBody) => setDraftBody((current) => replaceMarkdownEditableBody(current, nextBody))}
+              onOpenLink={openMarkdownLink}
               placeholder="写下 Markdown 内容"
             />
           </>
@@ -701,6 +708,7 @@ export function KnowledgeDetailPanel(props: {
               format={fileFormat}
               vaultPath={fileVaultPath}
               onActivate={() => setEditorMode("source")}
+              onOpenLink={openMarkdownLink}
             />
           </>
         )}
@@ -807,6 +815,65 @@ function markdownTextStats(text: string): { words: number; characters: number } 
     words: cjkCount + latinWords.length,
     characters: compact.length,
   };
+}
+
+function resolveMarkdownLinkVaultPath(href: string, currentVaultPath: string): string {
+  const raw = cleanMarkdownHref(href);
+  if (!raw || /^(?:https?:|mailto:|tel:|data:|blob:|#)/i.test(raw)) return "";
+  const vaultFilePrefix = "/vault-file/";
+  if (raw.startsWith(vaultFilePrefix)) {
+    return normalizeVaultPath(raw.slice(vaultFilePrefix.length).split("/").map(decodeSafe).join("/"));
+  }
+  const currentDir = normalizeVaultPath(currentVaultPath).split("/").slice(0, -1).join("/");
+  const roots = new Set(["OpenGrove", "Codex", "Claude", "Hermes"]);
+  const firstSegment = raw.replace(/^\/+/, "").split("/").filter(Boolean)[0] || "";
+  const candidate = roots.has(firstSegment)
+    ? raw.replace(/^\/+/, "")
+    : [currentDir, raw].filter(Boolean).join("/");
+  return normalizeVaultPath(candidate);
+}
+
+function findKnowledgeDocumentByVaultPath(documents: any[], targetPath: string): any | undefined {
+  const targetKeys = knowledgePathMatchKeys(targetPath);
+  return documents.find((document) => {
+    const documentKeys = knowledgePathMatchKeys(knowledgeVaultPath(document));
+    return Array.from(documentKeys).some((key) => targetKeys.has(key));
+  });
+}
+
+function knowledgePathMatchKeys(path: string): Set<string> {
+  const normalized = normalizeVaultPath(path).toLowerCase();
+  const withoutExtension = normalized.replace(/\.(md|markdown|mdx|txt)$/i, "");
+  return new Set([normalized, withoutExtension, `${withoutExtension}.md`].filter(Boolean));
+}
+
+function cleanMarkdownHref(href: string): string {
+  const withoutWrapper = String(href || "").trim().replace(/^<|>$/g, "");
+  const withoutHash = withoutWrapper.split("#")[0] || "";
+  const withoutQuery = withoutHash.split("?")[0] || "";
+  return decodeSafe(withoutQuery);
+}
+
+function normalizeVaultPath(path: string): string {
+  const parts: string[] = [];
+  for (const part of path.replace(/\\/g, "/").split("/")) {
+    const trimmed = part.trim();
+    if (!trimmed || trimmed === ".") continue;
+    if (trimmed === "..") {
+      parts.pop();
+      continue;
+    }
+    parts.push(trimmed);
+  }
+  return parts.join("/");
+}
+
+function decodeSafe(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function replaceMarkdownEditableBody(text: string, nextBody: string): string {

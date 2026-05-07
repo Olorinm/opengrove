@@ -1,35 +1,27 @@
 import clsx from "clsx";
 import {
   BookOpenText,
-  Globe2,
   MessageSquare,
   Settings,
-  SlidersHorizontal,
-  ClipboardPlus,
   type LucideIcon,
 } from "lucide-react";
 import type { ViewId } from "../../bridge";
 
-export type RailSectionId = "chat" | "library" | "wiki" | "system";
+export type RailSectionId = "chat" | "library" | "settings";
 
 type NavItem = { id: ViewId; label: string; icon: LucideIcon };
 
 const PRIMARY_NAV_ITEMS: NavItem[] = [
   { id: "library", label: "资料库", icon: BookOpenText },
-  { id: "wiki", label: "Wiki", icon: Globe2 },
-];
-
-const ADVANCED_NAV_ITEMS: NavItem[] = [
-  { id: "context", label: "原始上下文", icon: ClipboardPlus },
 ];
 
 export function isAdvancedView(view: ViewId): boolean {
-  return ADVANCED_NAV_ITEMS.some((item) => item.id === view);
+  return view === "context";
 }
 
 export function railSectionForView(view: ViewId): RailSectionId {
-  if (view === "wiki") return "wiki";
-  if (isAdvancedView(view)) return "system";
+  if (view === "settings") return "settings";
+  if (isAdvancedView(view)) return "settings";
   if (view === "library" || view === "inbox" || view === "artifacts") return "library";
   return "chat";
 }
@@ -54,21 +46,14 @@ export function AppRail(props: {
           icon={BookOpenText}
           onClick={() => props.onOpenSection("library")}
         />
-        <RailButton
-          active={props.activeSection === "wiki"}
-          label="Wiki"
-          icon={Globe2}
-          onClick={() => props.onOpenSection("wiki")}
-        />
-        <RailButton
-          active={props.activeSection === "system"}
-          label="系统视图"
-          icon={SlidersHorizontal}
-          onClick={() => props.onOpenSection("system")}
-        />
       </nav>
       <div className="app-rail-bottom">
-        <RailButton label="设置" icon={Settings} onClick={props.onOpenSettings} />
+        <RailButton
+          active={props.activeSection === "settings"}
+          label="设置"
+          icon={Settings}
+          onClick={props.onOpenSettings}
+        />
       </div>
     </aside>
   );
@@ -106,23 +91,6 @@ export function MobileNav(props: {
   );
 }
 
-export function SystemSidebar(props: {
-  activeView: ViewId;
-  onSelect(view: ViewId): void;
-}) {
-  return (
-    <section className="sidebar-panel-space" aria-label="系统视图">
-      <div className="sidebar-space-header">
-        <div>
-          <div className="sidebar-space-kicker">System</div>
-          <div className="sidebar-space-title">系统视图</div>
-        </div>
-      </div>
-      <NavSection items={ADVANCED_NAV_ITEMS} activeView={props.activeView} onSelect={props.onSelect} />
-    </section>
-  );
-}
-
 function RailButton(props: {
   active?: boolean;
   label: string;
@@ -141,33 +109,5 @@ function RailButton(props: {
     >
       <Icon size={19} />
     </button>
-  );
-}
-
-function NavSection(props: {
-  items: NavItem[];
-  activeView: ViewId;
-  onSelect(view: ViewId): void;
-}) {
-  return (
-    <div className="nav-section">
-      {props.items.map((item) => {
-        const Icon = item.icon;
-        return (
-          <div className="nav-item-block" key={item.id}>
-            <button
-              className={clsx("nav-item", props.activeView === item.id && "active")}
-              type="button"
-              onClick={() => props.onSelect(item.id)}
-            >
-              <span className="nav-item-label">
-                <Icon size={14} />
-                {item.label}
-              </span>
-            </button>
-          </div>
-        );
-      })}
-    </div>
   );
 }

@@ -15,6 +15,7 @@ import type {
   KnowledgeDocumentRecord,
   KnowledgeFolderRecord,
   MessageContext,
+  ReasoningEffort,
   SandboxPolicy,
   SkillRecord,
 } from "./bridge";
@@ -66,29 +67,26 @@ import {
   skillInvocationName,
 } from "./runtime/ui-model";
 import { useBridgeQueries } from "./runtime/use-bridge-queries";
-import { ChatComposer } from "./components/chat/chat-composer";
-import { ArtifactSpaceView, KnowledgeInboxView, KnowledgeLibraryView, KnowledgeWikiView } from "./components/knowledge/knowledge-views";
+import { ChatComposer, modelOptionsForKernel, type ComposerMenuKind, type ResponseSpeed } from "./components/chat/chat-composer";
+import { ArtifactSpaceView, KnowledgeInboxView, KnowledgeLibraryView } from "./components/knowledge/knowledge-views";
 import {
   emptyKnowledgeLedgers,
   feedbackSignalLabel,
   filterVaultDocuments,
-  filterWikiDocuments,
 } from "./components/knowledge/knowledge-model";
 import { SkillCommandMenu } from "./components/chat/skill-command-menu";
 import { ThreadShell } from "./components/chat/thread-shell";
 import {
   AppRail,
   MobileNav,
-  SystemSidebar,
-  isAdvancedView,
   railSectionForView,
   type RailSectionId,
 } from "./components/sidebar/app-navigation";
 import { ConversationSidebar } from "./components/sidebar/conversation-sidebar";
-import { VaultSidebarPanel, WikiSidebarPanel } from "./components/sidebar/knowledge-sidebar-panels";
+import { VaultSidebarPanel } from "./components/sidebar/knowledge-sidebar-panels";
 import { buildSidebarProjectTree, sortSidebarThreads, type ConversationSortKey } from "./components/sidebar/conversation-sidebar-model";
 import { SettingsDialog } from "./components/sidebar/settings-dialog";
-import { SimpleEntityView, renderContextRecordCard, renderMemoryCard, renderSkillCard, renderToolCard } from "./components/system/system-views";
+import { SimpleEntityView, renderMemoryCard, renderSkillCard, renderToolCard } from "./components/system/system-views";
 import { HomeDashboardView, WorkspaceInspector } from "./components/workspace/workspace-views";
 import { isPinned, isWorking } from "./components/workspace/helpers";
 import { useUiStore, type UiProject, type UiThread } from "./store";
@@ -103,15 +101,26 @@ function readStoredSidebarWidth(): number {
   return clamp(Number.isFinite(value) ? value : DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
 }
 
+function readStoredReasoningEffort(): ReasoningEffort {
+  const raw = window.localStorage.getItem(APP_STORAGE_KEYS.reasoningEffort);
+  if (raw === "low" || raw === "medium" || raw === "high" || raw === "xhigh") {
+    return raw;
+  }
+  return "high";
+}
+
+function readStoredResponseSpeed(): ResponseSpeed {
+  const raw = window.localStorage.getItem(APP_STORAGE_KEYS.responseSpeed);
+  return raw === "fast" ? "fast" : "standard";
+}
+
 export function App() {
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState("");
   const [attachments, setAttachments] = useState<AttachmentPayload[]>([]);
   const [contextArtifacts, setContextArtifacts] = useState<ContextArtifactPayload[]>([]);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [focusedKnowledgeId, setFocusedKnowledgeId] = useState("");
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
-  const [wikiQuery, setWikiQuery] = useState("");
   const [librarySearchOpen, setLibrarySearchOpen] = useState(false);
   const [vaultActionRootPath, setVaultActionRootPath] = useState("OpenGrove");
   const [vaultAllFoldersOpen, setVaultAllFoldersOpen] = useState(false);
@@ -128,8 +137,10 @@ export function App() {
   const [conversationSortMenuOpen, setConversationSortMenuOpen] = useState(false);
   const [conversationSortKey, setConversationSortKey] = useState<ConversationSortKey>("updatedAt");
   const [activeSkillIndex, setActiveSkillIndex] = useState(0);
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [modelMenuKind, setModelMenuKind] = useState<ComposerMenuKind | null>(null);
   const [modelMenuPlacement, setModelMenuPlacement] = useState<"up" | "down">("up");
+  const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(() => readStoredReasoningEffort());
+  const [responseSpeed, setResponseSpeedState] = useState<ResponseSpeed>(() => readStoredResponseSpeed());
   const [sandbox, setSandboxState] = useState<SandboxPolicy>(() => readStoredSandboxPolicy());
   const [approvalPolicy, setApprovalPolicyState] = useState<ApprovalPolicy>(() => readStoredApprovalPolicy());
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -152,6 +163,16 @@ export function App() {
   function setApprovalPolicy(value: ApprovalPolicy) {
     setApprovalPolicyState(value);
     window.localStorage.setItem(APP_STORAGE_KEYS.approvalPolicy, value);
+  }
+
+  function setReasoningEffort(value: ReasoningEffort) {
+    setReasoningEffortState(value);
+    window.localStorage.setItem(APP_STORAGE_KEYS.reasoningEffort, value);
+  }
+
+  function setResponseSpeed(value: ResponseSpeed) {
+    setResponseSpeedState(value);
+    window.localStorage.setItem(APP_STORAGE_KEYS.responseSpeed, value);
   }
 
   const {
@@ -226,7 +247,8 @@ export function App() {
     [artifacts, workingState],
   );
   const recentArtifacts = useMemo(() => sortedArtifacts(artifacts).slice(0, 6), [artifacts]);
-  const isCodexKernel = healthQuery.data?.kernel === "codex";
+  const activeKernel = healthQuery.data?.kernel;
+  const isCodexKernel = activeKernel === "codex";
   const sidebarProjects = useMemo(() => {
     const tree = buildSidebarProjectTree(projects, threads, projectId, threadId, messages);
     return tree.map((project) => ({
@@ -240,10 +262,6 @@ export function App() {
   const vaultDocuments = useMemo(
     () => filterVaultDocuments(knowledge, knowledgeQuery),
     [knowledge, knowledgeQuery],
-  );
-  const wikiDocuments = useMemo(
-    () => filterWikiDocuments(knowledge, wikiQuery, "", ""),
-    [knowledge, wikiQuery],
   );
   const currentProjectTitle = useMemo(
     () => projects.find((project) => project.id === projectId)?.title || APP_PRODUCT_NAME,
@@ -259,7 +277,7 @@ export function App() {
     [slashSkillCandidates, skillQuery.keyword],
   );
 
-  const showSkillPalette = skillQuery.active && matchingSkills.length > 0 && !modelMenuOpen;
+  const showSkillPalette = skillQuery.active && matchingSkills.length > 0 && !modelMenuKind;
   const composerSkillInvocation = useMemo(
     () => parseComposerSkillInvocation(question, slashSkillCandidates),
     [question, slashSkillCandidates],
@@ -273,13 +291,13 @@ export function App() {
         return;
       }
       if (!modelMenuRef.current.contains(target)) {
-        setModelMenuOpen(false);
+        setModelMenuKind(null);
       }
     }
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setModelMenuOpen(false);
+        setModelMenuKind(null);
       }
     }
 
@@ -292,10 +310,11 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (healthQuery.data?.kernel === "codex" && model === "MiMo-V2-Pro") {
-      setModel("gpt-5.4");
+    const availableModels = modelOptionsForKernel(activeKernel, healthQuery.data?.runtimeControls);
+    if (!availableModels.some((item) => item.id === model)) {
+      setModel(availableModels[0]?.id ?? "gpt-5.4");
     }
-  }, [healthQuery.data?.kernel, model, setModel]);
+  }, [activeKernel, healthQuery.data?.runtimeControls, model, setModel]);
 
   useEffect(() => {
     if (composerHeight > 64) {
@@ -337,8 +356,6 @@ export function App() {
       );
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
-      appendMessage("system", result.restarted ? "设置已保存，内核已重建，下一轮会使用新设置。" : "设置已保存。");
-      setSettingsOpen(false);
     },
     onError(error) {
       appendMessage("system", `保存设置失败：${error instanceof Error ? error.message : String(error)}`);
@@ -588,7 +605,7 @@ export function App() {
     setContextArtifacts((current) => current.filter((artifact) => artifact.id !== artifactId));
   }
 
-  function toggleModelMenu() {
+  function toggleModelMenu(kind: ComposerMenuKind) {
     const picker = modelMenuRef.current;
     if (picker) {
       const rect = picker.getBoundingClientRect();
@@ -603,7 +620,7 @@ export function App() {
       picker.style.setProperty("--opengrove-model-menu-max-height", `${Math.max(220, Math.min(420, availableHeight))}px`);
       setModelMenuPlacement(placement);
     }
-    setModelMenuOpen((current) => !current);
+    setModelMenuKind((current) => (current === kind ? null : kind));
   }
 
   function openNewThread(targetProjectId?: string) {
@@ -615,7 +632,7 @@ export function App() {
     setQuestion("");
     setAttachments([]);
     setContextArtifacts([]);
-    setModelMenuOpen(false);
+    setModelMenuKind(null);
     setInspectorOpen(false);
   }
 
@@ -627,7 +644,7 @@ export function App() {
     setQuestion("");
     setAttachments([]);
     setContextArtifacts([]);
-    setModelMenuOpen(false);
+    setModelMenuKind(null);
     setInspectorOpen(false);
   }
 
@@ -641,7 +658,7 @@ export function App() {
     setQuestion("");
     setAttachments([]);
     setContextArtifacts([]);
-    setModelMenuOpen(false);
+    setModelMenuKind(null);
     setInspectorOpen(false);
   }
 
@@ -780,13 +797,13 @@ export function App() {
   function applySkillSuggestion(skill: SkillRecord) {
     insertPrompt(`/${skillInvocationName(skill)} `);
     setActiveSkillIndex(0);
-    setModelMenuOpen(false);
+    setModelMenuKind(null);
   }
 
   function insertPrompt(prompt: string) {
     setQuestion(prompt);
     setView("chat");
-    setModelMenuOpen(false);
+    setModelMenuKind(null);
     requestAnimationFrame(() => {
       composerInputRef.current?.focus();
       const scrollEl = threadScrollRef.current;
@@ -808,6 +825,8 @@ export function App() {
         {
           question: userPrompt,
           model,
+          effort: reasoningEffort,
+          serviceTier: activeKernel === "codex" && responseSpeed === "fast" ? "fast" : undefined,
           threadId,
           snapshot: createSnapshot(userContext, turnAttachments),
           computerSnapshot: {},
@@ -874,7 +893,7 @@ export function App() {
       return;
     }
     setQuestion("");
-    setModelMenuOpen(false);
+    setModelMenuKind(null);
     await runAskTurn(trimmedPrompt, null, []);
   }
 
@@ -897,7 +916,7 @@ export function App() {
     setAttachments([]);
     setContextArtifacts([]);
     setQuestion("");
-    setModelMenuOpen(false);
+    setModelMenuKind(null);
     await runAskTurn(userPrompt, userContext, turnAttachments);
   }
 
@@ -943,7 +962,7 @@ export function App() {
       ? composeSkillPrompt(composerSkillInvocation.name, nextValue)
       : nextValue;
     setQuestion(nextQuestion);
-    setModelMenuOpen(false);
+    setModelMenuKind(null);
     const parsed = parseSlashSkillQuery(nextQuestion);
     if (!parsed.active) {
       setActiveSkillIndex(0);
@@ -987,10 +1006,8 @@ export function App() {
       setView("chat");
     } else if (section === "library") {
       setView("library");
-    } else if (section === "wiki") {
-      setView("wiki");
-    } else {
-      setView(isAdvancedView(activeView) ? activeView : "context");
+    } else if (section === "settings") {
+      setView("settings");
     }
   }
 
@@ -1003,7 +1020,7 @@ export function App() {
       <AppRail
         activeSection={activeRailSection}
         onOpenSection={openRailSection}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => openRailSection("settings")}
       />
 
       <aside className="sidebar" data-section={activeRailSection} aria-label="侧边栏">
@@ -1091,22 +1108,6 @@ export function App() {
               />
             </section>
           ) : null}
-
-          {activeRailSection === "wiki" ? (
-            <WikiSidebarPanel
-              documents={knowledge}
-              filteredDocuments={wikiDocuments}
-              focusedKnowledgeId={focusedKnowledgeId}
-              query={wikiQuery}
-              onQueryChange={setWikiQuery}
-              onOpenKnowledge={(knowledgeId) => {
-                setFocusedKnowledgeId(knowledgeId);
-                setView("wiki");
-              }}
-            />
-          ) : null}
-
-          {activeRailSection === "system" ? <SystemSidebar activeView={activeView} onSelect={setView} /> : null}
 
           {activeRailSection === "chat" ? (
             <ConversationSidebar
@@ -1236,9 +1237,13 @@ export function App() {
                   composerQuestionValue={composerQuestionValue}
                   composerHeight={composerHeight}
                   model={model}
+                  activeKernel={activeKernel}
+                  runtimeControls={healthQuery.data?.runtimeControls}
+                  effort={reasoningEffort}
+                  responseSpeed={responseSpeed}
                   sandbox={sandbox}
                   approvalPolicy={approvalPolicy}
-                  modelMenuOpen={modelMenuOpen}
+                  modelMenuKind={modelMenuKind}
                   modelMenuPlacement={modelMenuPlacement}
                   composerInputRef={composerInputRef}
                   fileInputRef={fileInputRef}
@@ -1256,8 +1261,10 @@ export function App() {
                   onToggleModelMenu={toggleModelMenu}
                   onSetModel={(nextModel) => {
                     setModel(nextModel);
-                    setModelMenuOpen(false);
+                    setModelMenuKind(null);
                   }}
+                  onSetEffort={setReasoningEffort}
+                  onSetResponseSpeed={setResponseSpeed}
                   onSetSandbox={setSandbox}
                   onSetApprovalPolicy={setApprovalPolicy}
                   onSubmitOrStop={() => (sending ? stopActiveTurn() : void sendAsk())}
@@ -1331,20 +1338,6 @@ export function App() {
             onFeedback={sendKnowledgeFeedback}
           />
         ) : null}
-        {activeView === "wiki" ? (
-          <KnowledgeWikiView
-            documents={knowledge}
-            filteredDocuments={wikiDocuments}
-            ledgers={knowledgeLedgers}
-            artifacts={artifacts}
-            skills={skills}
-            query={wikiQuery}
-            focusedKnowledgeId={focusedKnowledgeId}
-            onFocusKnowledge={setFocusedKnowledgeId}
-            onPatch={patchKnowledgePage}
-            onFeedback={sendKnowledgeFeedback}
-          />
-        ) : null}
         {activeView === "memory" ? <SimpleEntityView title="记忆原始视图" items={memory} renderItem={renderMemoryCard} emptyText="还没有记忆" /> : null}
         {activeView === "artifacts" ? (
           <ArtifactSpaceView
@@ -1357,21 +1350,19 @@ export function App() {
         ) : null}
         {activeView === "skills" ? <SimpleEntityView title="能力原始视图" items={skills} renderItem={renderSkillCard} emptyText="还没有 skills" /> : null}
         {activeView === "tools" ? <SimpleEntityView title="工具" items={tools} renderItem={renderToolCard} emptyText="还没有 tools" /> : null}
-        {activeView === "context" ? (
-          <SimpleEntityView title="上下文" items={contextRecords} renderItem={renderContextRecordCard} emptyText="还没有上下文记录" />
+        {activeView === "settings" ? (
+          <SettingsDialog
+            embedded
+            settings={settingsQuery.data?.settings ?? healthQuery.data?.settings}
+            contextRecords={contextRecords}
+            loading={settingsQuery.isLoading}
+            saving={settingsMutation.isPending}
+            error={settingsQuery.error instanceof Error ? settingsQuery.error.message : ""}
+            onClose={() => setView("chat")}
+            onSave={(payload) => settingsMutation.mutate(payload)}
+          />
         ) : null}
       </main>
-
-      {settingsOpen ? (
-        <SettingsDialog
-          settings={settingsQuery.data?.settings ?? healthQuery.data?.settings}
-          loading={settingsQuery.isLoading}
-          saving={settingsMutation.isPending}
-          error={settingsQuery.error instanceof Error ? settingsQuery.error.message : ""}
-          onClose={() => setSettingsOpen(false)}
-          onSave={(payload) => settingsMutation.mutate(payload)}
-        />
-      ) : null}
 
       {vaultDeleteDialog ? (
         <>

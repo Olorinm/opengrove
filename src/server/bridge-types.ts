@@ -26,13 +26,39 @@ import type { KnowledgeDocument, KnowledgeLedgerSnapshot } from "../knowledge/ty
 import type { BrowserPageSnapshot } from "../tools/browser.js";
 import type { ComputerStateSnapshot } from "../tools/computer.js";
 
-export const BRIDGE_MODEL_IDS = ["MiMo-V2-Pro", "gpt-5.4", "claude-opus-4-6"] as const;
+export const BRIDGE_MODEL_IDS = [
+  "MiMo-V2-Pro",
+  "gpt-5.5",
+  "gpt-5.4",
+  "gpt-5.4-mini",
+  "gpt-5.3-codex",
+  "gpt-5.3-codex-spark",
+  "gpt-5.2",
+  "claude-opus-4-6",
+] as const;
 export type BridgeModelId = (typeof BRIDGE_MODEL_IDS)[number];
 export const DEFAULT_BRIDGE_MODEL_ID: BridgeModelId = "MiMo-V2-Pro";
 
 export const BRIDGE_KERNEL_IDS = ["codex", "claude-code", "hermes", "pi", "scripted"] as const;
 export type BridgeKernelId = (typeof BRIDGE_KERNEL_IDS)[number];
 export type BridgeKernelPreference = BridgeKernelId | "auto";
+
+export interface BridgeRuntimeControlOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface BridgeRuntimeControls {
+  kernel: BridgeKernelId;
+  source: string;
+  models: BridgeRuntimeControlOption[];
+  defaultModel?: string;
+  reasoningEfforts: BridgeRuntimeControlOption[];
+  defaultReasoningEffort?: string;
+  speedTiers: BridgeRuntimeControlOption[];
+  defaultSpeedTier?: string;
+}
 
 export const KNOWLEDGE_INVENTORY_LIMIT = 400;
 export const KNOWLEDGE_FILE_SIZE_LIMIT = 2_000_000;
@@ -55,6 +81,8 @@ export interface LocalBridgeServerOptions {
 export interface BridgeAskPayload {
   question: string;
   model: BridgeModelId;
+  effort?: string;
+  serviceTier?: string;
   threadId: string;
   snapshot: BrowserPageSnapshot;
   computerSnapshot: ComputerStateSnapshot;
@@ -113,6 +141,8 @@ export interface BridgeProviderHttpCaptureFlow {
     url: string;
     bodyBytes?: number;
     bodyPath?: string;
+    bodyPreview?: string;
+    bodyPreviewTruncated?: boolean;
   };
   websocket?: {
     direction?: string;
@@ -124,12 +154,16 @@ export interface BridgeProviderHttpCaptureFlow {
     messageCount?: number;
     closeCode?: number;
     closeReason?: string;
+    bodyPreview?: string;
+    bodyPreviewTruncated?: boolean;
   };
   response: {
     statusCode?: number;
     reason?: string;
     bodyBytes?: number;
     bodyPath?: string;
+    bodyPreview?: string;
+    bodyPreviewTruncated?: boolean;
   };
 }
 

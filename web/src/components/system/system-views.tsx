@@ -204,7 +204,7 @@ export function ProviderHttpCaptureBlock(props: { capture: any }) {
     capture.kernelId ? `内核 ${capture.kernelId}` : "",
     capture.running ? "mitmproxy 运行中" : "mitmproxy 未运行",
     capture.flowCount ? `总 ${capture.flowCount} 条` : "总 0 条",
-    `本轮 ${capture.matchedFlowCount || 0} 条`,
+    `精选 ${capture.matchedFlowCount || 0} 条`,
   ].filter(Boolean);
 
   return (
@@ -250,12 +250,28 @@ export function ProviderHttpCaptureBlock(props: { capture: any }) {
                   {flow.websocket?.bodyPath ? <span>websocket body: {flow.websocket.bodyPath}</span> : null}
                 </div>
               ) : null}
+              <ProviderCaptureBodyPreview title="Request" text={flow.request?.bodyPreview} truncated={flow.request?.bodyPreviewTruncated} />
+              <ProviderCaptureBodyPreview title="Response" text={flow.response?.bodyPreview} truncated={flow.response?.bodyPreviewTruncated} />
+              <ProviderCaptureBodyPreview title="WebSocket" text={flow.websocket?.bodyPreview} truncated={flow.websocket?.bodyPreviewTruncated} />
             </div>
           ))}
         </div>
       ) : (
-        <div className="panel-empty">这一轮时间窗口里没有命中的 provider HTTPS flow。</div>
+        <div className="panel-empty">这一轮没有带可读正文的关键 provider HTTPS 记录。</div>
       )}
+    </details>
+  );
+}
+
+function ProviderCaptureBodyPreview(props: { title: string; text?: string; truncated?: boolean }) {
+  const text = String(props.text || "").trim();
+  if (!text) return null;
+  return (
+    <details className="context-block provider-capture-body" open={props.title === "WebSocket"}>
+      <summary className="context-block-title">
+        {props.title} 内容{props.truncated ? "（已截断）" : ""}
+      </summary>
+      <pre className="context-pre">{text}</pre>
     </details>
   );
 }

@@ -656,6 +656,7 @@ export interface AgentTurnRequest {
   assembledContext?: ContextEnvelope;
   requestedModelId?: string;
   requestedEffort?: string;
+  requestedServiceTier?: string;
   requestedSkillInvocation?: InvokedSkillRecord;
   sandbox?: SandboxPolicy;
   approvalPolicy?: ApprovalPolicy;

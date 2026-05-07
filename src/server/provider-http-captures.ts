@@ -6,7 +6,9 @@ import type {
 } from "./bridge-types.js";
 
 const MAX_CAPTURE_FLOWS = 240;
-const MAX_CAPTURE_FLOWS_PER_RECORD = 60;
+const MAX_CAPTURE_FLOWS_PER_RECORD = 24;
+const MAX_CAPTURE_BODY_READ_BYTES = 256_000;
+const MAX_CAPTURE_BODY_PREVIEW_CHARS = 8_000;
 const CAPTURE_WINDOW_BEFORE_MS = 5_000;
 const CAPTURE_WINDOW_AFTER_MS = 15_000;
 
@@ -144,6 +146,7 @@ function parseProviderFlow(line: string): BridgeProviderHttpCaptureFlow | undefi
         url: redactUrl(stringValue(request.url)),
         bodyBytes: optionalNumber(requestBody.bytes),
         bodyPath: stringValue(requestBody.path) || undefined,
+        ...readCaptureBodyPreview(requestBody),
       },
       websocket:
         kind === "websocket_message" || kind === "websocket_end"
@@ -153,6 +156,7 @@ function parseProviderFlow(line: string): BridgeProviderHttpCaptureFlow | undefi
               isText: typeof websocket.isText === "boolean" ? websocket.isText : undefined,
               bodyBytes: optionalNumber(websocketBody.bytes),
               bodyPath: stringValue(websocketBody.path) || undefined,
+              ...readCaptureBodyPreview(websocketBody),
               messageIndex: optionalNumber(item.messageIndex),
               messageCount: optionalNumber(websocket.messageCount),
               closeCode: optionalNumber(websocket.closeCode),
@@ -164,6 +168,7 @@ function parseProviderFlow(line: string): BridgeProviderHttpCaptureFlow | undefi
         reason: stringValue(response.reason) || undefined,
         bodyBytes: optionalNumber(responseBody.bytes),
         bodyPath: stringValue(responseBody.path) || undefined,
+        ...readCaptureBodyPreview(responseBody),
       },
     };
   } catch {
@@ -199,7 +204,106 @@ function flowsForContextRecord(
       const time = Date.parse(flow.startedAt);
       return Number.isFinite(time) && time >= from && time <= to;
     })
+    .filter(isValuableProviderCaptureFlow)
     .slice(-MAX_CAPTURE_FLOWS_PER_RECORD);
+}
+
+function isValuableProviderCaptureFlow(flow: BridgeProviderHttpCaptureFlow): boolean {
+  const path = flow.request?.path || "";
+  if (/analytics-events|telemetry|\/events(?:\?|$)/i.test(path)) return false;
+  if (flow.kind === "websocket_end") return false;
+  if (flow.kind === "websocket_message") {
+    const preview = flow.websocket?.bodyPreview || "";
+    if (!preview.trim()) return false;
+    return isUsefulWebsocketPreview(preview);
+  }
+  if (!isLikelyModelProviderPath(flow)) return false;
+  return Boolean(flow.request?.bodyPreview || flow.response?.bodyPreview);
+}
+
+function isLikelyModelProviderPath(flow: BridgeProviderHttpCaptureFlow): boolean {
+  const host = flow.request?.host || "";
+  const path = flow.request?.path || "";
+  if (/anthropic\.com|amazonaws\.com|api\.openai\.com/i.test(host)) return true;
+  if (/chatgpt\.com/i.test(host)) {
+    return /\/codex\/responses|\/conversation|\/responses|\/backend-api\/conversation/i.test(path);
+  }
+  return false;
+}
+
+function isUsefulWebsocketPreview(preview: string): boolean {
+  try {
+    const parsed = JSON.parse(preview) as Record<string, unknown>;
+    const type = String(parsed.type || "");
+    if (!type) return true;
+    if (type.endsWith(".delta")) return false;
+    if (type === "response.output_item.done") {
+      const item = record(parsed.item);
+      return String(item.type || "") !== "reasoning" || Object.keys(item).some((key) => key !== "id" && key !== "type" && key !== "encrypted_content");
+    }
+    return /input|created|done|completed|failed|error|tool|function|message|content_part|output_item/i.test(type);
+  } catch {
+    return preview.trim().length > 0;
+  }
+}
+
+function readCaptureBodyPreview(body: Record<string, unknown>): { bodyPreview?: string; bodyPreviewTruncated?: boolean } {
+  const path = stringValue(body.path);
+  if (!path || !existsSync(path)) return {};
+  try {
+    const raw = readFileSync(path);
+    const truncatedByBytes = raw.length > MAX_CAPTURE_BODY_READ_BYTES;
+    const buffer = truncatedByBytes ? raw.subarray(0, MAX_CAPTURE_BODY_READ_BYTES) : raw;
+    const text = buffer.toString("utf8").replace(/\0/g, "");
+    const redacted = redactCaptureBodyText(text);
+    const truncated = truncatedByBytes || redacted.length > MAX_CAPTURE_BODY_PREVIEW_CHARS;
+    return {
+      bodyPreview: redacted.slice(0, MAX_CAPTURE_BODY_PREVIEW_CHARS),
+      bodyPreviewTruncated: truncated,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function redactCaptureBodyText(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  try {
+    return JSON.stringify(redactJsonValue(JSON.parse(trimmed)), null, 2);
+  } catch {
+    return redactSecretLikeText(trimmed);
+  }
+}
+
+function redactJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactJsonValue);
+  }
+  if (!value || typeof value !== "object") {
+    return typeof value === "string" ? redactSecretLikeText(value) : value;
+  }
+  const output: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (isSensitiveCaptureKey(key)) {
+      output[key] = "[redacted]";
+      continue;
+    }
+    output[key] = redactJsonValue(child);
+  }
+  return output;
+}
+
+function isSensitiveCaptureKey(key: string): boolean {
+  return /authorization|cookie|token|secret|password|api[-_]?key|credential|encrypted_content|session_id|account_id|user_id|email/i.test(key);
+}
+
+function redactSecretLikeText(text: string): string {
+  return text
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/sk-[A-Za-z0-9_-]{16,}/g, "sk-[redacted]")
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[jwt-redacted]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email-redacted]");
 }
 
 function redactUrl(value: string): string {

@@ -87,6 +87,13 @@ export function resolveReasoningEffort(value: string | undefined): "minimal" | "
     : undefined;
 }
 
+export function resolveCodexServiceTier(requested: string | undefined, configured: string | undefined): string | undefined {
+  if (requested === "fast") {
+    return "fast";
+  }
+  return configured?.trim() || undefined;
+}
+
 function normalizeSandboxPolicy(value: SandboxPolicy | string | undefined): CodexSandboxMode | undefined {
   return value === "read-only" || value === "workspace-write" || value === "danger-full-access"
     ? value

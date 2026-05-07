@@ -42,6 +42,8 @@ export function normalizeAskPayload(input: unknown): BridgeAskPayload {
   return {
     question: stringValue(object.question) || "Please help me understand this passage.",
     model: normalizeBridgeModelId(object.model),
+    effort: normalizeReasoningEffort(object.effort),
+    serviceTier: normalizeServiceTier(object.serviceTier),
     threadId: normalizeThreadId(object.threadId, normalizedSnapshot),
     allowMemory: booleanValue(object.allowMemory),
     saveCandidateNote: booleanValue(object.saveCandidateNote),
@@ -50,6 +52,24 @@ export function normalizeAskPayload(input: unknown): BridgeAskPayload {
     snapshot: normalizedSnapshot,
     computerSnapshot: normalizedComputerSnapshot,
   };
+}
+
+function normalizeServiceTier(input: unknown): string | undefined {
+  return input === "fast" ? "fast" : undefined;
+}
+
+function normalizeReasoningEffort(input: unknown): string | undefined {
+  if (
+    input === "low" ||
+    input === "medium" ||
+    input === "high" ||
+    input === "xhigh" ||
+    input === "minimal" ||
+    input === "off"
+  ) {
+    return input;
+  }
+  return undefined;
 }
 
 export function normalizeMemoryPatchPayload(input: unknown): Partial<Omit<MemoryRecord, "id" | "createdAt" | "updatedAt">> {

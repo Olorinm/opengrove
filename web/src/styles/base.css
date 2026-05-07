@@ -22,7 +22,7 @@ body {
   display: grid;
   gap: var(--sp-4);
   padding: var(--sp-6) var(--sp-6) var(--sp-5);
-  border: 1px solid rgba(74, 63, 49, 0.12);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: var(--r-lg);
   background: rgba(255, 253, 248, 0.78);
   animation: fade-in var(--dur-normal) var(--ease-out);
@@ -63,19 +63,20 @@ body {
 
 .prompt-chip {
   min-height: 34px;
-  border: 1px solid rgba(74, 63, 49, 0.13);
+  border: 1px solid transparent;
   border-radius: var(--r-md);
   padding: 7px var(--sp-3);
-  background: rgba(255, 253, 248, 0.78);
+  background: var(--c-surface);
   color: var(--c-text);
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
   cursor: pointer;
-  transition: background var(--dur-fast) var(--ease);
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 
 .prompt-chip:hover {
-  background: rgba(74, 63, 49, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
+  background: var(--c-surface-hover);
 }
 
 .workspace-band-title {
@@ -217,9 +218,9 @@ body {
   width: 100%;
   max-height: 260px;
   margin: 8px 0;
-  border: 1px solid rgba(74, 63, 49, 0.12);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: var(--r-lg);
-  background: #fffdf8;
+  background: #ffffff;
   object-fit: contain;
 }
 
@@ -246,8 +247,8 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(74, 63, 49, 0.13);
-  background: rgba(255, 253, 248, 0.68);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.62);
   color: var(--c-text-2);
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
@@ -263,13 +264,13 @@ body {
 }
 
 .sidebar-action.primary {
-  background: rgba(255, 253, 248, 0.94);
+  background: rgba(255, 255, 255, 0.86);
 }
 
 .sidebar-action:hover,
 .sidebar-mini-action:hover {
-  border-color: rgba(74, 63, 49, 0.2);
-  background: rgba(255, 253, 248, 1);
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .sidebar-action:disabled,
@@ -378,7 +379,7 @@ body {
   top: 3px;
   bottom: 4px;
   width: 1px;
-  background: rgba(74, 63, 49, 0.13);
+  background: rgba(0, 0, 0, 0.07);
 }
 
 .project-thread-list .thread-item {
@@ -507,7 +508,7 @@ body {
 
 .app-topbar-actions .ghost-button {
   min-height: 34px;
-  border-color: rgba(74, 63, 49, 0.13);
+  border-color: rgba(0, 0, 0, 0.07);
   border-radius: var(--r-md);
   background: rgba(255, 253, 248, 0.68);
   color: #423c34;
@@ -516,7 +517,7 @@ body {
 }
 
 .app-topbar-actions .ghost-button:hover {
-  background: rgba(74, 63, 49, 0.06);
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .panel-header-copy {
@@ -599,10 +600,10 @@ body {
 .inspector {
   gap: 0;
   min-height: 0;
-  border-left: 1px solid var(--c-border);
+  border-left: 1px solid rgba(0, 0, 0, 0.05);
   background: var(--c-bg);
   overflow: auto;
-  padding: var(--sp-4) var(--sp-4) var(--sp-6);
+  padding: var(--sp-5) var(--sp-5) var(--sp-6);
 }
 
 .overview-panel {
@@ -971,7 +972,7 @@ body {
   gap: var(--sp-2);
   max-width: min(100%, 360px);
   min-height: 28px;
-  border: 1px solid rgba(74, 63, 49, 0.12);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: var(--r-pill);
   background: rgba(247, 245, 238, 0.76);
   padding: 3px 7px 3px var(--sp-2);
@@ -1022,7 +1023,7 @@ body {
 
 .opengrove-attachment-save:hover,
 .opengrove-attachment-remove:hover {
-  background: rgba(74, 63, 49, 0.08);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .opengrove-attachment-remove {
@@ -1036,7 +1037,7 @@ body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.25);
+  background: rgba(0, 0, 0, 0.15);
   z-index: var(--z-overlay);
   animation: fade-in var(--dur-fast) var(--ease-out);
 }
@@ -1055,11 +1056,11 @@ body {
   display: grid;
   gap: var(--sp-3);
   width: min(720px, 100%);
-  border: 1px solid var(--c-border);
+  border: 0;
   border-radius: var(--r-lg);
   background: var(--c-bg);
-  padding: var(--sp-5);
-  box-shadow: var(--shadow-lg);
+  padding: var(--sp-6);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.08);
   pointer-events: auto;
   outline: 0;
   animation: slide-up var(--dur-normal) var(--ease-out);

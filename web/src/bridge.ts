@@ -2,26 +2,47 @@ import type { BridgeStreamChunk } from "./runtime/agent-events";
 import { APP_BRIDGE_TOKEN_HEADER, APP_STORAGE_KEYS } from "./identity";
 
 export const MODEL_OPTIONS = [
-  { id: "gpt-5.4", label: "Codex" },
+  { id: "gpt-5.5", label: "GPT-5.5" },
+  { id: "gpt-5.4", label: "GPT-5.4" },
+  { id: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
+  { id: "gpt-5.3-codex", label: "GPT-5.3 Codex" },
+  { id: "gpt-5.3-codex-spark", label: "GPT-5.3 Codex Spark" },
+  { id: "gpt-5.2", label: "GPT-5.2" },
   { id: "claude-opus-4-6", label: "Claude Opus 4.6" },
   { id: "MiMo-V2-Pro", label: "MiMo-V2-Pro" },
 ] as const;
 
 export type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
+export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
 export type SandboxPolicy = "read-only" | "workspace-write" | "danger-full-access";
 export type ApprovalPolicy = "never" | "on-request" | "on-failure" | "untrusted";
 export type KernelPreference = "auto" | "codex" | "claude-code" | "hermes" | "pi" | "scripted";
+export interface RuntimeControlOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+export interface RuntimeControls {
+  kernel: Exclude<KernelPreference, "auto">;
+  source: string;
+  models: RuntimeControlOption[];
+  defaultModel?: string;
+  reasoningEfforts: RuntimeControlOption[];
+  defaultReasoningEffort?: string;
+  speedTiers: RuntimeControlOption[];
+  defaultSpeedTier?: string;
+}
 export type ViewId =
   | "workspace"
   | "chat"
   | "inbox"
   | "library"
-  | "wiki"
   | "memory"
   | "artifacts"
   | "skills"
   | "tools"
-  | "context";
+  | "context"
+  | "settings";
 
 export type JsonValue =
   | string
@@ -389,6 +410,7 @@ export interface HealthResponse {
   time: string;
   kernel?: string;
   settings?: BridgeSettings;
+  runtimeControls?: RuntimeControls;
   tokenRequired: boolean;
   error?: string;
 }
@@ -423,18 +445,23 @@ export function modelLabel(modelId: string): string {
 }
 
 export function supportedView(value: string): ViewId {
+  if (value === "context") {
+    return "settings";
+  }
+  if (value === "wiki") {
+    return "library";
+  }
   return ([
     "workspace",
     "chat",
     "inbox",
     "library",
-    "wiki",
     "memory",
     "artifacts",
     "skills",
     "tools",
-    "context",
-  ] as const).includes(value as ViewId)
+    "settings",
+  ] as readonly string[]).includes(value)
     ? (value as ViewId)
     : "chat";
 }
@@ -446,12 +473,12 @@ export function viewTitle(view: ViewId): string {
       chat: "新线程",
       inbox: "收件箱",
       library: "资料库",
-      wiki: "Wiki",
       memory: "记忆",
       artifacts: "产物",
       skills: "Skills",
       tools: "Tools",
       context: "Context",
+      settings: "设置",
     }[view] ?? "新线程"
   );
 }
@@ -504,16 +531,18 @@ export async function patchJson<T>(path: string, payload: unknown): Promise<T> {
 
 export async function runAskStream(
   payload: {
-	    question: string;
-	    model: string;
-	    threadId: string;
-	    snapshot: unknown;
-	    computerSnapshot: unknown;
-	    allowMemory: boolean;
-	    saveCandidateNote: boolean;
-	    sandbox?: SandboxPolicy;
-	    approvalPolicy?: ApprovalPolicy;
-	  },
+    question: string;
+    model: string;
+    effort?: ReasoningEffort;
+    serviceTier?: "fast";
+    threadId: string;
+    snapshot: unknown;
+    computerSnapshot: unknown;
+    allowMemory: boolean;
+    saveCandidateNote: boolean;
+    sandbox?: SandboxPolicy;
+    approvalPolicy?: ApprovalPolicy;
+  },
   onChunk: (chunk: BridgeStreamChunk) => void,
   options: { signal?: AbortSignal } = {},
 ): Promise<AskFinalPayload> {

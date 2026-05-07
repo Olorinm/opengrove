@@ -11,6 +11,7 @@ import {
   needsKnowledgeReview,
   sortKnowledgeDocumentsForView,
 } from "../knowledge/knowledge-model";
+import { APP_STORAGE_KEYS } from "../../identity";
 
 type VaultTreeNode = {
   id: string;
@@ -41,6 +42,16 @@ type VaultMenuState = VaultMenuAnchor & {
   path: string;
 };
 
+const DEFAULT_VAULT_OPEN_PATHS: Record<string, boolean> = {
+  OpenGrove: true,
+  "OpenGrove/skills": true,
+  Codex: true,
+  Claude: true,
+  Hermes: true,
+};
+
+type VaultTreeOrder = Record<string, string[]>;
+
 export function VaultSidebarPanel(props: {
   documents: any[];
   folders?: VaultFolderRecord[];
@@ -62,14 +73,12 @@ export function VaultSidebarPanel(props: {
   const [menuState, setMenuState] = useState<VaultMenuState | null>(null);
   const [selectedFolderPath, setSelectedFolderPath] = useState("");
   const [dropTargetPath, setDropTargetPath] = useState("");
-  const [openPaths, setOpenPaths] = useState<Record<string, boolean>>({
-    OpenGrove: true,
-    "OpenGrove/skills": true,
-    Codex: true,
-    Claude: true,
-    Hermes: true,
-  });
-  const tree = useMemo(() => buildVaultTree(props.documents, props.folders ?? []), [props.documents, props.folders]);
+  const [openPaths, setOpenPaths] = useState<Record<string, boolean>>(readStoredVaultOpenPaths);
+  const [treeOrder, setTreeOrder] = useState<VaultTreeOrder>(readStoredVaultTreeOrder);
+  const lastExpandRequestIdRef = useRef<number>(props.expandRequest?.id ?? 0);
+  const lastFocusedKnowledgeIdRef = useRef(props.focusedKnowledgeId);
+  const lastEditingPathRef = useRef(props.editingPath ?? "");
+  const tree = useMemo(() => buildVaultTree(props.documents, props.folders ?? [], treeOrder), [props.documents, props.folders, treeOrder]);
   const folderStates = useMemo(() => collectVaultFolderStates(tree), [tree]);
   const folderPaths = useMemo(() => folderStates.map((folder) => folder.path), [folderStates]);
   const focusedFolderPath = useMemo(
@@ -104,11 +113,34 @@ export function VaultSidebarPanel(props: {
   }, [allFoldersOpen, props.onAllFoldersOpenChange]);
 
   useEffect(() => {
+    writeStoredVaultOpenPaths(openPaths);
+  }, [openPaths]);
+
+  useEffect(() => {
+    writeStoredVaultTreeOrder(treeOrder);
+  }, [treeOrder]);
+
+  useEffect(() => {
     if (!props.expandRequest) return;
+    if (props.expandRequest.id === lastExpandRequestIdRef.current) return;
+    lastExpandRequestIdRef.current = props.expandRequest.id;
     setOpenPaths(Object.fromEntries(folderPaths.map((path) => [path, props.expandRequest!.open])));
   }, [props.expandRequest?.id, props.expandRequest?.open, folderPaths]);
 
   useEffect(() => {
+    if (props.focusedKnowledgeId === lastFocusedKnowledgeIdRef.current) return;
+    lastFocusedKnowledgeIdRef.current = props.focusedKnowledgeId;
+    if (!focusedFolderPath) return;
+    const parentPaths = parentVaultPathsFromTreePath(focusedFolderPath);
+    setOpenPaths((current) => ({
+      ...current,
+      ...Object.fromEntries(parentPaths.map((path) => [path, true])),
+    }));
+  }, [props.focusedKnowledgeId, focusedFolderPath]);
+
+  useEffect(() => {
+    if ((props.editingPath ?? "") === lastEditingPathRef.current) return;
+    lastEditingPathRef.current = props.editingPath ?? "";
     if (!props.editingPath) return;
     const parentPaths = parentVaultPathsFromTreePath(props.editingPath);
     setOpenPaths((current) => ({
@@ -143,6 +175,23 @@ export function VaultSidebarPanel(props: {
     props.onMoveEntry(sourcePath, targetFolderPath);
   }
 
+  function reorderEntry(sourcePath: string, targetPath: string) {
+    const source = safeVaultTreePath(sourcePath);
+    const target = safeVaultTreePath(targetPath);
+    if (!source || !target || source === target) return;
+    const sourceParent = parentVaultPathFromTreePath(source);
+    if (sourceParent !== parentVaultPathFromTreePath(target)) return;
+    setDropTargetPath("");
+    setTreeOrder((current) => {
+      const siblings = childPathsForParent(tree, sourceParent);
+      if (!siblings.includes(source) || !siblings.includes(target)) return current;
+      const nextSiblings = siblings.filter((path) => path !== source);
+      const targetIndex = nextSiblings.indexOf(target);
+      nextSiblings.splice(targetIndex < 0 ? nextSiblings.length : targetIndex, 0, source);
+      return { ...current, [sourceParent]: nextSiblings };
+    });
+  }
+
   return (
     <section className="sidebar-library-panel" aria-label="资料库文件">
       <div className="sidebar-library-files">
@@ -162,11 +211,12 @@ export function VaultSidebarPanel(props: {
               onCreateFolder={props.onCreateFolder}
               onCreateNote={props.onCreateNote}
               onDeleteEntry={props.onDeleteEntry}
-              onFocusKnowledge={props.onFocusKnowledge}
-              onOpenMenu={openMenu}
-              onRenameEntry={props.onRenameEntry}
-              onStartRename={props.onStartRename}
-              onMoveEntry={moveEntryToFolder}
+                onFocusKnowledge={props.onFocusKnowledge}
+                onOpenMenu={openMenu}
+                onRenameEntry={props.onRenameEntry}
+                onReorderEntry={reorderEntry}
+                onStartRename={props.onStartRename}
+                onMoveEntry={moveEntryToFolder}
               onSelectFolder={setSelectedFolderPath}
               onSetDropTarget={setDropTargetPath}
               onToggleNode={toggleNode}
@@ -179,6 +229,61 @@ export function VaultSidebarPanel(props: {
       </div>
     </section>
   );
+}
+
+function readStoredVaultOpenPaths(): Record<string, boolean> {
+  try {
+    const raw = window.localStorage.getItem(APP_STORAGE_KEYS.vaultOpenPaths);
+    if (!raw) return { ...DEFAULT_VAULT_OPEN_PATHS };
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ...DEFAULT_VAULT_OPEN_PATHS };
+    }
+    const stored: Record<string, boolean> = {};
+    for (const [path, open] of Object.entries(parsed)) {
+      if (typeof path === "string" && path && typeof open === "boolean") {
+        stored[path] = open;
+      }
+    }
+    return { ...DEFAULT_VAULT_OPEN_PATHS, ...stored };
+  } catch {
+    return { ...DEFAULT_VAULT_OPEN_PATHS };
+  }
+}
+
+function writeStoredVaultOpenPaths(openPaths: Record<string, boolean>): void {
+  try {
+    window.localStorage.setItem(APP_STORAGE_KEYS.vaultOpenPaths, JSON.stringify(openPaths));
+  } catch {
+    // Ignore storage failures; the tree still works for the current session.
+  }
+}
+
+function readStoredVaultTreeOrder(): VaultTreeOrder {
+  try {
+    const raw = window.localStorage.getItem(APP_STORAGE_KEYS.vaultTreeOrder);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const order: VaultTreeOrder = {};
+    for (const [parentPath, childPaths] of Object.entries(parsed)) {
+      if (!Array.isArray(childPaths)) continue;
+      order[safeVaultTreePath(parentPath)] = childPaths
+        .map((path) => safeVaultTreePath(path))
+        .filter(Boolean);
+    }
+    return order;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredVaultTreeOrder(order: VaultTreeOrder): void {
+  try {
+    window.localStorage.setItem(APP_STORAGE_KEYS.vaultTreeOrder, JSON.stringify(order));
+  } catch {
+    // Ignore storage failures; ordering will fall back to deterministic sorting.
+  }
 }
 
 export function WikiSidebarPanel(props: {
@@ -312,6 +417,7 @@ function VaultTreeNodeView(props: {
   onMoveEntry(sourcePath: string, targetParentPath: string): void;
   onOpenMenu(path: string, anchor?: VaultMenuAnchor): void;
   onRenameEntry(sourcePath: string, name: string): void;
+  onReorderEntry(sourcePath: string, targetPath: string): void;
   onStartRename(sourcePath: string): void;
   onSelectFolder(path: string): void;
   onSetDropTarget(path: string): void;
@@ -320,7 +426,7 @@ function VaultTreeNodeView(props: {
   const isFolder = props.node.kind === "folder";
   const nodeOpen = props.forceOpen || (props.openPaths[props.node.path] ?? props.depth < 1);
   const style: CSSProperties = { paddingLeft: `${7 + props.depth * 12}px` };
-  const canDragFolder = isFolder && props.depth > 0;
+  const canDragFolder = isFolder;
   const canModify = !isFolder || props.depth > 0;
   const isEditing = props.editingPath === props.node.path;
   const menuOpen = props.menuPath === props.node.path;
@@ -344,7 +450,7 @@ function VaultTreeNodeView(props: {
 
   function handleFolderDragOver(event: DragEvent<HTMLElement>) {
     const sourcePath = event.dataTransfer.getData("text/plain");
-    if (sourcePath && !isDroppableVaultTarget(sourcePath, props.node.path)) return;
+    if (sourcePath && !canReorderVaultEntry(sourcePath, props.node.path) && !isDroppableVaultTarget(sourcePath, props.node.path)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     props.onSetDropTarget(props.node.path);
@@ -352,10 +458,30 @@ function VaultTreeNodeView(props: {
 
   function handleFolderDrop(event: DragEvent<HTMLElement>) {
     const sourcePath = event.dataTransfer.getData("text/plain");
-    if (!isDroppableVaultTarget(sourcePath, props.node.path)) return;
+    if (!canReorderVaultEntry(sourcePath, props.node.path) && !isDroppableVaultTarget(sourcePath, props.node.path)) return;
     event.preventDefault();
     event.stopPropagation();
+    if (canReorderVaultEntry(sourcePath, props.node.path)) {
+      props.onReorderEntry(sourcePath, props.node.path);
+      return;
+    }
     props.onMoveEntry(sourcePath, props.node.path);
+  }
+
+  function handleFileDragOver(event: DragEvent<HTMLElement>) {
+    const sourcePath = event.dataTransfer.getData("text/plain");
+    if (!canReorderVaultEntry(sourcePath, props.node.path)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    props.onSetDropTarget(props.node.path);
+  }
+
+  function handleFileDrop(event: DragEvent<HTMLElement>) {
+    const sourcePath = event.dataTransfer.getData("text/plain");
+    if (!canReorderVaultEntry(sourcePath, props.node.path)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    props.onReorderEntry(sourcePath, props.node.path);
   }
 
   function commitRename() {
@@ -505,6 +631,7 @@ function VaultTreeNodeView(props: {
                 onFocusKnowledge={props.onFocusKnowledge}
                 onOpenMenu={props.onOpenMenu}
                 onRenameEntry={props.onRenameEntry}
+                onReorderEntry={props.onReorderEntry}
                 onStartRename={props.onStartRename}
                 onMoveEntry={props.onMoveEntry}
                 onSelectFolder={props.onSelectFolder}
@@ -523,10 +650,14 @@ function VaultTreeNodeView(props: {
     <div
       className="sidebar-library-file sidebar-tree-file"
       data-active={props.node.document?.id === props.focusedKnowledgeId ? "true" : "false"}
+      data-drop-target={props.dropTargetPath === props.node.path ? "true" : "false"}
       draggable={!isEditing}
       role="button"
       style={style}
+      onDragLeave={() => props.onSetDropTarget("")}
+      onDragOver={handleFileDragOver}
       onDragStart={(event) => startDrag(event, props.node.path)}
+      onDrop={handleFileDrop}
       onClick={() => {
         if (isEditing) return;
         props.onSelectFolder(parentVaultPath(props.node.document));
@@ -556,7 +687,7 @@ function VaultTreeNodeView(props: {
   );
 }
 
-function buildVaultTree(documents: any[], folders: VaultFolderRecord[] = []): VaultTreeNode[] {
+function buildVaultTree(documents: any[], folders: VaultFolderRecord[] = [], order: VaultTreeOrder = {}): VaultTreeNode[] {
   const root: VaultTreeNode = { id: "vault", name: "vault", kind: "folder", path: "", children: [] };
   for (const folder of folders) {
     const path = safeVaultTreePath(folder?.path);
@@ -590,7 +721,7 @@ function buildVaultTree(documents: any[], folders: VaultFolderRecord[] = []): Va
       current = child;
     });
   }
-  sortVaultTree(root.children);
+  sortVaultTree(root.children, "", order);
   return root.children;
 }
 
@@ -631,6 +762,12 @@ function parentVaultPathsFromTreePath(path: string): string[] {
   return parents;
 }
 
+function parentVaultPathFromTreePath(path: string): string {
+  const segments = safeVaultTreePath(path).split("/").filter(Boolean);
+  if (segments.length <= 1) return "";
+  return segments.slice(0, -1).join("/");
+}
+
 function rootVaultPath(path: string): string {
   return safeVaultTreePath(path).split("/").filter(Boolean)[0] || "OpenGrove";
 }
@@ -639,8 +776,15 @@ function isDroppableVaultTarget(sourcePath: string, targetFolderPath: string): b
   const source = safeVaultTreePath(sourcePath);
   const target = safeVaultTreePath(targetFolderPath);
   if (!source || !target || source === target) return false;
+  if (canReorderVaultEntry(source, target)) return false;
   if (rootVaultPath(source) !== rootVaultPath(target)) return false;
   return !target.startsWith(`${source}/`);
+}
+
+function canReorderVaultEntry(sourcePath: string, targetPath: string): boolean {
+  const source = safeVaultTreePath(sourcePath);
+  const target = safeVaultTreePath(targetPath);
+  return Boolean(source && target && source !== target && parentVaultPathFromTreePath(source) === parentVaultPathFromTreePath(target));
 }
 
 function safeVaultTreePath(path: unknown): string {
@@ -674,10 +818,36 @@ function collectVaultFolderStates(nodes: VaultTreeNode[], depth = 0): VaultFolde
   return folders;
 }
 
-function sortVaultTree(nodes: VaultTreeNode[]): void {
+function sortVaultTree(nodes: VaultTreeNode[], parentPath: string, order: VaultTreeOrder): void {
+  const orderedPaths = order[safeVaultTreePath(parentPath)] ?? [];
+  const orderIndex = new Map(orderedPaths.map((path, index) => [path, index]));
   nodes.sort((left, right) => {
+    const leftIndex = orderIndex.get(left.path);
+    const rightIndex = orderIndex.get(right.path);
+    if (leftIndex !== undefined || rightIndex !== undefined) {
+      if (leftIndex === undefined) return 1;
+      if (rightIndex === undefined) return -1;
+      return leftIndex - rightIndex;
+    }
     if (left.kind !== right.kind) return left.kind === "folder" ? -1 : 1;
     return left.name.localeCompare(right.name, "zh-CN");
   });
-  nodes.forEach((node) => sortVaultTree(node.children));
+  nodes.forEach((node) => sortVaultTree(node.children, node.path, order));
+}
+
+function childPathsForParent(nodes: VaultTreeNode[], parentPath: string): string[] {
+  const parent = findVaultTreeNodeByPath(nodes, parentPath);
+  const children = parentPath ? parent?.children ?? [] : nodes;
+  return children.map((node) => node.path);
+}
+
+function findVaultTreeNodeByPath(nodes: VaultTreeNode[], path: string): VaultTreeNode | undefined {
+  const target = safeVaultTreePath(path);
+  if (!target) return undefined;
+  for (const node of nodes) {
+    if (node.path === target) return node;
+    const found = findVaultTreeNodeByPath(node.children, target);
+    if (found) return found;
+  }
+  return undefined;
 }

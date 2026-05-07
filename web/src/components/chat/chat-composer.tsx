@@ -7,13 +7,17 @@ import {
   MessageSquare,
   Package,
   Plus,
+  Shield,
   X,
+  Zap,
 } from "lucide-react";
 import type {
   ApprovalPolicy,
   AttachmentPayload,
   ContextArtifactPayload,
   ModelId,
+  ReasoningEffort,
+  RuntimeControls,
   SandboxPolicy,
 } from "../../bridge";
 import { MODEL_OPTIONS } from "../../bridge";
@@ -40,6 +44,90 @@ const APPROVAL_POLICY_OPTIONS: Array<{ id: ApprovalPolicy; label: string }> = [
   { id: "untrusted", label: "不可信时确认" },
 ];
 
+const EFFORT_OPTIONS: Array<{ id: ReasoningEffort; label: string }> = [
+  { id: "low", label: "低" },
+  { id: "medium", label: "中" },
+  { id: "high", label: "高" },
+  { id: "xhigh", label: "超高" },
+];
+
+export type ResponseSpeed = "standard" | "fast";
+
+const SPEED_OPTIONS: Array<{ id: ResponseSpeed; label: string; description: string }> = [
+  { id: "standard", label: "标准", description: "默认速度，常规用量" },
+  { id: "fast", label: "快速", description: "1.5 倍速，用量增加" },
+];
+
+const CODEX_MODEL_LABELS: Record<ModelId, string> = {
+  "gpt-5.5": "GPT-5.5",
+  "gpt-5.4": "GPT-5.4",
+  "gpt-5.4-mini": "GPT-5.4 Mini",
+  "gpt-5.3-codex": "GPT-5.3 Codex",
+  "gpt-5.3-codex-spark": "GPT-5.3 Codex Spark",
+  "gpt-5.2": "GPT-5.2",
+  "claude-opus-4-6": "Claude Opus 4.6",
+  "MiMo-V2-Pro": "MiMo-V2-Pro",
+};
+
+export type ComposerMenuKind = "access" | "model";
+
+type ComposerModelOption = { id: ModelId; label: string; description?: string };
+type ComposerEffortOption = { id: ReasoningEffort; label: string; description?: string };
+type ComposerSpeedOption = { id: ResponseSpeed; label: string; description?: string };
+
+function isModelId(value: string): value is ModelId {
+  return MODEL_OPTIONS.some((item) => item.id === value);
+}
+
+function isReasoningEffort(value: string): value is ReasoningEffort {
+  return value === "low" || value === "medium" || value === "high" || value === "xhigh";
+}
+
+function isResponseSpeed(value: string): value is ResponseSpeed {
+  return value === "standard" || value === "fast";
+}
+
+export function modelOptionsForKernel(kernelId?: string, runtimeControls?: RuntimeControls): ComposerModelOption[] {
+  const discovered = runtimeControls?.models
+    ?.filter((item): item is ComposerModelOption => isModelId(item.id))
+    .map((item) => ({ id: item.id, label: item.label, description: item.description }));
+  if (discovered?.length) {
+    return discovered;
+  }
+  if (kernelId === "codex") {
+    return MODEL_OPTIONS.filter((item) => item.id.startsWith("gpt-"));
+  }
+  if (kernelId === "claude-code") {
+    return MODEL_OPTIONS.filter((item) => item.id === "claude-opus-4-6");
+  }
+  if (kernelId === "pi") {
+    return MODEL_OPTIONS.filter((item) => item.id !== "gpt-5.3-codex-spark");
+  }
+  return [...MODEL_OPTIONS];
+}
+
+export function supportsComposerEffort(kernelId?: string): boolean {
+  return kernelId === "codex" || kernelId === "pi";
+}
+
+export function supportsComposerSpeed(kernelId?: string): boolean {
+  return kernelId === "codex";
+}
+
+function effortOptionsForRuntime(runtimeControls?: RuntimeControls): ComposerEffortOption[] {
+  const discovered = runtimeControls?.reasoningEfforts
+    ?.filter((item): item is ComposerEffortOption => isReasoningEffort(item.id))
+    .map((item) => ({ id: item.id, label: item.label, description: item.description }));
+  return discovered?.length ? discovered : EFFORT_OPTIONS;
+}
+
+function speedOptionsForRuntime(runtimeControls?: RuntimeControls): ComposerSpeedOption[] {
+  const discovered = runtimeControls?.speedTiers
+    ?.filter((item): item is ComposerSpeedOption => isResponseSpeed(item.id))
+    .map((item) => ({ id: item.id, label: item.label, description: item.description }));
+  return discovered?.length ? discovered : SPEED_OPTIONS;
+}
+
 export interface ChatComposerProps {
   sending: boolean;
   messagesEmpty: boolean;
@@ -50,9 +138,13 @@ export interface ChatComposerProps {
   composerQuestionValue: string;
   composerHeight: number;
   model: ModelId;
+  activeKernel?: string;
+  runtimeControls?: RuntimeControls;
+  effort: ReasoningEffort;
+  responseSpeed: ResponseSpeed;
   sandbox: SandboxPolicy;
   approvalPolicy: ApprovalPolicy;
-  modelMenuOpen: boolean;
+  modelMenuKind: ComposerMenuKind | null;
   modelMenuPlacement: "up" | "down";
   composerInputRef: RefObject<HTMLTextAreaElement | null>;
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -67,8 +159,10 @@ export interface ChatComposerProps {
   onCompositionEnd(): void;
   onAttachmentInputChange(event: ChangeEvent<HTMLInputElement>): void;
   onOpenAttachmentPicker(event?: MouseEvent<HTMLButtonElement>): void;
-  onToggleModelMenu(): void;
+  onToggleModelMenu(kind: ComposerMenuKind): void;
   onSetModel(model: ModelId): void;
+  onSetEffort(effort: ReasoningEffort): void;
+  onSetResponseSpeed(speed: ResponseSpeed): void;
   onSetSandbox(policy: SandboxPolicy): void;
   onSetApprovalPolicy(policy: ApprovalPolicy): void;
   onSubmitOrStop(): void;
@@ -130,7 +224,7 @@ export function ChatComposer(props: ChatComposerProps) {
           ></textarea>
         </div>
 
-        <div className="opengrove-composer-footer">
+        <div className="opengrove-composer-footer" ref={props.modelMenuRef}>
           <div className="opengrove-composer-footer-left">
             <input
               ref={props.fileInputRef}
@@ -142,19 +236,31 @@ export function ChatComposer(props: ChatComposerProps) {
             <button className="opengrove-action opengrove-composer-plus" type="button" onClick={props.onOpenAttachmentPicker} aria-label="添加图片或文件" title="添加图片或文件">
               <Plus size={20} strokeWidth={2.1} />
             </button>
+            <div className="opengrove-composer-controls">
+              <ComposerAccessPicker
+                sandbox={props.sandbox}
+                approvalPolicy={props.approvalPolicy}
+                open={props.modelMenuKind === "access"}
+                placement={props.modelMenuPlacement}
+                onToggle={() => props.onToggleModelMenu("access")}
+                onSetSandbox={props.onSetSandbox}
+                onSetApprovalPolicy={props.onSetApprovalPolicy}
+              />
+            </div>
           </div>
           <div className="opengrove-composer-footer-right">
             <ComposerModelPicker
               model={props.model}
-              sandbox={props.sandbox}
-              approvalPolicy={props.approvalPolicy}
-              open={props.modelMenuOpen}
+              activeKernel={props.activeKernel}
+              runtimeControls={props.runtimeControls}
+              effort={props.effort}
+              responseSpeed={props.responseSpeed}
+              open={props.modelMenuKind === "model"}
               placement={props.modelMenuPlacement}
-              modelMenuRef={props.modelMenuRef}
-              onToggle={props.onToggleModelMenu}
+              onToggle={() => props.onToggleModelMenu("model")}
               onSetModel={props.onSetModel}
-              onSetSandbox={props.onSetSandbox}
-              onSetApprovalPolicy={props.onSetApprovalPolicy}
+              onSetEffort={props.onSetEffort}
+              onSetResponseSpeed={props.onSetResponseSpeed}
             />
             <button
               className="opengrove-action opengrove-primary opengrove-send"
@@ -255,52 +361,46 @@ function ComposerAttachmentBar(props: {
   );
 }
 
-function ComposerModelPicker(props: {
-  model: ModelId;
+function ComposerAccessPicker(props: {
   sandbox: SandboxPolicy;
   approvalPolicy: ApprovalPolicy;
   open: boolean;
   placement: "up" | "down";
-  modelMenuRef: RefObject<HTMLDivElement | null>;
   onToggle(): void;
-  onSetModel(model: ModelId): void;
   onSetSandbox(policy: SandboxPolicy): void;
   onSetApprovalPolicy(policy: ApprovalPolicy): void;
 }) {
+  const sandboxLabel = SANDBOX_OPTIONS.find((item) => item.id === props.sandbox)?.label || props.sandbox;
   return (
-    <div className="opengrove-model-picker" ref={props.modelMenuRef}>
+    <div className="opengrove-model-picker opengrove-access-picker">
       <button
-        className="opengrove-model-button"
+        className="opengrove-model-button opengrove-access-button"
         type="button"
         aria-haspopup="listbox"
         aria-expanded={props.open}
-        aria-label="模型"
+        aria-label="访问权限"
+        data-danger={props.sandbox === "danger-full-access" ? "true" : "false"}
         onClick={props.onToggle}
       >
-        <span className="opengrove-model-label">{MODEL_OPTIONS.find((item) => item.id === props.model)?.label || props.model}</span>
+        <Shield size={15} strokeWidth={2.2} />
+        <span className="opengrove-model-label">{sandboxLabel}</span>
         <span className="opengrove-chevron" aria-hidden="true"></span>
       </button>
-      <div className="opengrove-model-menu" data-open={props.open ? "true" : "false"} data-placement={props.placement} role="listbox" aria-label="模型列表">
-        <div className="opengrove-model-menu-title">模型</div>
-        {MODEL_OPTIONS.map((item) => (
-          <button
-            key={item.id}
-            className="opengrove-model-option"
-            type="button"
-            aria-selected={item.id === props.model}
-            onClick={() => props.onSetModel(item.id as ModelId)}
-          >
-            <span className="opengrove-model-option-name">{item.label}</span>
-            <span className="opengrove-model-option-check" aria-hidden="true"></span>
-          </button>
-        ))}
-        <div className="opengrove-model-menu-title">权限</div>
+      <div
+        className="opengrove-model-menu opengrove-access-menu"
+        data-open={props.open ? "true" : "false"}
+        data-placement={props.placement}
+        role="listbox"
+        aria-label="访问权限列表"
+      >
+        <div className="opengrove-model-menu-title">访问权限</div>
         {SANDBOX_OPTIONS.map((item) => (
           <button
             key={item.id}
             className="opengrove-model-option"
             type="button"
             aria-selected={item.id === props.sandbox}
+            data-danger={item.id === "danger-full-access" ? "true" : "false"}
             onClick={() => props.onSetSandbox(item.id)}
           >
             <span className="opengrove-model-option-name">{item.label}</span>
@@ -320,6 +420,110 @@ function ComposerModelPicker(props: {
             <span className="opengrove-model-option-check" aria-hidden="true"></span>
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ComposerModelPicker(props: {
+  model: ModelId;
+  activeKernel?: string;
+  runtimeControls?: RuntimeControls;
+  effort: ReasoningEffort;
+  responseSpeed: ResponseSpeed;
+  open: boolean;
+  placement: "up" | "down";
+  onToggle(): void;
+  onSetModel(model: ModelId): void;
+  onSetEffort(effort: ReasoningEffort): void;
+  onSetResponseSpeed(speed: ResponseSpeed): void;
+}) {
+  const modelOptions = modelOptionsForKernel(props.activeKernel, props.runtimeControls);
+  const selectedModel = modelOptions.find((item) => item.id === props.model) ?? modelOptions[0] ?? MODEL_OPTIONS[0];
+  const effortOptions = effortOptionsForRuntime(props.runtimeControls);
+  const speedOptions = speedOptionsForRuntime(props.runtimeControls);
+  const effortEnabled = Boolean(props.runtimeControls?.reasoningEfforts?.length) || supportsComposerEffort(props.activeKernel);
+  const speedEnabled = Boolean(props.runtimeControls?.speedTiers?.length) || supportsComposerSpeed(props.activeKernel);
+  const effortLabel = effortEnabled ? effortOptions.find((item) => item.id === props.effort)?.label || "高" : "默认";
+  const compactModelLabel = selectedModel.id.startsWith("gpt-")
+    ? selectedModel.id.replace(/^gpt-/, "").replace(/-codex-spark$/, " spark").replace(/-codex$/, " codex").replace(/-mini$/, " mini")
+    : CODEX_MODEL_LABELS[selectedModel.id as ModelId] || selectedModel.label;
+
+  return (
+    <div className="opengrove-model-picker">
+      <button
+        className="opengrove-model-button opengrove-runtime-button"
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={props.open}
+        aria-label="速度、模型和智能等级"
+        data-speed={speedEnabled ? props.responseSpeed : undefined}
+        onClick={props.onToggle}
+      >
+        <Zap size={15} strokeWidth={2.3} />
+        <span className="opengrove-model-label">{compactModelLabel}</span>
+        <span className="opengrove-model-effort">{effortLabel}</span>
+        <span className="opengrove-chevron" aria-hidden="true"></span>
+      </button>
+      <div
+        className="opengrove-model-menu"
+        data-open={props.open ? "true" : "false"}
+        data-placement={props.placement}
+        role="listbox"
+        aria-label="速度、模型和智能等级列表"
+      >
+        {effortEnabled ? (
+          <>
+            <div className="opengrove-model-menu-title">智能</div>
+            {effortOptions.map((item) => (
+              <button
+                key={item.id}
+                className="opengrove-model-option"
+                type="button"
+                aria-selected={item.id === props.effort}
+                onClick={() => props.onSetEffort(item.id)}
+              >
+                <span className="opengrove-model-option-name">{item.label}</span>
+                <span className="opengrove-model-option-check" aria-hidden="true"></span>
+              </button>
+            ))}
+          </>
+        ) : (
+          <div className="opengrove-model-menu-title">智能由当前内核决定</div>
+        )}
+        <div className="opengrove-model-menu-title">模型</div>
+        {modelOptions.map((item) => (
+          <button
+            key={item.id}
+            className="opengrove-model-option"
+            type="button"
+            aria-selected={item.id === selectedModel.id}
+            onClick={() => props.onSetModel(item.id as ModelId)}
+          >
+            <span className="opengrove-model-option-name">{CODEX_MODEL_LABELS[item.id as ModelId] || item.label}</span>
+            <span className="opengrove-model-option-check" aria-hidden="true"></span>
+          </button>
+        ))}
+        {speedEnabled ? (
+          <>
+            <div className="opengrove-model-menu-title">速度</div>
+            {speedOptions.map((item) => (
+              <button
+                key={item.id}
+                className="opengrove-model-option opengrove-model-option-with-description"
+                type="button"
+                aria-selected={item.id === props.responseSpeed}
+                onClick={() => props.onSetResponseSpeed(item.id)}
+              >
+                <span className="opengrove-model-option-name">
+                  {item.label}
+                  <span className="opengrove-model-option-description">{item.description}</span>
+                </span>
+                <span className="opengrove-model-option-check" aria-hidden="true"></span>
+              </button>
+            ))}
+          </>
+        ) : null}
       </div>
     </div>
   );

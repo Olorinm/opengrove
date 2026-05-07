@@ -1,16 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Bug, Cpu, FolderSync, KeyRound, Palette, ShieldCheck } from "lucide-react";
-import type { BridgeSettings, KernelKnowledgeSource, KernelOption, KernelPreference } from "../../bridge";
+import { Bug, Cpu, KeyRound, Palette } from "lucide-react";
+import type { BridgeSettings, KernelKnowledgeSource, KernelPreference } from "../../bridge";
 import { APP_PRODUCT_NAME } from "../../identity";
-import { Button } from "../ui/button";
+import { renderContextRecordCard } from "../system/system-views";
 
-type SettingsSectionId = "general" | "kernels" | "knowledge" | "permissions" | "diagnostics" | "appearance" | "developer";
+type SettingsSectionId = "kernels" | "diagnostics" | "appearance" | "developer";
 
 const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; label: string; icon: typeof Cpu }> = [
-  { id: "general", label: "常规", icon: Cpu },
-  { id: "kernels", label: "内核", icon: Cpu },
-  { id: "knowledge", label: "知识来源", icon: FolderSync },
-  { id: "permissions", label: "权限", icon: ShieldCheck },
+  { id: "kernels", label: "内核与知识", icon: Cpu },
   { id: "diagnostics", label: "抓包与诊断", icon: Bug },
   { id: "appearance", label: "外观", icon: Palette },
   { id: "developer", label: "开发者", icon: KeyRound },
@@ -18,9 +15,11 @@ const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; label: string; icon: typ
 
 export function SettingsDialog(props: {
   settings?: BridgeSettings;
+  contextRecords?: Record<string, unknown>[];
   loading: boolean;
   saving: boolean;
   error: string;
+  embedded?: boolean;
   onClose(): void;
   onSave(payload: {
     kernel: KernelPreference;
@@ -28,7 +27,7 @@ export function SettingsDialog(props: {
     kernelKnowledgeSourceEnabled: Record<string, Record<string, boolean>>;
   }): void;
 }) {
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>("general");
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>("kernels");
   const [kernel, setKernel] = useState<KernelPreference>("auto");
   const [providerHttpCaptureEnabled, setProviderHttpCaptureEnabled] = useState(false);
   const [sourceEnabled, setSourceEnabled] = useState<Record<string, Record<string, boolean>>>({});
@@ -55,32 +54,57 @@ export function SettingsDialog(props: {
         ];
   }, [props.settings]);
 
-  const selectedKernel = kernels.find((item) => item.id === kernel);
   const capture = props.settings?.providerHttpCapture;
-  const willRestart =
-    props.settings &&
-    (props.settings.kernel !== kernel ||
-      Boolean(props.settings.providerHttpCapture?.enabled) !== providerHttpCaptureEnabled ||
-      JSON.stringify(props.settings.kernelKnowledgeSourceEnabled ?? {}) !== JSON.stringify(sourceEnabled));
   const sourceCount = kernels.reduce((count, item) => count + (item.sources?.length ?? 0), 0);
 
+  const saveSettings = (next: {
+    kernel?: KernelPreference;
+    providerHttpCaptureEnabled?: boolean;
+    kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
+  }) => {
+    props.onSave({
+      kernel: next.kernel ?? kernel,
+      providerHttpCaptureEnabled: next.providerHttpCaptureEnabled ?? providerHttpCaptureEnabled,
+      kernelKnowledgeSourceEnabled: next.kernelKnowledgeSourceEnabled ?? sourceEnabled,
+    });
+  };
+
+  const selectKernel = (nextKernel: KernelPreference) => {
+    setKernel(nextKernel);
+    saveSettings({ kernel: nextKernel });
+  };
+
+  const setCaptureEnabled = (enabled: boolean) => {
+    setProviderHttpCaptureEnabled(enabled);
+    saveSettings({ providerHttpCaptureEnabled: enabled });
+  };
+
   const toggleSource = (kernelId: string, source: KernelKnowledgeSource, enabled: boolean) => {
-    setSourceEnabled((previous) => ({
-      ...previous,
+    const next = {
+      ...sourceEnabled,
       [kernelId]: {
-        ...(previous[kernelId] ?? {}),
+        ...(sourceEnabled[kernelId] ?? {}),
         [source.id]: enabled,
       },
-    }));
+    };
+    setSourceEnabled(next);
+    saveSettings({ kernelKnowledgeSourceEnabled: next });
   };
 
   return (
-    <div className="settings-screen" role="dialog" aria-modal="true" aria-label="设置">
+    <div
+      className={props.embedded ? "settings-screen embedded" : "settings-screen"}
+      role={props.embedded ? undefined : "dialog"}
+      aria-modal={props.embedded ? undefined : "true"}
+      aria-label="设置"
+    >
       <aside className="settings-screen-sidebar">
-        <button className="settings-back-button" type="button" onClick={props.onClose}>
-          <span aria-hidden="true">←</span>
-          <span>返回应用</span>
-        </button>
+        {props.embedded ? null : (
+          <button className="settings-back-button" type="button" onClick={props.onClose}>
+            <span aria-hidden="true">←</span>
+            <span>返回应用</span>
+          </button>
+        )}
         <nav className="settings-nav" aria-label="设置分类">
           {SETTINGS_SECTIONS.map((item) => {
             const Icon = item.icon;
@@ -107,7 +131,7 @@ export function SettingsDialog(props: {
             <p>{sectionDescription(activeSection)}</p>
           </header>
 
-          {activeSection === "general" ? (
+          {activeSection === "kernels" ? (
             <div className="settings-page-stack">
               <section className="settings-panel">
                 <div className="settings-panel-heading">
@@ -118,13 +142,13 @@ export function SettingsDialog(props: {
                   <span className="settings-status-pill">当前 {formatKernelLabel(props.settings?.activeKernel) || "未知"}</span>
                 </div>
                 <div className="settings-choice-grid">
-                  {kernels.slice(0, 4).map((option) => (
+                  {kernels.map((option) => (
                     <button
                       key={option.id}
                       className={kernel === option.id ? "settings-choice-card active" : "settings-choice-card"}
                       type="button"
-                      disabled={!option.available}
-                      onClick={() => setKernel(option.id)}
+                      disabled={!option.available || props.saving || props.loading}
+                      onClick={() => selectKernel(option.id)}
                     >
                       <strong>{option.label}</strong>
                       <span>
@@ -145,121 +169,117 @@ export function SettingsDialog(props: {
                     <h2>资料库来源</h2>
                     <p>已识别 {sourceCount} 个本机来源。资料库按来源分组，不再把不同内核的目录揉成一层。</p>
                   </div>
-                  <button className="settings-inline-link" type="button" onClick={() => setActiveSection("knowledge")}>
-                    管理
-                  </button>
+                </div>
+                <div className="settings-kernel-list">
+                  {kernels.filter((option) => option.id !== "auto").map((option) => (
+                    <section className={kernel === option.id ? "settings-kernel-card active" : "settings-kernel-card"} key={option.id}>
+                      <div className="settings-panel-heading">
+                        <div>
+                          <h2>{option.label}</h2>
+                          <p>{option.description || "内核适配器"}</p>
+                        </div>
+                        <span className={option.available ? "settings-status-pill" : "settings-status-pill muted"}>
+                          {option.available ? "已检测" : "未安装"}
+                        </span>
+                      </div>
+                      <div className="settings-info-list compact">
+                        <InfoRow title="版本" value={option.version || "未知"} />
+                        <InfoRow title="配置目录" value={option.configHome || "未提供"} mono />
+                      </div>
+                      {option.notes?.length ? <p className="settings-help">{option.notes[0]}</p> : null}
+                      {option.sources?.length ? (
+                        <div className="settings-source-list">
+                          {option.sources.map((source) => (
+                            <label key={source.id} className="settings-source-row">
+                              <input
+                                type="checkbox"
+                                checked={isSourceEnabled(option.id, source, sourceEnabled)}
+                                disabled={props.saving || props.loading}
+                                onChange={(event) => toggleSource(option.id, source, event.target.checked)}
+                              />
+                              <span className="settings-source-main">
+                                <span className="settings-source-title">
+                                  {source.title}
+                                  <small>{formatSourceMeta(source)}</small>
+                                </span>
+                                <code>{source.path || "由内核动态提供"}</code>
+                                {source.description ? <span className="settings-source-note">{source.description}</span> : null}
+                              </span>
+                              <span className={source.exists ? "settings-source-state ok" : "settings-source-state"}>
+                                {source.exists ? "存在" : "未创建"}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="settings-help">暂无可同步来源。</p>
+                      )}
+                    </section>
+                  ))}
                 </div>
               </section>
             </div>
           ) : null}
 
-          {activeSection === "kernels" ? (
-            <div className="settings-kernel-list">
-              {kernels.filter((option) => option.id !== "auto").map((option) => (
-                <KernelStatusCard
-                  key={option.id}
-                  option={option}
-                  selected={kernel === option.id}
-                  onSelect={() => setKernel(option.id)}
-                />
-              ))}
-            </div>
-          ) : null}
-
-          {activeSection === "knowledge" ? (
-            <div className="settings-page-stack">
-              {kernels.filter((option) => option.id !== "auto").map((option) => (
-                <section className="settings-panel" key={option.id}>
-                  <div className="settings-panel-heading">
-                    <div>
-                      <h2>{option.label}</h2>
-                      <p>{option.sources?.length ? "这些是 adapter 从该内核源码和本机路径里确认出来的关键人工注入物。" : "暂无可同步来源。"}</p>
-                    </div>
-                    <span className={option.available ? "settings-status-pill" : "settings-status-pill muted"}>
-                      {option.available ? "已检测" : "未安装"}
-                    </span>
-                  </div>
-                  <div className="settings-source-list">
-                    {(option.sources ?? []).map((source) => (
-                      <label key={source.id} className="settings-source-row">
-                        <input
-                          type="checkbox"
-                          checked={isSourceEnabled(option.id, source, sourceEnabled)}
-                          disabled={props.saving || props.loading}
-                          onChange={(event) => toggleSource(option.id, source, event.target.checked)}
-                        />
-                        <span className="settings-source-main">
-                          <span className="settings-source-title">
-                            {source.title}
-                            <small>{formatSourceMeta(source)}</small>
-                          </span>
-                          <code>{source.path || "由内核动态提供"}</code>
-                          {source.description ? <span className="settings-source-note">{source.description}</span> : null}
-                        </span>
-                        <span className={source.exists ? "settings-source-state ok" : "settings-source-state"}>
-                          {source.exists ? "存在" : "未创建"}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          ) : null}
-
-          {activeSection === "permissions" ? (
-            <section className="settings-panel">
-              <div className="settings-panel-heading">
-                <div>
-                  <h2>权限边界</h2>
-                  <p>这里先展示 OpenGrove 与内核的分工：OpenGrove 管 host tool 审批，Codex/Claude/Hermes 继续管自己的原生权限模型。</p>
-                </div>
-              </div>
-              <div className="settings-info-list">
-                <InfoRow title="OpenGrove host tools" value="由 OpenGrove policy / approval inbox 控制" />
-                <InfoRow title="Codex native tools" value="由 Codex sandboxPolicy / approvalsReviewer 控制，adapter 负责翻译" />
-                <InfoRow title="Claude Code tools" value="当前 CLI bridge 使用 bypassPermissions，后续 SDK bridge 才能完整接审批" />
-                <InfoRow title="Hermes tools" value="当前 oneshot bridge 只拿最终文本，原生工具事件还不可见" />
-              </div>
-            </section>
-          ) : null}
-
           {activeSection === "diagnostics" ? (
-            <section className="settings-panel">
-              <label className="settings-switch-row settings-switch-card">
-                <span className="settings-section-copy">
-                  <span className="settings-section-title">HTTPS 抓包模式</span>
-                  <span className="settings-section-note">
-                    保存后会重建内核。只有 mitmproxy 服务运行且内核支持时，OpenGrove 才把代理和 CA 注入子进程。
+            <div className="settings-page-stack">
+              <section className="settings-panel">
+                <label className="settings-switch-row settings-switch-card">
+                  <span className="settings-section-copy">
+                    <span className="settings-section-title">HTTPS 抓包模式</span>
+                    <span className="settings-section-note">
+                      开启后会自动启动 mitmproxy 并重建内核；只有代理服务启动成功且内核支持时，OpenGrove 才把代理和 CA 注入子进程。
+                    </span>
                   </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={providerHttpCaptureEnabled}
-                  disabled={props.loading || props.saving}
-                  onChange={(event) => setProviderHttpCaptureEnabled(event.target.checked)}
-                />
-              </label>
-              <div className="settings-capture-grid">
-                <span>代理</span>
-                <code>{capture?.proxyUrl || "http://127.0.0.1:9080"}</code>
-                <span>CA</span>
-                <code>{capture?.caCertPath || "未找到"}</code>
-                <span>服务</span>
-                <strong>{capture?.running ? "运行中" : "未运行"}</strong>
-                <span>注入</span>
-                <strong>{capture?.injected ? "已注入" : providerHttpCaptureEnabled ? "本内核未注入" : "未开启"}</strong>
-                <span>状态</span>
-                <strong>{capture?.status || "disabled"}</strong>
-              </div>
-              {capture?.warning ? <p className="settings-warning">{capture.warning}</p> : null}
-            </section>
+                  <input
+                    type="checkbox"
+                    checked={providerHttpCaptureEnabled}
+                    disabled={props.loading || props.saving}
+                    onChange={(event) => setCaptureEnabled(event.target.checked)}
+                  />
+                </label>
+                <div className="settings-capture-grid">
+                  <span>代理</span>
+                  <code>{capture?.proxyUrl || "http://127.0.0.1:9080"}</code>
+                  <span>CA</span>
+                  <code>{capture?.caCertPath || "未找到"}</code>
+                  <span>服务</span>
+                  <strong>{capture?.running ? "运行中" : "未运行"}</strong>
+                  <span>注入</span>
+                  <strong>{capture?.injected ? "已注入" : providerHttpCaptureEnabled ? "本内核未注入" : "未开启"}</strong>
+                  <span>状态</span>
+                  <strong>{capture?.status || "disabled"}</strong>
+                </div>
+                {capture?.warning ? <p className="settings-warning">{capture.warning}</p> : null}
+              </section>
+
+              <section className="settings-panel">
+                <div className="settings-panel-heading">
+                  <div>
+                    <h2>原始上下文记录</h2>
+                    <p>这里保留每一轮实际组装给内核的上下文、用户输入、system prompt、tool/skill 统计和抓包摘要。</p>
+                  </div>
+                  <span className="settings-status-pill muted">{props.contextRecords?.length ?? 0}</span>
+                </div>
+                <div className="panel-list settings-context-list">
+                  {props.contextRecords?.length ? (
+                    props.contextRecords.map((record, index) => (
+                      <div className="panel-list-row" key={String(record.runId || record.id || index)}>
+                        {renderContextRecordCard(record)}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="panel-empty">还没有上下文记录</div>
+                  )}
+                </div>
+              </section>
+            </div>
           ) : null}
 
           {activeSection === "appearance" ? (
             <section className="settings-panel">
               <div className="settings-empty-state">
-                <BookOpen size={22} />
+                <Palette size={22} />
                 <strong>外观设置还没有接入</strong>
                 <span>当前先保持系统默认主题。后续这里放主题、字体和编辑器偏好。</span>
               </div>
@@ -294,56 +314,10 @@ export function SettingsDialog(props: {
           ) : null}
 
           {props.error ? <p className="settings-warning">{props.error}</p> : null}
-          {willRestart ? <p className="settings-restart-note">保存后会重建内核，后续新回合使用新设置。</p> : null}
+          {props.saving ? <p className="settings-restart-note">正在保存设置...</p> : null}
         </div>
-
-        <footer className="settings-screen-footer">
-          <Button onClick={props.onClose} disabled={props.saving}>取消</Button>
-          <Button
-            variant="primary"
-            onClick={() => props.onSave({ kernel, providerHttpCaptureEnabled, kernelKnowledgeSourceEnabled: sourceEnabled })}
-            disabled={props.saving || props.loading || (selectedKernel ? !selectedKernel.available : false)}
-          >
-            {props.saving ? "保存中" : "保存设置"}
-          </Button>
-        </footer>
       </main>
     </div>
-  );
-}
-
-function KernelStatusCard(props: {
-  option: KernelOption;
-  selected: boolean;
-  onSelect(): void;
-}) {
-  const option = props.option;
-  return (
-    <section className={props.selected ? "settings-kernel-card active" : "settings-kernel-card"}>
-      <div className="settings-panel-heading">
-        <div>
-          <h2>{option.label}</h2>
-          <p>{option.description || "内核适配器"}</p>
-        </div>
-        <button
-          className="settings-inline-link"
-          type="button"
-          disabled={!option.available}
-          onClick={props.onSelect}
-        >
-          {props.selected ? "已选择" : option.available ? "启用" : "不可用"}
-        </button>
-      </div>
-      <div className="settings-info-list compact">
-        <InfoRow title="安装状态" value={option.available ? "已检测到" : option.reason || "未检测到"} />
-        <InfoRow title="版本" value={option.version || "未知"} />
-        <InfoRow title="配置目录" value={option.configHome || "未提供"} mono />
-        <InfoRow title="关键来源" value={`${option.sources?.length ?? 0} 个`} />
-      </div>
-      {option.notes?.length ? (
-        <p className="settings-help">{option.notes[0]}</p>
-      ) : null}
-    </section>
   );
 }
 
@@ -419,13 +393,11 @@ function sectionTitle(value: SettingsSectionId): string {
 }
 
 function sectionDescription(value: SettingsSectionId): string {
-  if (value === "kernels") return "检测 Codex、Claude Code、Hermes、Pi，并查看 OpenGrove 与它们的衔接边界。";
-  if (value === "knowledge") return "按来源管理可以被资料库索引、镜像或发布的本机文件。";
-  if (value === "permissions") return "把 OpenGrove host tool 权限和内核原生权限分清楚。";
+  if (value === "kernels") return "选择默认内核，并管理它们暴露给资料库的本机知识来源。";
   if (value === "diagnostics") return "管理 RPC、原生日志、provider HTTPS 抓包和 trajectory。";
   if (value === "developer") return "查看内核二进制、配置路径和安装建议。";
   if (value === "appearance") return "界面外观偏好。";
-  return "默认内核、工作模式和全局行为。";
+  return "设置";
 }
 
 function formatKernelLabel(value: string | undefined): string {

@@ -197,7 +197,7 @@
   max-width: min(520px, 58vw);
   min-height: 34px;
   border: 1px solid var(--c-border);
-  border-bottom-color: #fffefa;
+  border-bottom-color: var(--c-bg);
   border-radius: var(--r-md) 8px 0 0;
   background: var(--c-bg);
   padding: 0 12px;
@@ -894,7 +894,7 @@
 
 .md-property-row:hover,
 .md-property-row:focus-visible {
-  background: #f3f1eb;
+  background: var(--c-surface);
   outline: 0;
 }
 
@@ -1019,7 +1019,7 @@
   min-height: 28px;
   margin: 24px -20px -32px;
   border-top: 1px solid rgba(231, 227, 218, 0.78);
-  background: color-mix(in srgb, #fffefa 92%, transparent);
+  background: color-mix(in srgb, var(--c-bg) 92%, transparent);
   color: var(--c-muted);
   font-size: 11px;
   font-weight: var(--fw-medium);
@@ -1188,7 +1188,7 @@
   border: 1px solid rgba(255, 255, 255, 0.68);
   border-radius: var(--r-pill);
   background: rgba(32, 34, 29, 0.78);
-  color: #fffefa;
+  color: var(--c-bg);
   cursor: pointer;
   text-decoration: none;
   backdrop-filter: blur(10px);

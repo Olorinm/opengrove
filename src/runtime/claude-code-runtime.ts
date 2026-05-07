@@ -563,12 +563,7 @@ function normalizeClaudeModelId(value: string | undefined): string | undefined {
     return undefined;
   }
   const normalized = trimmed.toLowerCase();
-  if (
-    normalized === "mimo-v2-pro" ||
-    normalized === "gpt-5.4" ||
-    normalized === "gpt-5.4-mini" ||
-    normalized === "gpt-5.3-codex"
-  ) {
+  if (normalized === "mimo-v2-pro" || normalized.startsWith("gpt-")) {
     return undefined;
   }
   return trimmed;

@@ -2,7 +2,7 @@ import { useState, type MouseEvent, type ReactNode } from "react";
 import { Download, Maximize2, Plus, X } from "lucide-react";
 import { APP_VAULT_DIR } from "../../identity";
 
-export function MarkdownPreview(props: { text: string; format: string; vaultPath?: string; onActivate?(): void }) {
+export function MarkdownPreview(props: { text: string; format: string; vaultPath?: string; onActivate?(): void; onOpenLink?(href: string): boolean }) {
   const [previewImage, setPreviewImage] = useState<{ src: string; alt: string } | null>(null);
   const text = props.format === "markdown" ? stripMarkdownFrontmatter(props.text) : props.text;
   if (props.format !== "markdown") {
@@ -12,7 +12,7 @@ export function MarkdownPreview(props: { text: string; format: string; vaultPath
       </pre>
     );
   }
-  const nodes = markdownBlocks(text, props.vaultPath, setPreviewImage);
+  const nodes = markdownBlocks(text, props.vaultPath, setPreviewImage, props.onOpenLink);
   return (
     <>
       <div className="markdown-preview" data-click-to-edit="true" onClick={props.onActivate}>
@@ -250,7 +250,12 @@ function yamlFrontmatterScalar(value: string): string {
   return /^[\w\u4e00-\u9fff .,:/@+-]+$/.test(text) ? text : JSON.stringify(text);
 }
 
-function markdownBlocks(text: string, vaultPath?: string, onImageOpen?: (image: { src: string; alt: string }) => void): ReactNode[] {
+function markdownBlocks(
+  text: string,
+  vaultPath?: string,
+  onImageOpen?: (image: { src: string; alt: string }) => void,
+  onOpenLink?: (href: string) => boolean,
+): ReactNode[] {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const blocks: ReactNode[] = [];
   let index = 0;
@@ -291,7 +296,7 @@ function markdownBlocks(text: string, vaultPath?: string, onImageOpen?: (image: 
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       const level = Math.min(heading[1].length, 6);
-      blocks.push(renderMarkdownHeading(level, heading[2], `heading-${index}`, vaultPath, onImageOpen));
+      blocks.push(renderMarkdownHeading(level, heading[2], `heading-${index}`, vaultPath, onImageOpen, onOpenLink));
       index += 1;
       continue;
     }
@@ -299,7 +304,7 @@ function markdownBlocks(text: string, vaultPath?: string, onImageOpen?: (image: 
     if (/^\s*[-*]\s+/.test(line)) {
       const items: ReactNode[] = [];
       while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) {
-        items.push(<li key={`li-${index}`}>{renderInlineMarkdown(lines[index].replace(/^\s*[-*]\s+/, ""), vaultPath, onImageOpen)}</li>);
+        items.push(<li key={`li-${index}`}>{renderInlineMarkdown(lines[index].replace(/^\s*[-*]\s+/, ""), vaultPath, onImageOpen, onOpenLink)}</li>);
         index += 1;
       }
       blocks.push(<ul key={`ul-${index}`}>{items}</ul>);
@@ -309,7 +314,7 @@ function markdownBlocks(text: string, vaultPath?: string, onImageOpen?: (image: 
     if (/^\s*\d+\.\s+/.test(line)) {
       const items: ReactNode[] = [];
       while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index])) {
-        items.push(<li key={`oli-${index}`}>{renderInlineMarkdown(lines[index].replace(/^\s*\d+\.\s+/, ""), vaultPath, onImageOpen)}</li>);
+        items.push(<li key={`oli-${index}`}>{renderInlineMarkdown(lines[index].replace(/^\s*\d+\.\s+/, ""), vaultPath, onImageOpen, onOpenLink)}</li>);
         index += 1;
       }
       blocks.push(<ol key={`ol-${index}`}>{items}</ol>);
@@ -322,7 +327,7 @@ function markdownBlocks(text: string, vaultPath?: string, onImageOpen?: (image: 
         quoteLines.push(lines[index].replace(/^>\s?/, ""));
         index += 1;
       }
-      blocks.push(<blockquote key={`quote-${index}`}>{quoteLines.map((item, itemIndex) => <p key={itemIndex}>{renderInlineMarkdown(item, vaultPath, onImageOpen)}</p>)}</blockquote>);
+      blocks.push(<blockquote key={`quote-${index}`}>{quoteLines.map((item, itemIndex) => <p key={itemIndex}>{renderInlineMarkdown(item, vaultPath, onImageOpen, onOpenLink)}</p>)}</blockquote>);
       continue;
     }
 
@@ -332,14 +337,21 @@ function markdownBlocks(text: string, vaultPath?: string, onImageOpen?: (image: 
       paragraph.push(lines[index]);
       index += 1;
     }
-    blocks.push(<p key={`p-${index}`}>{renderInlineMarkdown(paragraph.join(" "), vaultPath, onImageOpen)}</p>);
+    blocks.push(<p key={`p-${index}`}>{renderInlineMarkdown(paragraph.join(" "), vaultPath, onImageOpen, onOpenLink)}</p>);
   }
 
   return blocks;
 }
 
-function renderMarkdownHeading(level: number, text: string, key: string, vaultPath?: string, onImageOpen?: (image: { src: string; alt: string }) => void): ReactNode {
-  const content = renderInlineMarkdown(text, vaultPath, onImageOpen);
+function renderMarkdownHeading(
+  level: number,
+  text: string,
+  key: string,
+  vaultPath?: string,
+  onImageOpen?: (image: { src: string; alt: string }) => void,
+  onOpenLink?: (href: string) => boolean,
+): ReactNode {
+  const content = renderInlineMarkdown(text, vaultPath, onImageOpen, onOpenLink);
   if (level === 1) return <h1 key={key}>{content}</h1>;
   if (level === 2) return <h2 key={key}>{content}</h2>;
   if (level === 3) return <h3 key={key}>{content}</h3>;
@@ -352,9 +364,14 @@ function isMarkdownBlockStart(line: string): boolean {
   return /^(```|#{1,6}\s+|\s*[-*]\s+|\s*\d+\.\s+|>\s?)/.test(line);
 }
 
-function renderInlineMarkdown(text: string, vaultPath?: string, onImageOpen?: (image: { src: string; alt: string }) => void): ReactNode[] {
+function renderInlineMarkdown(
+  text: string,
+  vaultPath?: string,
+  onImageOpen?: (image: { src: string; alt: string }) => void,
+  onOpenLink?: (href: string) => boolean,
+): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /(!\[[^\]]*]\([^)]+\)|`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g;
+  const pattern = /(!\[[^\]]*]\([^)]+\)|`[^`]+`|\*\*[^*]+\*\*|\[\[[^\]]+]]|\[[^\]]+\]\([^)]+\))/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text))) {
@@ -371,14 +388,13 @@ function renderInlineMarkdown(text: string, vaultPath?: string, onImageOpen?: (i
       nodes.push(<code key={`code-${match.index}`}>{token.slice(1, -1)}</code>);
     } else if (token.startsWith("**")) {
       nodes.push(<strong key={`strong-${match.index}`}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("[[")) {
+      const wikiLink = parseWikiLinkToken(token);
+      nodes.push(renderMarkdownLink(wikiLink.label, wikiLink.href, `wikilink-${match.index}`, onOpenLink));
     } else {
       const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
       const href = link?.[2] || "";
-      nodes.push(
-        <a href={href} key={`link-${match.index}`} rel="noreferrer" target={isExternalHref(href) ? "_blank" : undefined}>
-          {link?.[1] || href}
-        </a>,
-      );
+      nodes.push(renderMarkdownLink(link?.[1] || href, href, `link-${match.index}`, onOpenLink));
     }
     lastIndex = pattern.lastIndex;
   }
@@ -386,6 +402,32 @@ function renderInlineMarkdown(text: string, vaultPath?: string, onImageOpen?: (i
     nodes.push(text.slice(lastIndex));
   }
   return nodes;
+}
+
+function renderMarkdownLink(label: string, href: string, key: string, onOpenLink?: (href: string) => boolean): ReactNode {
+  const external = isExternalHref(href);
+  function open(event: MouseEvent<HTMLAnchorElement>) {
+    event.stopPropagation();
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (onOpenLink?.(href)) {
+      event.preventDefault();
+    }
+  }
+  return (
+    <a href={href || "#"} key={key} rel="noreferrer" target={external ? "_blank" : undefined} onClick={open}>
+      {label || href}
+    </a>
+  );
+}
+
+function parseWikiLinkToken(token: string): { href: string; label: string } {
+  const content = token.slice(2, -2).trim();
+  const [href, label] = content.split("|");
+  const cleanHref = href.trim();
+  return {
+    href: cleanHref,
+    label: (label || cleanHref.split("/").filter(Boolean).pop() || cleanHref).trim(),
+  };
 }
 
 function MarkdownPreviewImage(props: { src: string; alt: string; inline?: boolean; onOpen?(image: { src: string; alt: string }): void }) {

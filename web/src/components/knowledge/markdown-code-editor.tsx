@@ -12,6 +12,7 @@ interface MarkdownCodeEditorProps {
   autoFocus?: boolean;
   placeholder?: string;
   onChange(value: string): void;
+  onOpenLink?(href: string): boolean;
 }
 
 const markdownHighlightStyle = HighlightStyle.define([
@@ -116,6 +117,7 @@ export function MarkdownCodeEditor(props: MarkdownCodeEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(props.onChange);
+  const onOpenLinkRef = useRef(props.onOpenLink);
   const valueRef = useRef(props.value);
   const extensions = useMemo(() => {
     const base = [
@@ -138,6 +140,21 @@ export function MarkdownCodeEditor(props: MarkdownCodeEditorProps) {
         const nextValue = update.state.doc.toString();
         valueRef.current = nextValue;
         onChangeRef.current(nextValue);
+      }),
+      EditorView.domEventHandlers({
+        click(event, view) {
+          const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+          if (position === null) return false;
+          const line = view.state.doc.lineAt(position);
+          const href = markdownLinkAtOffset(line.text, position - line.from);
+          if (!href) return false;
+          if (onOpenLinkRef.current?.(href)) {
+            event.preventDefault();
+            event.stopPropagation();
+            return true;
+          }
+          return false;
+        },
       }),
       EditorView.theme({
         "&": {
@@ -188,6 +205,10 @@ export function MarkdownCodeEditor(props: MarkdownCodeEditorProps) {
   }, [props.onChange]);
 
   useEffect(() => {
+    onOpenLinkRef.current = props.onOpenLink;
+  }, [props.onOpenLink]);
+
+  useEffect(() => {
     if (!hostRef.current) return;
     const view = new EditorView({
       parent: hostRef.current,
@@ -225,4 +246,18 @@ export function MarkdownCodeEditor(props: MarkdownCodeEditorProps) {
   }, [props.value]);
 
   return <div className="knowledge-markdown-codemirror" ref={hostRef} />;
+}
+
+function markdownLinkAtOffset(line: string, offset: number): string {
+  const pattern = /\[\[([^\]]+)]]|\[([^\]]+)]\(([^)]+)\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(line))) {
+    const start = match.index;
+    const end = pattern.lastIndex;
+    if (offset < start || offset > end) continue;
+    const wikiTarget = match[1]?.split("|")[0]?.trim();
+    const markdownTarget = match[3]?.trim();
+    return wikiTarget || markdownTarget || "";
+  }
+  return "";
 }

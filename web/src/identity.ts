@@ -11,7 +11,11 @@ export const APP_STORAGE_KEYS = {
   uiThreadId: `${APP_PROTOCOL_ID}UiThreadId`,
   uiState: `${APP_PROTOCOL_ID}-react-ui`,
   bridgeToken: `${APP_PROTOCOL_ID}BridgeToken`,
+  reasoningEffort: `${APP_PROTOCOL_ID}ReasoningEffort`,
+  responseSpeed: `${APP_PROTOCOL_ID}ResponseSpeed`,
   sandbox: `${APP_PROTOCOL_ID}Sandbox`,
   approvalPolicy: `${APP_PROTOCOL_ID}ApprovalPolicy`,
   sidebarWidth: `${APP_PROTOCOL_ID}SidebarWidth`,
+  vaultOpenPaths: `${APP_PROTOCOL_ID}VaultOpenPaths`,
+  vaultTreeOrder: `${APP_PROTOCOL_ID}VaultTreeOrder`,
 } as const;

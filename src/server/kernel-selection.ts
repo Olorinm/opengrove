@@ -1,4 +1,5 @@
 import { getEnvApiKey, type Model } from "@mariozechner/pi-ai";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -34,6 +35,8 @@ import type {
   BridgeKernelId,
   BridgeKernelPreference,
   BridgeModelId,
+  BridgeRuntimeControlOption,
+  BridgeRuntimeControls,
   BridgeState,
 } from "./bridge-types.js";
 import {
@@ -238,6 +241,194 @@ export function getBridgeKernelOptions(state: BridgeState): JsonObject[] {
   return options;
 }
 
+export function getBridgeRuntimeControls(state: BridgeState): JsonObject {
+  const active = resolveBridgeKernel(state.settings.kernel);
+  const controls =
+    active === "codex"
+      ? buildCodexRuntimeControls()
+      : active === "claude-code"
+        ? buildSingleModelRuntimeControls({
+            kernel: active,
+            source: "claude-code-config",
+            model: readClaudeConfiguredModel() ?? "claude-opus-4-6",
+            label: "Claude Opus 4.6",
+          })
+        : active === "hermes"
+          ? buildSingleModelRuntimeControls({
+              kernel: active,
+              source: "hermes-config",
+              model: readHermesConfiguredModel() ?? "hermes-default",
+              label: readHermesConfiguredModel() ?? "Hermes 默认模型",
+            })
+          : active === "pi"
+            ? buildPiRuntimeControls()
+            : buildSingleModelRuntimeControls({
+                kernel: active,
+                source: "scripted",
+                model: "scripted",
+                label: "Scripted demo",
+              });
+  return stripUndefined(controls as unknown as Record<string, unknown>) as JsonObject;
+}
+
+function buildCodexRuntimeControls(): BridgeRuntimeControls {
+  const cache = readCodexModelsCache();
+  const cacheModels = cache.models
+    .map((model) => ({
+      id: stringValue(model.slug),
+      label: stringValue(model.display_name) || stringValue(model.slug),
+      priority: numberValue(model.priority),
+      reasoning: normalizeReasoningOptions(model.supported_reasoning_levels),
+      defaultReasoning: normalizeReasoningEffort(model.default_reasoning_level),
+      speed: normalizeSpeedTiers(model.additional_speed_tiers),
+    }))
+    .filter((model): model is {
+      id: BridgeModelId;
+      label: string;
+      priority: number | undefined;
+      reasoning: BridgeRuntimeControlOption[];
+      defaultReasoning: string | undefined;
+      speed: BridgeRuntimeControlOption[];
+    } => Boolean(model.id && (BRIDGE_MODEL_IDS as readonly string[]).includes(model.id)));
+
+  const models = cacheModels.length
+    ? cacheModels
+        .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
+        .map((model) => ({ id: model.id, label: model.label }))
+    : CODEX_FALLBACK_MODELS;
+  const current = cacheModels.find((model) => model.id === readCodexConfiguredModel()) ?? cacheModels[0];
+  return {
+    kernel: "codex",
+    source: cache.source,
+    models,
+    defaultModel: readCodexConfiguredModel(),
+    reasoningEfforts: current?.reasoning?.length ? current.reasoning : DEFAULT_REASONING_OPTIONS,
+    defaultReasoningEffort: current?.defaultReasoning ?? "medium",
+    speedTiers: [{ id: "standard", label: "标准", description: "默认速度，常规用量" }, ...(current?.speed ?? [])],
+    defaultSpeedTier: "standard",
+  };
+}
+
+function buildPiRuntimeControls(): BridgeRuntimeControls {
+  return {
+    kernel: "pi",
+    source: "opengrove-native",
+    models: BRIDGE_MODEL_IDS
+      .filter((id) => id !== "gpt-5.3-codex-spark")
+      .map((id) => ({ id, label: MODEL_LABELS[id] ?? id })),
+    defaultModel: DEFAULT_BRIDGE_MODEL_ID,
+    reasoningEfforts: DEFAULT_REASONING_OPTIONS,
+    defaultReasoningEffort: readThinkingLevel() === "off" ? "medium" : readThinkingLevel(),
+    speedTiers: [],
+  };
+}
+
+function buildSingleModelRuntimeControls(input: {
+  kernel: BridgeKernelId;
+  source: string;
+  model: string;
+  label: string;
+}): BridgeRuntimeControls {
+  return {
+    kernel: input.kernel,
+    source: input.source,
+    models: [{ id: input.model, label: input.label }],
+    defaultModel: input.model,
+    reasoningEfforts: [],
+    speedTiers: [],
+  };
+}
+
+const MODEL_LABELS: Record<BridgeModelId, string> = {
+  "MiMo-V2-Pro": "MiMo-V2-Pro",
+  "gpt-5.5": "GPT-5.5",
+  "gpt-5.4": "GPT-5.4",
+  "gpt-5.4-mini": "GPT-5.4 Mini",
+  "gpt-5.3-codex": "GPT-5.3 Codex",
+  "gpt-5.3-codex-spark": "GPT-5.3 Codex Spark",
+  "gpt-5.2": "GPT-5.2",
+  "claude-opus-4-6": "Claude Opus 4.6",
+};
+
+const CODEX_FALLBACK_MODELS: BridgeRuntimeControlOption[] = BRIDGE_MODEL_IDS
+  .filter((id) => id.startsWith("gpt-"))
+  .map((id) => ({ id, label: MODEL_LABELS[id] ?? id }));
+
+const DEFAULT_REASONING_OPTIONS: BridgeRuntimeControlOption[] = [
+  { id: "low", label: "低" },
+  { id: "medium", label: "中" },
+  { id: "high", label: "高" },
+  { id: "xhigh", label: "超高" },
+];
+
+interface CodexModelsCache {
+  source: string;
+  models: Array<Record<string, unknown>>;
+}
+
+function readCodexModelsCache(): CodexModelsCache {
+  const path = resolve(homedir(), ".codex", "models_cache.json");
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as { models?: unknown };
+    return {
+      source: path,
+      models: Array.isArray(parsed.models)
+        ? parsed.models.filter((model): model is Record<string, unknown> =>
+            Boolean(model && typeof model === "object" && !Array.isArray(model)),
+          )
+        : [],
+    };
+  } catch {
+    return { source: "codex-fallback", models: [] };
+  }
+}
+
+function normalizeReasoningOptions(value: unknown): BridgeRuntimeControlOption[] {
+  if (!Array.isArray(value)) return DEFAULT_REASONING_OPTIONS;
+  const options = value
+    .map((item) => {
+      if (typeof item === "string") {
+        const effort = normalizeReasoningEffort(item);
+        return effort ? { id: effort, label: reasoningEffortLabel(effort) } : undefined;
+      }
+      if (!item || typeof item !== "object" || Array.isArray(item)) return undefined;
+      const record = item as Record<string, unknown>;
+      const effort = normalizeReasoningEffort(record.effort);
+      return effort
+        ? {
+            id: effort,
+            label: reasoningEffortLabel(effort),
+            description: stringValue(record.description),
+          }
+        : undefined;
+    })
+    .filter((item): item is BridgeRuntimeControlOption => Boolean(item));
+  return options.length ? options : DEFAULT_REASONING_OPTIONS;
+}
+
+function normalizeReasoningEffort(value: unknown): string | undefined {
+  return value === "low" || value === "medium" || value === "high" || value === "xhigh"
+    ? value
+    : undefined;
+}
+
+function reasoningEffortLabel(value: string): string {
+  return value === "low" ? "低" : value === "medium" ? "中" : value === "xhigh" ? "超高" : "高";
+}
+
+function normalizeSpeedTiers(value: unknown): BridgeRuntimeControlOption[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) =>
+      item === "fast"
+        ? { id: "fast", label: "快速", description: "1.5 倍速，用量增加" }
+        : typeof item === "string"
+          ? { id: item, label: item }
+          : undefined,
+    )
+    .filter((item): item is BridgeRuntimeControlOption => Boolean(item));
+}
+
 function isPrimarySettingsKnowledgeSource(source: KernelKnowledgeSource): boolean {
   return source.userVisible !== false && source.knowledgeLike !== false;
 }
@@ -394,15 +585,17 @@ export function readProviderHttpCaptureOptions(
   if (!state.settings.providerHttpCaptureEnabled) {
     return { enabled: false, inject: false, kernelId: kernel, status: "disabled" };
   }
-  const serviceState = readProviderHttpCaptureServiceState();
+  const { state: serviceState, error: startError } = ensureProviderHttpCaptureServiceRunning();
   const serviceRunning = Boolean(serviceState?.pid && isPidAlive(serviceState.pid));
   if (!serviceRunning) {
     return {
       enabled: true,
       inject: false,
       kernelId: kernel,
-      status: "service-not-running",
-      warning: "抓包开关已开启，但 mitmproxy 服务没有运行；本轮不会向内核注入代理，避免把会话直接打挂。",
+      status: startError ? "service-start-failed" : "service-not-running",
+      warning: startError
+        ? `抓包开关已开启，但自动启动 mitmproxy 失败：${startError}。本轮不会向内核注入代理，避免把会话直接打挂。`
+        : "抓包开关已开启，但 mitmproxy 服务没有运行；本轮不会向内核注入代理，避免把会话直接打挂。",
     };
   }
 
@@ -516,9 +709,44 @@ function resolveNativeModel(modelId: BridgeModelId): Model<any> {
       maxTokens: 64_000,
       reasoning: true,
     },
+    "gpt-5.5": {
+      apiId: "gpt-5.5",
+      name: "GPT-5.5",
+      contextWindow: 272_000,
+      maxTokens: 64_000,
+      reasoning: true,
+    },
     "gpt-5.4": {
       apiId: "gpt-5.4",
-      name: "Codex",
+      name: "GPT-5.4",
+      contextWindow: 272_000,
+      maxTokens: 64_000,
+      reasoning: true,
+    },
+    "gpt-5.4-mini": {
+      apiId: "gpt-5.4-mini",
+      name: "GPT-5.4 Mini",
+      contextWindow: 272_000,
+      maxTokens: 64_000,
+      reasoning: true,
+    },
+    "gpt-5.3-codex": {
+      apiId: "gpt-5.3-codex",
+      name: "GPT-5.3 Codex",
+      contextWindow: 272_000,
+      maxTokens: 64_000,
+      reasoning: true,
+    },
+    "gpt-5.3-codex-spark": {
+      apiId: "gpt-5.3-codex-spark",
+      name: "GPT-5.3 Codex Spark",
+      contextWindow: 272_000,
+      maxTokens: 64_000,
+      reasoning: true,
+    },
+    "gpt-5.2": {
+      apiId: "gpt-5.2",
+      name: "GPT-5.2",
       contextWindow: 272_000,
       maxTokens: 64_000,
       reasoning: true,
@@ -710,6 +938,41 @@ function providerHttpCaptureServiceStatePath(): string {
   );
 }
 
+function ensureProviderHttpCaptureServiceRunning(): { state?: Record<string, unknown>; error?: string } {
+  const current = readProviderHttpCaptureServiceState();
+  if (current?.pid && isPidAlive(current.pid)) {
+    return { state: current };
+  }
+  const scriptPath = resolve(process.cwd(), "scripts", "provider-http-capture.mjs");
+  if (!existsSync(scriptPath)) {
+    return { state: current, error: `启动脚本不存在：${scriptPath}` };
+  }
+  const result = spawnSync(process.execPath, [scriptPath, "start"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: process.env,
+    timeout: 15_000,
+  });
+  const next = readProviderHttpCaptureServiceState();
+  if (next?.pid && isPidAlive(next.pid)) {
+    return { state: next };
+  }
+  const output = [result.stderr, result.stdout]
+    .filter(Boolean)
+    .join("\n")
+    .trim()
+    .split("\n")
+    .slice(-4)
+    .join(" ");
+  if (result.error) {
+    return { state: next ?? current, error: result.error.message };
+  }
+  return {
+    state: next ?? current,
+    error: output || `启动命令退出码 ${result.status ?? "unknown"}`,
+  };
+}
+
 function readProviderHttpCaptureServiceState(): Record<string, unknown> | undefined {
   try {
     const state = JSON.parse(readFileSync(providerHttpCaptureServiceStatePath(), "utf8")) as Record<string, unknown>;
@@ -732,6 +995,10 @@ function isPidAlive(value: unknown): boolean {
 
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 export function isEnabledEnvFlag(value: string | undefined): boolean {

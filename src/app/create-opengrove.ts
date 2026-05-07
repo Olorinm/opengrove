@@ -114,6 +114,9 @@ export interface OpenGroveApp {
 
 export interface AgentTurnOptions {
   sessionId?: string;
+  requestedModelId?: string;
+  requestedEffort?: string;
+  requestedServiceTier?: string;
   sandbox?: SandboxPolicy;
   approvalPolicy?: ApprovalPolicy;
   signal?: AbortSignal;
@@ -373,8 +376,9 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
         runId,
         context,
         assembledContext,
-        requestedModelId: preparedInput.requestedModelId,
-        requestedEffort: preparedInput.requestedEffort,
+        requestedModelId: turnOptions.requestedModelId ?? preparedInput.requestedModelId,
+        requestedEffort: turnOptions.requestedEffort ?? preparedInput.requestedEffort,
+        requestedServiceTier: turnOptions.requestedServiceTier,
         requestedSkillInvocation: preparedInput.invocation,
         sandbox: turnOptions.sandbox,
         approvalPolicy: turnOptions.approvalPolicy,

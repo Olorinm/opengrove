@@ -410,7 +410,7 @@ export const CLAUDE_CODE_KERNEL_CONTRACT: KernelAdapterContract = {
         redaction: "raw",
         notes: [
           "Injects proxy and CA environment variables into the Claude CLI child process.",
-          "Use npm run capture:provider -- start to run the mitmproxy archive service first.",
+          "OpenGrove auto-starts the local mitmproxy archive service when provider capture is enabled.",
           "Works for provider HTTPS bodies when Claude Code's network stack honors the proxy and trusts the CA.",
         ],
       },
