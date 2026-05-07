@@ -13,4 +13,5 @@ export const APP_STORAGE_KEYS = {
   bridgeToken: `${APP_PROTOCOL_ID}BridgeToken`,
   sandbox: `${APP_PROTOCOL_ID}Sandbox`,
   approvalPolicy: `${APP_PROTOCOL_ID}ApprovalPolicy`,
+  sidebarWidth: `${APP_PROTOCOL_ID}SidebarWidth`,
 } as const;

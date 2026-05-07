@@ -32,6 +32,15 @@ type VaultFolderState = {
   defaultOpen: boolean;
 };
 
+type VaultMenuAnchor = {
+  left: number;
+  top: number;
+};
+
+type VaultMenuState = VaultMenuAnchor & {
+  path: string;
+};
+
 export function VaultSidebarPanel(props: {
   documents: any[];
   folders?: VaultFolderRecord[];
@@ -50,7 +59,7 @@ export function VaultSidebarPanel(props: {
   onRenameEntry(sourcePath: string, name: string): void;
   onStartRename(sourcePath: string): void;
 }) {
-  const [menuPath, setMenuPath] = useState("");
+  const [menuState, setMenuState] = useState<VaultMenuState | null>(null);
   const [selectedFolderPath, setSelectedFolderPath] = useState("");
   const [dropTargetPath, setDropTargetPath] = useState("");
   const [openPaths, setOpenPaths] = useState<Record<string, boolean>>({
@@ -68,6 +77,15 @@ export function VaultSidebarPanel(props: {
     [props.documents, props.focusedKnowledgeId],
   );
   const activeRootPath = rootVaultPath(selectedFolderPath || focusedFolderPath || tree[0]?.path || "OpenGrove");
+  const menuPath = menuState?.path ?? "";
+
+  function openMenu(path: string, anchor?: VaultMenuAnchor) {
+    if (!path || !anchor) {
+      setMenuState(null);
+      return;
+    }
+    setMenuState({ path, ...anchor });
+  }
 
   function toggleNode(path: string, currentlyOpen: boolean) {
     setSelectedFolderPath(path);
@@ -99,6 +117,26 @@ export function VaultSidebarPanel(props: {
     }));
   }, [props.editingPath]);
 
+  useEffect(() => {
+    if (!menuPath) return;
+    const closeMenu = (event: PointerEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest(".sidebar-tree-menu") || target?.closest(".sidebar-tree-more")) return;
+      setMenuState(null);
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuState(null);
+      }
+    };
+    window.addEventListener("pointerdown", closeMenu, true);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeMenu, true);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menuPath]);
+
   function moveEntryToFolder(sourcePath: string, targetFolderPath: string) {
     if (!isDroppableVaultTarget(sourcePath, targetFolderPath)) return;
     setDropTargetPath("");
@@ -118,13 +156,14 @@ export function VaultSidebarPanel(props: {
               node={node}
               dropTargetPath={dropTargetPath}
               editingPath={props.editingPath}
+              menuAnchor={menuState}
               menuPath={menuPath}
               onCancelRename={props.onCancelRename}
               onCreateFolder={props.onCreateFolder}
               onCreateNote={props.onCreateNote}
               onDeleteEntry={props.onDeleteEntry}
               onFocusKnowledge={props.onFocusKnowledge}
-              onOpenMenu={setMenuPath}
+              onOpenMenu={openMenu}
               onRenameEntry={props.onRenameEntry}
               onStartRename={props.onStartRename}
               onMoveEntry={moveEntryToFolder}
@@ -263,6 +302,7 @@ function VaultTreeNodeView(props: {
   openPaths: Record<string, boolean>;
   dropTargetPath: string;
   editingPath?: string;
+  menuAnchor: VaultMenuState | null;
   menuPath: string;
   onCancelRename(): void;
   onCreateFolder(parentPath: string): void;
@@ -270,7 +310,7 @@ function VaultTreeNodeView(props: {
   onDeleteEntry(sourcePath: string, kind: "folder" | "file", name: string): void;
   onFocusKnowledge(knowledgeId: string): void;
   onMoveEntry(sourcePath: string, targetParentPath: string): void;
-  onOpenMenu(path: string): void;
+  onOpenMenu(path: string, anchor?: VaultMenuAnchor): void;
   onRenameEntry(sourcePath: string, name: string): void;
   onStartRename(sourcePath: string): void;
   onSelectFolder(path: string): void;
@@ -363,7 +403,12 @@ function VaultTreeNodeView(props: {
   );
 
   const actionMenu = menuOpen ? (
-    <div className="sidebar-tree-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+    <div
+      className="sidebar-tree-menu"
+      role="menu"
+      style={props.menuAnchor ? { left: props.menuAnchor.left, top: props.menuAnchor.top } : undefined}
+      onClick={(event) => event.stopPropagation()}
+    >
       {isFolder ? (
         <>
           <button type="button" role="menuitem" onClick={() => {
@@ -433,7 +478,7 @@ function VaultTreeNodeView(props: {
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              props.onOpenMenu(menuOpen ? "" : props.node.path);
+              props.onOpenMenu(menuOpen ? "" : props.node.path, menuAnchorFromButton(event.currentTarget));
             }}
           >
             <MoreHorizontal size={13} />
@@ -451,6 +496,7 @@ function VaultTreeNodeView(props: {
                 node={child}
                 dropTargetPath={props.dropTargetPath}
                 editingPath={props.editingPath}
+                menuAnchor={props.menuAnchor}
                 menuPath={props.menuPath}
                 onCancelRename={props.onCancelRename}
                 onCreateFolder={props.onCreateFolder}
@@ -500,7 +546,7 @@ function VaultTreeNodeView(props: {
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          props.onOpenMenu(menuOpen ? "" : props.node.path);
+          props.onOpenMenu(menuOpen ? "" : props.node.path, menuAnchorFromButton(event.currentTarget));
         }}
       >
         <MoreHorizontal size={13} />
@@ -604,6 +650,18 @@ function safeVaultTreePath(path: unknown): string {
 
 function displayVaultFileName(name: string): string {
   return name.replace(/\.(?:md|markdown|mdx)$/i, "");
+}
+
+function menuAnchorFromButton(button: HTMLElement): VaultMenuAnchor {
+  const rect = button.getBoundingClientRect();
+  const menuWidth = 168;
+  const menuHeight = 188;
+  const margin = 8;
+  const left = Math.min(Math.max(margin, rect.right - menuWidth), window.innerWidth - menuWidth - margin);
+  const top = window.innerHeight - rect.bottom - margin >= menuHeight
+    ? rect.bottom + 6
+    : Math.max(margin, rect.top - menuHeight - 6);
+  return { left, top };
 }
 
 function collectVaultFolderStates(nodes: VaultTreeNode[], depth = 0): VaultFolderState[] {

@@ -1,0 +1,80 @@
+:root {
+  /* ── Color ── */
+  --c-bg: #fffefa;
+  --c-surface: #f7f6f2;
+  --c-surface-hover: #eeece6;
+  --c-surface-active: #e9e6de;
+
+  --c-text: #20221d;
+  --c-text-2: #343630;
+  --c-text-3: #4f514a;
+  --c-muted: #8a8d86;
+  --c-faint: #a8aaa3;
+
+  --c-border: #e7e3da;
+  --c-border-strong: #d4d0c7;
+
+  --c-accent: #c94f24;
+  --c-accent-hover: #b3441f;
+  --c-success: #0f6d49;
+  --c-warning: #b45309;
+  --c-error: #8d1f1f;
+
+  /* ── Typography ── */
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --font-mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+
+  --fw-normal: 400;
+  --fw-medium: 520;
+  --fw-semibold: 650;
+  --fw-bold: 720;
+
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+  --fs-3xl: 28px;
+
+  --lh-tight: 1.25;
+  --lh-normal: 1.5;
+  --lh-relaxed: 1.65;
+
+  /* ── Spacing (4px base) ── */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* ── Radius ── */
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-pill: 999px;
+
+  /* ── Elevation ── */
+  --shadow-sm: 0 2px 8px rgba(72, 65, 50, 0.06);
+  --shadow-md: 0 8px 22px rgba(72, 65, 50, 0.1);
+  --shadow-lg: 0 18px 48px rgba(72, 65, 50, 0.15);
+
+  /* ── Motion ── */
+  --dur-fast: 120ms;
+  --dur-normal: 200ms;
+  --dur-slow: 320ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+
+  /* ── Z-index ── */
+  --z-sticky: 100;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+}

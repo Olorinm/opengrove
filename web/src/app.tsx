@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, MouseEvent } from "react";
+import type { CSSProperties, ChangeEvent, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { FilePlus2, FolderPlus, ListChevronsDownUp, ListChevronsUpDown, PanelRightClose, PanelRightOpen, Search } from "lucide-react";
@@ -93,6 +93,16 @@ import { HomeDashboardView, WorkspaceInspector } from "./components/workspace/wo
 import { isPinned, isWorking } from "./components/workspace/helpers";
 import { useUiStore, type UiProject, type UiThread } from "./store";
 
+const DEFAULT_SIDEBAR_WIDTH = 284;
+const MIN_SIDEBAR_WIDTH = 244;
+const MAX_SIDEBAR_WIDTH = 520;
+
+function readStoredSidebarWidth(): number {
+  const raw = window.localStorage.getItem(APP_STORAGE_KEYS.sidebarWidth);
+  const value = raw ? Number(raw) : DEFAULT_SIDEBAR_WIDTH;
+  return clamp(Number.isFinite(value) ? value : DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
+}
+
 export function App() {
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState("");
@@ -124,7 +134,9 @@ export function App() {
   const [approvalPolicy, setApprovalPolicyState] = useState<ApprovalPolicy>(() => readStoredApprovalPolicy());
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [isComposingText, setIsComposingText] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
   const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const modelMenuRef = useRef<HTMLDivElement | null>(null);
   const threadScrollRef = useRef<HTMLElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -735,6 +747,36 @@ export function App() {
     window.removeEventListener("pointermove", onPointerMove);
   }
 
+  function onSidebarResizePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    sidebarResizeRef.current = {
+      startX: event.clientX,
+      startWidth: sidebarWidth,
+    };
+    document.body.dataset.sidebarResizing = "true";
+    window.addEventListener("pointermove", onSidebarResizePointerMove);
+    window.addEventListener("pointerup", onSidebarResizePointerUp, { once: true });
+  }
+
+  function onSidebarResizePointerMove(event: PointerEvent) {
+    if (!sidebarResizeRef.current) {
+      return;
+    }
+    const nextWidth = clamp(
+      sidebarResizeRef.current.startWidth + event.clientX - sidebarResizeRef.current.startX,
+      MIN_SIDEBAR_WIDTH,
+      MAX_SIDEBAR_WIDTH,
+    );
+    setSidebarWidth(nextWidth);
+    window.localStorage.setItem(APP_STORAGE_KEYS.sidebarWidth, String(Math.round(nextWidth)));
+  }
+
+  function onSidebarResizePointerUp() {
+    sidebarResizeRef.current = null;
+    delete document.body.dataset.sidebarResizing;
+    window.removeEventListener("pointermove", onSidebarResizePointerMove);
+  }
+
   function applySkillSuggestion(skill: SkillRecord) {
     insertPrompt(`/${skillInvocationName(skill)} `);
     setActiveSkillIndex(0);
@@ -953,7 +995,11 @@ export function App() {
   }
 
   return (
-    <div className="app-shell react-app" data-view={activeView}>
+    <div
+      className="app-shell react-app"
+      data-view={activeView}
+      style={{ "--opengrove-sidebar-width": `${sidebarWidth}px` } as CSSProperties}
+    >
       <AppRail
         activeSection={activeRailSection}
         onOpenSection={openRailSection}
@@ -1088,6 +1134,14 @@ export function App() {
           ) : null}
         </nav>
       </aside>
+
+      <div
+        className="sidebar-resize-handle"
+        role="separator"
+        aria-label="调整侧边栏宽度"
+        aria-orientation="vertical"
+        onPointerDown={onSidebarResizePointerDown}
+      />
 
       <MobileNav activeView={activeView} onSelect={setView} />
 

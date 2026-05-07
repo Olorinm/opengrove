@@ -31,7 +31,7 @@
 .settings-section-title {
   color: var(--text);
   font-size: 13px;
-  font-weight: 720;
+  font-weight: var(--fw-bold);
 }
 
 .settings-section-note,
@@ -46,7 +46,7 @@
   width: 100%;
   min-height: 36px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: var(--surface);
   color: var(--text);
   padding: 0 10px;
@@ -71,7 +71,7 @@
   grid-template-columns: 44px minmax(0, 1fr);
   gap: 7px 10px;
   align-items: center;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: rgba(74, 63, 49, 0.04);
   padding: 10px;
   color: var(--muted);
@@ -81,7 +81,7 @@
 .settings-capture-grid code,
 .settings-help code {
   overflow: hidden;
-  border-radius: 5px;
+  border-radius: var(--r-sm);
   background: rgba(74, 63, 49, 0.07);
   color: var(--text);
   padding: 2px 5px;
@@ -91,12 +91,12 @@
 
 .settings-capture-grid strong {
   color: var(--text);
-  font-weight: 650;
+  font-weight: var(--fw-semibold);
 }
 
 .settings-warning {
   margin: 0;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: rgba(201, 79, 36, 0.08);
   color: #9a391a;
   padding: 8px 10px;
@@ -106,7 +106,7 @@
 
 .settings-restart-note {
   margin: 0;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: rgba(74, 63, 49, 0.06);
   color: var(--text);
   padding: 8px 10px;
@@ -123,7 +123,7 @@
   z-index: 70;
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
-  background: #fffefa;
+  background: var(--c-bg);
   color: var(--text);
 }
 
@@ -170,11 +170,11 @@
 .settings-nav-item {
   gap: 10px;
   min-height: 36px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   padding: 0 10px;
   color: #343832;
   font-size: 14px;
-  font-weight: 590;
+  font-weight: var(--fw-medium);
   text-align: left;
 }
 
@@ -212,7 +212,7 @@
 .settings-screen-kicker {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 780;
+  font-weight: var(--fw-bold);
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -243,8 +243,8 @@
   display: grid;
   gap: 16px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fffefa;
+  border-radius: var(--r-md);
+  background: var(--c-bg);
   padding: 18px;
 }
 
@@ -280,12 +280,12 @@
 .settings-status-pill {
   align-self: start;
   flex: 0 0 auto;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: #ebeee9;
   color: #4d534d;
   padding: 5px 9px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .settings-status-pill.muted {
@@ -304,8 +304,8 @@
   gap: 6px;
   min-height: 88px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #faf9f4;
+  border-radius: var(--r-md);
+  background: var(--c-bg);
   color: var(--text);
   cursor: pointer;
   padding: 14px;
@@ -340,19 +340,19 @@
   flex: 0 0 auto;
   min-height: 32px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fffefa;
-  color: #343630;
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  color: var(--c-text-2);
   cursor: pointer;
   padding: 0 11px;
   font: inherit;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .settings-inline-link:hover,
 .settings-inline-link:focus-visible {
-  background: #f0ede5;
+  background: var(--c-surface-hover);
   outline: 0;
 }
 
@@ -383,7 +383,7 @@
 
 .settings-info-row strong {
   color: var(--text);
-  font-weight: 650;
+  font-weight: var(--fw-semibold);
 }
 
 .settings-info-row code,
@@ -391,7 +391,7 @@
 .settings-install-card code,
 .settings-install-action code {
   overflow: hidden;
-  border-radius: 5px;
+  border-radius: var(--r-sm);
   background: rgba(74, 63, 49, 0.07);
   color: var(--text);
   padding: 2px 5px;
@@ -405,14 +405,14 @@
   gap: 12px;
   align-items: start;
   border: 1px solid rgba(74, 63, 49, 0.08);
-  border-radius: 8px;
-  background: #faf9f4;
+  border-radius: var(--r-md);
+  background: var(--c-bg);
   padding: 12px;
 }
 
 .settings-source-row input {
   margin-top: 3px;
-  accent-color: #343630;
+  accent-color: var(--c-text-2);
 }
 
 .settings-source-main {
@@ -428,22 +428,22 @@
   align-items: baseline;
   color: var(--text);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .settings-source-title small {
   color: var(--muted);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: var(--fw-semibold);
 }
 
 .settings-source-state {
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: rgba(74, 63, 49, 0.06);
   color: var(--muted);
   padding: 4px 7px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 
 .settings-source-state.ok {
@@ -453,8 +453,8 @@
 
 .settings-switch-card {
   border: 1px solid rgba(74, 63, 49, 0.08);
-  border-radius: 8px;
-  background: #faf9f4;
+  border-radius: var(--r-md);
+  background: var(--c-bg);
   padding: 12px;
 }
 
@@ -463,14 +463,14 @@
   display: grid;
   gap: 6px;
   border: 1px solid rgba(74, 63, 49, 0.08);
-  border-radius: 8px;
-  background: #faf9f4;
+  border-radius: var(--r-md);
+  background: var(--c-bg);
   padding: 12px;
 }
 
 .settings-install-action {
   margin-top: 6px;
-  background: #fffefa;
+  background: var(--c-bg);
 }
 
 .settings-empty-state {
