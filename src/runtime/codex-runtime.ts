@@ -81,9 +81,9 @@ export class CodexRuntime implements AgentRuntime {
       this.options.configuredModel,
     );
     const sandbox = resolveCodexSandboxMode(request, this.options.sandbox);
-    const approvalPolicy = resolveCodexApprovalPolicy(request.approvalPolicy, this.options.approvalPolicy);
+    const approvalPolicy = resolveCodexApprovalPolicy(request.accessMode, this.options.approvalPolicy);
     const approvalsReviewer = resolveCodexApprovalsReviewer(this.options.approvalsReviewer);
-    const serviceTier = resolveCodexServiceTier(request.requestedServiceTier, this.options.serviceTier);
+    const serviceTier = resolveCodexServiceTier(request.responseSpeed, this.options.serviceTier);
     const developerInstructions = buildCodexDeveloperInstructions();
     const turnInput = buildCodexTurnInput(request);
     const turnInputItems = buildCodexTurnInputItems(request, turnInput);

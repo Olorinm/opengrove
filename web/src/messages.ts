@@ -249,15 +249,15 @@ export function applyStreamEventToMessage(message: StoredMessage, event: any): {
     case "skill.forked":
       appendSkillEventPart(message, event, event.status || "finished");
       break;
-	    case "skill.cleared":
-	      appendNotePart(message, event.reason || "当前 skill turn 已结束。", "muted");
-	      break;
-	    case "compaction.started":
-	      appendNotePart(message, "Codex 正在压缩上下文，已记录本轮上下文快照。", "muted");
-	      break;
-	    case "compaction.finished":
-	      appendNotePart(message, event.summary || "上下文压缩完成。", "success");
-	      break;
+    case "skill.cleared":
+      appendNotePart(message, event.reason || "当前 skill turn 已结束。", "muted");
+      break;
+    case "compaction.started":
+      appendNotePart(message, "正在自动压缩上下文", "compaction-started");
+      break;
+    case "compaction.finished":
+      appendNotePart(message, "上下文已自动压缩", "compaction-finished");
+      break;
     case "tool.started":
       if (isQuietToolEvent(event.toolId)) {
         break;

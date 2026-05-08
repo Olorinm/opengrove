@@ -6,6 +6,7 @@ import { APP_PROTOCOL_ID, appEnvName } from "../identity.js";
 import { createBridgeState } from "../server/bridge-state.js";
 import { createBridgeKernel, getBridgeKernelOptions, normalizeBridgeKernelPreference, resolveBridgeKernel } from "../server/kernel-selection.js";
 import { filterEnabledKnowledgeDocuments } from "../server/knowledge-files.js";
+import { providerEnvForKernel, resolveProviderForKernel } from "../server/provider-profiles.js";
 
 async function main() {
   const cwd = mkdtempSync(join(tmpdir(), "opengrove-bridge-kernel-"));
@@ -26,8 +27,25 @@ async function main() {
 
   process.env[appEnvName("HERMES_BIN")] = fakeHermes;
   process.env[appEnvName("BRIDGE_SETTINGS_PATH")] = join(cwd, "bridge-settings.json");
+  const fakeDeepSeek = join(cwd, "fake-deepseek.sh");
+  writeFileSync(
+    fakeDeepSeek,
+    [
+      "#!/bin/sh",
+      "if [ \"$1\" = \"--version\" ]; then",
+      "  echo \"deepseek-fake 0.0.0\"",
+      "  exit 0",
+      "fi",
+      "echo \"deepseek ok\"",
+    ].join("\n"),
+    "utf8",
+  );
+  chmodSync(fakeDeepSeek, 0o755);
+  process.env[appEnvName("DEEPSEEK_TUI_BIN")] = fakeDeepSeek;
+  process.env[appEnvName("VOLC_CODING_API_KEY")] = "test-key";
 
   assert.equal(normalizeBridgeKernelPreference("hermes", "auto"), "hermes");
+  assert.equal(normalizeBridgeKernelPreference("deepseek-tui", "auto"), "deepseek-tui");
   assert.equal(resolveBridgeKernel("hermes"), "hermes");
 
   const state = createBridgeState({ statePath: join(cwd, "state.json") });
@@ -55,6 +73,22 @@ async function main() {
     !(codexOption?.sources as any[]).some((source) => String(source.id).includes("project")),
     "Codex settings sources should not expose project-bound files before OpenGrove has workspace binding",
   );
+  const deepseekOption = options.find((option) => option.id === "deepseek-tui");
+  assert.equal(deepseekOption?.available, true);
+  assert.ok(
+    Array.isArray(deepseekOption?.sources) &&
+      (deepseekOption?.sources as any[]).some((source) => source.id === "deepseek.skills"),
+    "DeepSeek TUI adapter should expose native skills as a kernel source",
+  );
+  const settings = state.settings;
+  settings.kernelProviderBindings = { "deepseek-tui": "volc-coding-plan" };
+  const providerOption = getBridgeKernelOptions(state).find((option) => option.id === "deepseek-tui");
+  assert.equal(providerOption?.providerId, "volc-coding-plan");
+  const volc = resolveProviderForKernel("deepseek-tui", settings.kernelProviderBindings);
+  const env = providerEnvForKernel("deepseek-tui", volc, "glm-5.1");
+  assert.equal(env?.DEEPSEEK_BASE_URL, "https://ark.cn-beijing.volces.com/api/coding/v3");
+  assert.equal(env?.DEEPSEEK_MODEL, "glm-5.1");
+  assert.equal(env?.DEEPSEEK_API_KEY, "test-key");
 
   state.app.knowledge.upsert({
     id: "test.project-claude-skill",

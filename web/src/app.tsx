@@ -2,13 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ChangeEvent, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { FilePlus2, FolderPlus, ListChevronsDownUp, ListChevronsUpDown, PanelRightClose, PanelRightOpen, Search } from "lucide-react";
+import { Bot, ChevronDown, FilePlus2, FolderPlus, ListChevronsDownUp, ListChevronsUpDown, PanelRightClose, PanelRightOpen, Search, SquarePen, X } from "lucide-react";
 import type {
   AttachmentPayload,
-  ApprovalPolicy,
   ApprovalsResponse,
-  ArtifactRecord,
   BridgeSettingsResponse,
+  BridgeSettings,
   ContextArtifactPayload,
   HealthResponse,
   KernelPreference,
@@ -16,7 +15,8 @@ import type {
   KnowledgeFolderRecord,
   MessageContext,
   ReasoningEffort,
-  SandboxPolicy,
+  RuntimeAccessMode,
+  ResponseSpeed,
   SkillRecord,
 } from "./bridge";
 import {
@@ -27,11 +27,10 @@ import {
 import {
   clamp,
   createEmptyWorkingState,
-  normalizeComputerState,
   normalizeWorkingState,
-  sortedArtifacts,
 } from "./format";
 import { APP_PRODUCT_NAME, APP_STORAGE_KEYS } from "./identity";
+import { useI18n } from "./i18n";
 import {
   applyApprovalResultToMessages,
   applyStreamEventToMessage,
@@ -42,9 +41,7 @@ import { buildContextPayload, createSnapshot } from "./runtime/composer-context"
 import { runThreadTurn } from "./runtime/thread-runtime";
 import {
   MAX_COMPOSER_ATTACHMENTS,
-  MAX_COMPOSER_CONTEXT_ARTIFACTS,
   MIN_COMPOSER_HEIGHT,
-  artifactToComposerContext,
   buildApprovalResolutionMessage,
   cloneMessage,
   composeSkillPrompt,
@@ -58,21 +55,20 @@ import {
   parseSlashSkillQuery,
   pickCodexSkills,
   readComposerAttachment,
-  readStoredApprovalPolicy,
-  readStoredSandboxPolicy,
+  readStoredAccessMode,
   resolveCurrentSession,
-  resolveDisplayedComputerState,
   resolveLatestRun,
   resolveLatestRuntimeBlocker,
   skillInvocationName,
 } from "./runtime/ui-model";
 import { useBridgeQueries } from "./runtime/use-bridge-queries";
-import { ChatComposer, modelOptionsForKernel, type ComposerMenuKind, type ResponseSpeed } from "./components/chat/chat-composer";
-import { ArtifactSpaceView, KnowledgeInboxView, KnowledgeLibraryView } from "./components/knowledge/knowledge-views";
+import { ChatComposer, modelOptionsForKernel, type ComposerMenuKind } from "./components/chat/chat-composer";
+import { KnowledgeLibraryView } from "./components/knowledge/knowledge-views";
 import {
   emptyKnowledgeLedgers,
   feedbackSignalLabel,
   filterVaultDocuments,
+  knowledgeVaultPath,
 } from "./components/knowledge/knowledge-model";
 import { SkillCommandMenu } from "./components/chat/skill-command-menu";
 import { ThreadShell } from "./components/chat/thread-shell";
@@ -86,19 +82,30 @@ import { ConversationSidebar } from "./components/sidebar/conversation-sidebar";
 import { VaultSidebarPanel } from "./components/sidebar/knowledge-sidebar-panels";
 import { buildSidebarProjectTree, sortSidebarThreads, type ConversationSortKey } from "./components/sidebar/conversation-sidebar-model";
 import { SettingsDialog } from "./components/sidebar/settings-dialog";
-import { SimpleEntityView, renderMemoryCard, renderSkillCard, renderToolCard } from "./components/system/system-views";
-import { HomeDashboardView, WorkspaceInspector } from "./components/workspace/workspace-views";
-import { isPinned, isWorking } from "./components/workspace/helpers";
+import { WorkspaceInspector } from "./components/workspace/workspace-views";
 import { useUiStore, type UiProject, type UiThread } from "./store";
 
 const DEFAULT_SIDEBAR_WIDTH = 284;
 const MIN_SIDEBAR_WIDTH = 244;
 const MAX_SIDEBAR_WIDTH = 520;
+const DEFAULT_LIBRARY_AI_PANEL_WIDTH = 420;
+const MIN_LIBRARY_AI_PANEL_WIDTH = 340;
+const MAX_LIBRARY_AI_PANEL_WIDTH = 680;
 
 function readStoredSidebarWidth(): number {
   const raw = window.localStorage.getItem(APP_STORAGE_KEYS.sidebarWidth);
   const value = raw ? Number(raw) : DEFAULT_SIDEBAR_WIDTH;
   return clamp(Number.isFinite(value) ? value : DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
+}
+
+function readStoredLibraryAiPanelWidth(): number {
+  const raw = window.localStorage.getItem(APP_STORAGE_KEYS.libraryAiPanelWidth);
+  const value = raw ? Number(raw) : DEFAULT_LIBRARY_AI_PANEL_WIDTH;
+  return clamp(
+    Number.isFinite(value) ? value : DEFAULT_LIBRARY_AI_PANEL_WIDTH,
+    MIN_LIBRARY_AI_PANEL_WIDTH,
+    MAX_LIBRARY_AI_PANEL_WIDTH,
+  );
 }
 
 function readStoredReasoningEffort(): ReasoningEffort {
@@ -115,6 +122,7 @@ function readStoredResponseSpeed(): ResponseSpeed {
 }
 
 export function App() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState("");
   const [attachments, setAttachments] = useState<AttachmentPayload[]>([]);
@@ -141,13 +149,16 @@ export function App() {
   const [modelMenuPlacement, setModelMenuPlacement] = useState<"up" | "down">("up");
   const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(() => readStoredReasoningEffort());
   const [responseSpeed, setResponseSpeedState] = useState<ResponseSpeed>(() => readStoredResponseSpeed());
-  const [sandbox, setSandboxState] = useState<SandboxPolicy>(() => readStoredSandboxPolicy());
-  const [approvalPolicy, setApprovalPolicyState] = useState<ApprovalPolicy>(() => readStoredApprovalPolicy());
+  const [accessMode, setAccessModeState] = useState<RuntimeAccessMode>(() => readStoredAccessMode());
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [libraryAiOpen, setLibraryAiOpen] = useState(false);
+  const [libraryAiThreadMenuOpen, setLibraryAiThreadMenuOpen] = useState(false);
   const [isComposingText, setIsComposingText] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
+  const [libraryAiPanelWidth, setLibraryAiPanelWidth] = useState(readStoredLibraryAiPanelWidth);
   const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const libraryAiResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const modelMenuRef = useRef<HTMLDivElement | null>(null);
   const threadScrollRef = useRef<HTMLElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -155,14 +166,9 @@ export function App() {
   const queuedChoicePromptRef = useRef<string | null>(null);
   const activeTurnAbortRef = useRef<AbortController | null>(null);
 
-  function setSandbox(value: SandboxPolicy) {
-    setSandboxState(value);
-    window.localStorage.setItem(APP_STORAGE_KEYS.sandbox, value);
-  }
-
-  function setApprovalPolicy(value: ApprovalPolicy) {
-    setApprovalPolicyState(value);
-    window.localStorage.setItem(APP_STORAGE_KEYS.approvalPolicy, value);
+  function setAccessMode(value: RuntimeAccessMode) {
+    setAccessModeState(value);
+    window.localStorage.setItem(APP_STORAGE_KEYS.accessMode, value);
   }
 
   function setReasoningEffort(value: ReasoningEffort) {
@@ -224,29 +230,17 @@ export function App() {
   const knowledge = inventory?.knowledge ?? [];
   const knowledgeFolders = inventory?.knowledgeFolders ?? [];
   const knowledgeLedgers = inventory?.knowledgeLedgers ?? emptyKnowledgeLedgers();
-  const memory = inventory?.memory ?? [];
   const skills = inventory?.skills ?? [];
   const tools = inventory?.tools ?? [];
   const sessions = inventory?.sessions ?? [];
   const runs = inventory?.runs ?? [];
   const executions = inventory?.executions ?? [];
   const workingState = normalizeWorkingState(inventory?.workingState ?? createEmptyWorkingState());
-  const liveComputerState = normalizeComputerState(inventory?.computerState ?? {});
-  const displayedComputerState = resolveDisplayedComputerState(liveComputerState, artifacts);
   const currentThreadRunIds = useMemo(() => collectMessageRunIds(messages), [messages]);
   const hasThreadActivity = messages.length > 0 || sending;
   const latestRun = resolveLatestRun(runs, workingState.sessionId, currentThreadRunIds, hasThreadActivity);
   const currentSession = resolveCurrentSession(sessions, workingState, threadId, latestRun, hasThreadActivity);
   const runtimeBlocker = resolveLatestRuntimeBlocker(executions, latestRun?.sessionId || currentSession?.id || "");
-  const pinnedArtifacts = useMemo(
-    () => sortedArtifacts(artifacts.filter((artifact) => isPinned(artifact, workingState))),
-    [artifacts, workingState],
-  );
-  const workingArtifacts = useMemo(
-    () => sortedArtifacts(artifacts.filter((artifact) => isWorking(artifact, workingState))),
-    [artifacts, workingState],
-  );
-  const recentArtifacts = useMemo(() => sortedArtifacts(artifacts).slice(0, 6), [artifacts]);
   const activeKernel = healthQuery.data?.kernel;
   const isCodexKernel = activeKernel === "codex";
   const sidebarProjects = useMemo(() => {
@@ -267,6 +261,39 @@ export function App() {
     () => projects.find((project) => project.id === projectId)?.title || APP_PRODUCT_NAME,
     [projectId, projects],
   );
+  const libraryAiThreadOptions = useMemo(() => {
+    const realThreads = threads.filter((thread) => !thread.id.startsWith("empty:"));
+    if (realThreads.some((thread) => thread.id === threadId)) {
+      return realThreads;
+    }
+    return [
+      {
+        id: threadId,
+        projectId,
+        title: t("conversation.newThreadFallback"),
+        updatedAt: new Date().toISOString(),
+        messages,
+      },
+      ...realThreads,
+    ];
+  }, [messages, projectId, t, threadId, threads]);
+  const currentLibraryAiThreadTitle = useMemo(
+    () => libraryAiThreadOptions.find((thread) => thread.id === threadId)?.title || t("conversation.newThreadFallback"),
+    [libraryAiThreadOptions, t, threadId],
+  );
+  const currentVaultFileContext = useMemo(() => {
+    if (activeView !== "library" || !libraryAiOpen || !focusedKnowledgeId) {
+      return null;
+    }
+    const document = knowledge.find((item) => item?.id === focusedKnowledgeId);
+    const vaultPath = document ? knowledgeVaultPath(document) : "";
+    return vaultPath
+      ? {
+          knowledgeId: String(document?.id || ""),
+          vaultPath,
+        }
+      : null;
+  }, [activeView, focusedKnowledgeId, knowledge, libraryAiOpen]);
   const skillQuery = parseSlashSkillQuery(question);
   const slashSkillCandidates = useMemo(
     () => (isCodexKernel ? pickCodexSkills(skills) : skills),
@@ -341,6 +368,8 @@ export function App() {
       kernel: KernelPreference;
       providerHttpCaptureEnabled: boolean;
       kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
+      kernelProviderBindings?: Record<string, string>;
+      customProviders?: BridgeSettings["customProviders"];
     }) =>
       patchJson<BridgeSettingsResponse>("/settings", payload),
     onSuccess(result) {
@@ -358,7 +387,7 @@ export function App() {
       queryClient.invalidateQueries({ queryKey: ["events"] });
     },
     onError(error) {
-      appendMessage("system", `保存设置失败：${error instanceof Error ? error.message : String(error)}`);
+      appendMessage("system", t("system.saveSettingsFailed", { message: error instanceof Error ? error.message : String(error) }));
     },
   });
 
@@ -387,22 +416,6 @@ export function App() {
     onSuccess() {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
-    },
-  });
-
-  const recordComputerMutation = useMutation({
-    mutationFn: () =>
-      patchJson<any>("/computer-state", {
-        ...displayedComputerState,
-        recordArtifact: true,
-      }),
-    onSuccess(result) {
-      mergeFinalDataIntoCache(queryClient, result);
-      appendMessage("system", `已入库 computer 观察：${result.artifact?.title || result.artifact?.id || "snapshot"}`);
-      queryClient.invalidateQueries({ queryKey: ["events"] });
-    },
-    onError(error) {
-      appendMessage("system", `入库 computer 观察失败：${error instanceof Error ? error.message : String(error)}`);
     },
   });
 
@@ -436,12 +449,12 @@ export function App() {
         queryClient.invalidateQueries({ queryKey: ["knowledge-file", result.document.id] });
       }
       if (!variables.silent) {
-        appendMessage("system", `已保存到本地文件：${result.file?.vaultPath || result.document?.title || result.document?.id || "未命名页面"}`);
+        appendMessage("system", t("system.savedLocalFile", { name: result.file?.vaultPath || result.document?.title || result.document?.id || t("system.unnamedPage") }));
       }
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError(error) {
-      appendMessage("system", `保存资料库页面失败：${error instanceof Error ? error.message : String(error)}`);
+      appendMessage("system", t("system.saveLibraryPageFailed", { message: error instanceof Error ? error.message : String(error) }));
     },
   });
 
@@ -460,7 +473,7 @@ export function App() {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError(error) {
-      appendMessage("system", `创建本地文件失败：${error instanceof Error ? error.message : String(error)}`);
+      appendMessage("system", t("system.createLocalFileFailed", { message: error instanceof Error ? error.message : String(error) }));
     },
   });
 
@@ -472,7 +485,7 @@ export function App() {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError(error) {
-      appendMessage("system", `移动本地文件失败：${error instanceof Error ? error.message : String(error)}`);
+      appendMessage("system", t("system.moveLocalFileFailed", { message: error instanceof Error ? error.message : String(error) }));
     },
   });
 
@@ -494,7 +507,7 @@ export function App() {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError(error) {
-      appendMessage("system", `重命名本地文件失败：${error instanceof Error ? error.message : String(error)}`);
+      appendMessage("system", t("system.renameLocalFileFailed", { message: error instanceof Error ? error.message : String(error) }));
     },
   });
 
@@ -511,18 +524,18 @@ export function App() {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError(error) {
-      appendMessage("system", `删除本地文件失败：${error instanceof Error ? error.message : String(error)}`);
+      appendMessage("system", t("system.deleteLocalFileFailed", { message: error instanceof Error ? error.message : String(error) }));
     },
   });
 
   const bridgeStatus = healthQuery.data?.ok
     ? {
         status: "online",
-        label: "已连接",
-        detail: healthQuery.data.tokenRequired ? "需要 token" : "本地可用",
+        label: t("system.connected"),
+        detail: healthQuery.data.tokenRequired ? t("system.tokenRequired") : t("system.localReady"),
         kernel: formatKernelLabel(healthQuery.data.kernel),
       }
-    : { status: "offline", label: "未连接", detail: healthQuery.isFetching ? "检查中" : "Failed to fetch" };
+    : { status: "offline", label: t("system.disconnected"), detail: healthQuery.isFetching ? t("system.checking") : "Failed to fetch" };
 
   function openAttachmentPicker(event?: MouseEvent<HTMLButtonElement>) {
     event?.currentTarget.blur();
@@ -541,7 +554,7 @@ export function App() {
     createKnowledgeFileSystemMutation.mutate({
       kind,
       parentPath,
-      name: "未命名",
+      name: t("system.unnamed"),
       startRename: true,
     });
   }
@@ -573,7 +586,7 @@ export function App() {
 
     const remainingSlots = Math.max(0, MAX_COMPOSER_ATTACHMENTS - attachments.length);
     if (remainingSlots <= 0) {
-      appendMessage("system", `一次最多添加 ${MAX_COMPOSER_ATTACHMENTS} 个附件。`);
+      appendMessage("system", t("system.maxAttachments", { count: MAX_COMPOSER_ATTACHMENTS }));
       return;
     }
 
@@ -581,24 +594,12 @@ export function App() {
     const loaded = await Promise.all(selected.map(readComposerAttachment));
     setAttachments((current) => [...current, ...loaded].slice(0, MAX_COMPOSER_ATTACHMENTS));
     if (files.length > selected.length) {
-      appendMessage("system", `已添加前 ${selected.length} 个附件；一次最多 ${MAX_COMPOSER_ATTACHMENTS} 个。`);
+      appendMessage("system", t("system.partialAttachments", { selected: selected.length, count: MAX_COMPOSER_ATTACHMENTS }));
     }
   }
 
   function removeAttachment(attachmentId: string) {
     setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
-  }
-
-  function addArtifactToComposer(artifact: ArtifactRecord) {
-    const item = artifactToComposerContext(artifact);
-    setContextArtifacts((current) => {
-      if (current.some((existing) => existing.id === item.id)) {
-        return current;
-      }
-      return [...current, item].slice(-MAX_COMPOSER_CONTEXT_ARTIFACTS);
-    });
-    setView("chat");
-    requestAnimationFrame(() => composerInputRef.current?.focus());
   }
 
   function removeContextArtifact(artifactId: string) {
@@ -636,6 +637,48 @@ export function App() {
     setInspectorOpen(false);
   }
 
+  function clearComposerDraft() {
+    setQuestion("");
+    setAttachments([]);
+    setContextArtifacts([]);
+    setModelMenuKind(null);
+  }
+
+  function openLibraryAiPanel() {
+    if (!libraryAiOpen && !sending && messages.length > 0) {
+      startNewThread(projectId);
+      setView("library");
+      clearComposerDraft();
+    }
+    setProjectMenuOpenId("");
+    setConversationSortMenuOpen(false);
+    setInspectorOpen(false);
+    setLibraryAiThreadMenuOpen(false);
+    setLibraryAiOpen(true);
+    requestAnimationFrame(() => composerInputRef.current?.focus());
+  }
+
+  function createLibraryAiThread() {
+    if (sending) {
+      return;
+    }
+    openNewThread(projectId);
+    setView("library");
+    setLibraryAiOpen(true);
+    setLibraryAiThreadMenuOpen(false);
+    requestAnimationFrame(() => composerInputRef.current?.focus());
+  }
+
+  function selectLibraryAiThread(nextThreadId: string) {
+    if (!nextThreadId || nextThreadId === threadId) {
+      return;
+    }
+    openThread(nextThreadId);
+    setView("library");
+    setLibraryAiOpen(true);
+    setLibraryAiThreadMenuOpen(false);
+  }
+
   function openNewProject() {
     if (sending) {
       return;
@@ -650,7 +693,7 @@ export function App() {
 
   function openThread(nextThreadId: string) {
     if (sending && nextThreadId !== threadId) {
-      appendMessage("system", "当前回复还在进行中，等它结束后再切换对话。");
+      appendMessage("system", t("system.replyInProgress"));
       return;
     }
     selectThread(nextThreadId);
@@ -666,7 +709,7 @@ export function App() {
     if (thread.id.startsWith("empty:") || sending) {
       return;
     }
-    const ok = window.confirm(`删除对话「${thread.title || "新线程"}」？这会从本地侧栏移除这条对话。`);
+    const ok = window.confirm(t("conversation.deleteThreadConfirm", { title: thread.title || t("conversation.newThreadFallback") }));
     if (!ok) {
       return;
     }
@@ -678,7 +721,7 @@ export function App() {
       return;
     }
     const realThreadCount = project.threads.filter((thread) => !thread.id.startsWith("empty:")).length;
-    const ok = window.confirm(`删除项目「${project.title}」？它下面的 ${realThreadCount} 条对话也会从本地侧栏移除。`);
+    const ok = window.confirm(t("conversation.deleteProjectConfirm", { title: project.title, count: realThreadCount }));
     if (!ok) {
       return;
     }
@@ -687,7 +730,7 @@ export function App() {
   }
 
   function renameProjectWithPrompt(project: UiProject) {
-    const nextTitle = window.prompt("重命名项目", project.title);
+    const nextTitle = window.prompt(t("conversation.renameProject"), project.title);
     if (!nextTitle) {
       return;
     }
@@ -702,7 +745,7 @@ export function App() {
 
   async function saveImageAsArtifact(image: { src: string; alt: string }) {
     try {
-      const title = image.alt || fileNameFromAssetUri(image.src) || "图片成果";
+      const title = image.alt || fileNameFromAssetUri(image.src) || t("system.imageArtifact");
       const result = await createArtifactMutation.mutateAsync({
         type: "image",
         title,
@@ -732,10 +775,10 @@ export function App() {
           threadId,
         },
       });
-      appendMessage("system", `已保存到成果：${result.artifact?.title || title}`);
+      appendMessage("system", t("system.savedArtifact", { title: result.artifact?.title || title }));
       mergeFinalDataIntoCache(queryClient, result);
     } catch (error) {
-      appendMessage("system", `保存图片失败：${error instanceof Error ? error.message : String(error)}`);
+      appendMessage("system", t("system.saveImageFailed", { message: error instanceof Error ? error.message : String(error) }));
     }
   }
 
@@ -794,6 +837,36 @@ export function App() {
     window.removeEventListener("pointermove", onSidebarResizePointerMove);
   }
 
+  function onLibraryAiResizePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    libraryAiResizeRef.current = {
+      startX: event.clientX,
+      startWidth: libraryAiPanelWidth,
+    };
+    document.body.dataset.sidebarResizing = "true";
+    window.addEventListener("pointermove", onLibraryAiResizePointerMove);
+    window.addEventListener("pointerup", onLibraryAiResizePointerUp, { once: true });
+  }
+
+  function onLibraryAiResizePointerMove(event: PointerEvent) {
+    if (!libraryAiResizeRef.current) {
+      return;
+    }
+    const nextWidth = clamp(
+      libraryAiResizeRef.current.startWidth - (event.clientX - libraryAiResizeRef.current.startX),
+      MIN_LIBRARY_AI_PANEL_WIDTH,
+      MAX_LIBRARY_AI_PANEL_WIDTH,
+    );
+    setLibraryAiPanelWidth(nextWidth);
+    window.localStorage.setItem(APP_STORAGE_KEYS.libraryAiPanelWidth, String(Math.round(nextWidth)));
+  }
+
+  function onLibraryAiResizePointerUp() {
+    libraryAiResizeRef.current = null;
+    delete document.body.dataset.sidebarResizing;
+    window.removeEventListener("pointermove", onLibraryAiResizePointerMove);
+  }
+
   function applySkillSuggestion(skill: SkillRecord) {
     insertPrompt(`/${skillInvocationName(skill)} `);
     setActiveSkillIndex(0);
@@ -826,14 +899,13 @@ export function App() {
           question: userPrompt,
           model,
           effort: reasoningEffort,
-          serviceTier: activeKernel === "codex" && responseSpeed === "fast" ? "fast" : undefined,
+          responseSpeed,
+          accessMode,
           threadId,
-          snapshot: createSnapshot(userContext, turnAttachments),
+          snapshot: createSnapshot(userContext, turnAttachments, currentVaultFileContext),
           computerSnapshot: {},
           allowMemory: false,
           saveCandidateNote: false,
-          sandbox,
-          approvalPolicy,
         },
         {
           signal: abortController.signal,
@@ -862,7 +934,7 @@ export function App() {
     } catch (error) {
       updateMessage(assistantId, (message) => {
         const messageText = error instanceof Error ? error.message : String(error);
-        markAssistantMessageError(message, abortController.signal.aborted ? "已停止本轮运行。" : messageText);
+        markAssistantMessageError(message, abortController.signal.aborted ? t("system.stopped") : messageText);
       });
     } finally {
       if (activeTurnAbortRef.current === abortController) {
@@ -906,12 +978,12 @@ export function App() {
     const turnArtifacts = contextArtifacts;
     const contextPayload = buildContextPayload(contextText, turnAttachments, turnArtifacts);
     if (!trimmedQuestion && !contextPayload.text.trim() && !turnAttachments.length && !turnArtifacts.length) {
-      appendMessage("system", "先输入一个问题，或者添加文件/产物。");
+      appendMessage("system", t("system.inputRequired"));
       return;
     }
 
     const userContext = contextPayload.text.trim() || turnAttachments.length || turnArtifacts.length ? contextPayload : null;
-    const userPrompt = trimmedQuestion || (turnAttachments.length || turnArtifacts.length ? "请看一下这些材料。" : "这一段怎么看？");
+    const userPrompt = trimmedQuestion || (turnAttachments.length || turnArtifacts.length ? t("system.defaultAttachmentPrompt") : t("system.defaultTextPrompt"));
     clearContext();
     setAttachments([]);
     setContextArtifacts([]);
@@ -999,6 +1071,76 @@ export function App() {
   const showLibrarySearch = librarySearchOpen || Boolean(knowledgeQuery.trim());
   const activeRailSection = railSectionForView(activeView);
 
+  const renderSharedThreadShell = () => (
+    <ThreadShell
+      messages={messages}
+      projectTitle={currentProjectTitle}
+      skills={skills}
+      runtimeEvents={events}
+      runs={runs}
+      onResolveApproval={(approvalId, action, response) => approvalsMutation.mutate({ approvalId, action, response })}
+      onInsertPrompt={insertPrompt}
+      onSubmitPrompt={(prompt) => void submitPrompt(prompt)}
+      onSaveImageArtifact={saveImageAsArtifact}
+    />
+  );
+
+  const renderSharedComposer = (options: { messagesEmpty: boolean; showSuggestions?: boolean }) => (
+    <ChatComposer
+      sending={sending}
+      messagesEmpty={options.messagesEmpty}
+      showSuggestions={options.showSuggestions}
+      contextText={contextText}
+      attachments={attachments}
+      contextArtifacts={contextArtifacts}
+      composerSkillInvocation={composerSkillInvocation}
+      composerQuestionValue={composerQuestionValue}
+      composerHeight={composerHeight}
+      model={model}
+      activeKernel={activeKernel}
+      runtimeControls={healthQuery.data?.runtimeControls}
+      effort={reasoningEffort}
+      responseSpeed={responseSpeed}
+      accessMode={accessMode}
+      modelMenuKind={modelMenuKind}
+      modelMenuPlacement={modelMenuPlacement}
+      composerInputRef={composerInputRef}
+      fileInputRef={fileInputRef}
+      modelMenuRef={modelMenuRef}
+      onPointerDown={onComposerPointerDown}
+      onClearContext={clearContext}
+      onRemoveContextArtifact={removeContextArtifact}
+      onRemoveAttachment={removeAttachment}
+      onQuestionChange={handleQuestionChange}
+      onKeyDown={handleComposerKeyDown}
+      onCompositionStart={() => setIsComposingText(true)}
+      onCompositionEnd={() => setIsComposingText(false)}
+      onAttachmentInputChange={handleAttachmentInputChange}
+      onOpenAttachmentPicker={openAttachmentPicker}
+      onToggleModelMenu={toggleModelMenu}
+      onSetModel={(nextModel) => {
+        setModel(nextModel);
+        setModelMenuKind(null);
+      }}
+      onSetEffort={setReasoningEffort}
+      onSetResponseSpeed={setResponseSpeed}
+      onSetAccessMode={setAccessMode}
+      onSubmitOrStop={() => (sending ? stopActiveTurn() : void sendAsk())}
+      onRemoveSkillInvocation={() => {
+        setQuestion(composerSkillInvocation?.args ?? "");
+        requestAnimationFrame(() => composerInputRef.current?.focus());
+      }}
+      onUseSuggestion={setQuestion}
+      skillMenu={showSkillPalette ? (
+        <SkillCommandMenu
+          skills={matchingSkills}
+          activeIndex={activeSkillIndex}
+          onSelect={applySkillSuggestion}
+        />
+      ) : null}
+    />
+  );
+
   function openRailSection(section: RailSectionId) {
     setProjectMenuOpenId("");
     setConversationSortMenuOpen(false);
@@ -1023,22 +1165,22 @@ export function App() {
         onOpenSettings={() => openRailSection("settings")}
       />
 
-      <aside className="sidebar" data-section={activeRailSection} aria-label="侧边栏">
-        <nav className="nav-list" aria-label="当前空间导航">
+      <aside className="sidebar" data-section={activeRailSection} aria-label={t("layout.sidebar")}>
+        <nav className="nav-list" aria-label={t("layout.spaceNav")}>
           {activeRailSection === "library" ? (
-            <section className="sidebar-panel-space" aria-label="资料库">
+            <section className="sidebar-panel-space" aria-label={t("app.library")}>
               <div className="sidebar-space-header">
                 <div>
                   <div className="sidebar-space-kicker">Vault</div>
-                  <div className="sidebar-space-title">资料库</div>
+                  <div className="sidebar-space-title">{t("app.library")}</div>
                 </div>
-                <div className="sidebar-space-actions" aria-label="资料库操作">
+                <div className="sidebar-space-actions" aria-label={t("vault.actions")}>
                   <button
                     className="sidebar-mini-action"
                     type="button"
                     onClick={() => createVaultEntry("note", vaultActionRootPath)}
-                    aria-label="新建笔记"
-                    title={`在 ${vaultActionRootPath} 根目录新建笔记`}
+                    aria-label={t("vault.newNote")}
+                    title={t("vault.newNoteInRoot", { root: vaultActionRootPath })}
                   >
                     <FilePlus2 size={13} />
                   </button>
@@ -1046,8 +1188,8 @@ export function App() {
                     className="sidebar-mini-action"
                     type="button"
                     onClick={() => createVaultEntry("folder", vaultActionRootPath)}
-                    aria-label="新建文件夹"
-                    title={`在 ${vaultActionRootPath} 根目录新建文件夹`}
+                    aria-label={t("vault.newFolder")}
+                    title={t("vault.newFolderInRoot", { root: vaultActionRootPath })}
                   >
                     <FolderPlus size={13} />
                   </button>
@@ -1058,8 +1200,8 @@ export function App() {
                       id: current.id + 1,
                       open: !vaultAllFoldersOpen,
                     }))}
-                    aria-label={vaultAllFoldersOpen ? "全部收起" : "全部展开"}
-                    title={vaultAllFoldersOpen ? "全部收起" : "全部展开"}
+                    aria-label={vaultAllFoldersOpen ? t("vault.collapseAll") : t("vault.expandAll")}
+                    title={vaultAllFoldersOpen ? t("vault.collapseAll") : t("vault.expandAll")}
                   >
                     {vaultAllFoldersOpen ? <ListChevronsDownUp size={13} /> : <ListChevronsUpDown size={13} />}
                   </button>
@@ -1067,8 +1209,8 @@ export function App() {
                     className={clsx("sidebar-mini-action", showLibrarySearch && "active")}
                     type="button"
                     onClick={toggleLibrarySearch}
-                    aria-label={showLibrarySearch ? "关闭文件搜索" : "搜索文件"}
-                    title={showLibrarySearch ? "关闭文件搜索" : "搜索文件"}
+                    aria-label={showLibrarySearch ? t("vault.searchClose") : t("vault.search")}
+                    title={showLibrarySearch ? t("vault.searchClose") : t("vault.search")}
                   >
                     <Search size={13} />
                   </button>
@@ -1081,7 +1223,7 @@ export function App() {
                     autoFocus
                     value={knowledgeQuery}
                     onChange={(event) => setKnowledgeQuery(event.target.value)}
-                    placeholder="搜索文件"
+                    placeholder={t("vault.search")}
                   />
                 </label>
               ) : null}
@@ -1139,7 +1281,7 @@ export function App() {
       <div
         className="sidebar-resize-handle"
         role="separator"
-        aria-label="调整侧边栏宽度"
+        aria-label={t("layout.resizeSidebar")}
         aria-orientation="vertical"
         onPointerDown={onSidebarResizePointerDown}
       />
@@ -1154,7 +1296,7 @@ export function App() {
                 <div className="topbar-title">{viewTitle(activeView)}</div>
                 <div className="topbar-subtitle">
                   <span className="status-dot" data-status={bridgeStatus.status}></span>
-                  <span>本地 bridge</span>
+                  <span>{t("layout.localBridge")}</span>
                   <span>{bridgeStatus.label}</span>
                   <span>{bridgeStatus.detail}</span>
                   {"kernel" in bridgeStatus && bridgeStatus.kernel ? <span>{bridgeStatus.kernel}</span> : null}
@@ -1174,117 +1316,42 @@ export function App() {
                   data-open={inspectorOpen ? "true" : "false"}
                   type="button"
                   onClick={() => setInspectorOpen((current) => !current)}
-                  title={inspectorOpen ? "收起工作台" : "打开工作台"}
-                  aria-label={inspectorOpen ? "收起工作台" : "打开工作台"}
+                  title={inspectorOpen ? t("layout.closeWorkbench") : t("layout.openWorkbench")}
+                  aria-label={inspectorOpen ? t("layout.closeWorkbench") : t("layout.openWorkbench")}
                 >
                   {inspectorOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
                 </button>
               </>
             ) : null}
+            {activeView === "library" ? (
+              <button
+                className="topbar-icon-button library-ai-topbar-button"
+                data-open={libraryAiOpen ? "true" : "false"}
+                type="button"
+                onClick={() => (libraryAiOpen ? setLibraryAiOpen(false) : openLibraryAiPanel())}
+                title={libraryAiOpen ? t("library.closeAi") : t("library.openAi")}
+                aria-label={libraryAiOpen ? t("library.closeAi") : t("library.openAi")}
+              >
+                <Bot size={16} />
+                <span>{t("library.ai")}</span>
+              </button>
+            ) : null}
           </div>
         </header>
-
-        {activeView === "workspace" ? (
-          <HomeDashboardView
-            workingState={workingState}
-            currentSession={currentSession}
-            latestRun={latestRun}
-            runtimeBlocker={runtimeBlocker}
-            workingArtifacts={workingArtifacts}
-            pinnedArtifacts={pinnedArtifacts}
-            recentArtifacts={recentArtifacts}
-            pendingApprovals={pendingApprovals}
-            knowledge={knowledge}
-            ledgers={knowledgeLedgers}
-            computerState={displayedComputerState}
-            sessions={sessions}
-            runs={runs}
-            onOpenChat={() => setView("chat")}
-            onOpenLibrary={() => setView("library")}
-            onOpenInbox={() => setView("inbox")}
-            onOpenArtifacts={() => setView("artifacts")}
-            onRecordComputer={() => recordComputerMutation.mutate()}
-            onAddArtifactToComposer={addArtifactToComposer}
-            onResolveApproval={(approvalId, action, response) => approvalsMutation.mutate({ approvalId, action, response })}
-          />
-        ) : null}
 
         {activeView === "chat" ? (
           <section className="view-panel chat-view" data-view="chat" data-empty={messages.length === 0 ? "true" : "false"}>
             <div className="chat-layout" data-inspector={inspectorOpen ? "true" : "false"}>
               <section className="conversation">
                 <section ref={threadScrollRef} className="thread chat-thread-scroll" aria-live="polite">
-	                  <ThreadShell
-	                    messages={messages}
-	                    projectTitle={currentProjectTitle}
-	                    skills={skills}
-	                    runtimeEvents={events}
-	                    runs={runs}
-	                    onResolveApproval={(approvalId, action, response) => approvalsMutation.mutate({ approvalId, action, response })}
-	                    onInsertPrompt={insertPrompt}
-                      onSubmitPrompt={(prompt) => void submitPrompt(prompt)}
-	                    onSaveImageArtifact={saveImageAsArtifact}
-	                  />
+                  {renderSharedThreadShell()}
                 </section>
 
-                <ChatComposer
-                  sending={sending}
-                  messagesEmpty={messages.length === 0}
-                  contextText={contextText}
-                  attachments={attachments}
-                  contextArtifacts={contextArtifacts}
-                  composerSkillInvocation={composerSkillInvocation}
-                  composerQuestionValue={composerQuestionValue}
-                  composerHeight={composerHeight}
-                  model={model}
-                  activeKernel={activeKernel}
-                  runtimeControls={healthQuery.data?.runtimeControls}
-                  effort={reasoningEffort}
-                  responseSpeed={responseSpeed}
-                  sandbox={sandbox}
-                  approvalPolicy={approvalPolicy}
-                  modelMenuKind={modelMenuKind}
-                  modelMenuPlacement={modelMenuPlacement}
-                  composerInputRef={composerInputRef}
-                  fileInputRef={fileInputRef}
-                  modelMenuRef={modelMenuRef}
-                  onPointerDown={onComposerPointerDown}
-                  onClearContext={clearContext}
-                  onRemoveContextArtifact={removeContextArtifact}
-                  onRemoveAttachment={removeAttachment}
-                  onQuestionChange={handleQuestionChange}
-                  onKeyDown={handleComposerKeyDown}
-                  onCompositionStart={() => setIsComposingText(true)}
-                  onCompositionEnd={() => setIsComposingText(false)}
-                  onAttachmentInputChange={handleAttachmentInputChange}
-                  onOpenAttachmentPicker={openAttachmentPicker}
-                  onToggleModelMenu={toggleModelMenu}
-                  onSetModel={(nextModel) => {
-                    setModel(nextModel);
-                    setModelMenuKind(null);
-                  }}
-                  onSetEffort={setReasoningEffort}
-                  onSetResponseSpeed={setResponseSpeed}
-                  onSetSandbox={setSandbox}
-                  onSetApprovalPolicy={setApprovalPolicy}
-                  onSubmitOrStop={() => (sending ? stopActiveTurn() : void sendAsk())}
-                  onRemoveSkillInvocation={() => {
-                    setQuestion(composerSkillInvocation?.args ?? "");
-                    requestAnimationFrame(() => composerInputRef.current?.focus());
-                  }}
-                  onUseSuggestion={setQuestion}
-                  skillMenu={showSkillPalette ? (
-                    <SkillCommandMenu
-                      skills={matchingSkills}
-                      activeIndex={activeSkillIndex}
-                      onSelect={applySkillSuggestion}
-                    />
-                  ) : null}
-                />
+                {renderSharedComposer({ messagesEmpty: messages.length === 0 })}
               </section>
 
               {inspectorOpen ? (
-                <aside className="inspector" aria-label="工作台">
+                <aside className="inspector" aria-label={t("layout.workbench")}>
                   <WorkspaceInspector
                     workingState={workingState}
                     currentSession={currentSession}
@@ -1303,10 +1370,6 @@ export function App() {
                       setView("chat");
                       setInspectorOpen(false);
                     }}
-                    onOpenWorkspace={() => {
-                      setView("workspace");
-                      setInspectorOpen(false);
-                    }}
                   />
                 </aside>
               ) : null}
@@ -1314,42 +1377,110 @@ export function App() {
           </section>
         ) : null}
 
-        {activeView === "inbox" ? (
-          <KnowledgeInboxView
-            documents={knowledge}
-            ledgers={knowledgeLedgers}
-            onOpenPage={(knowledgeId) => {
-              setFocusedKnowledgeId(knowledgeId);
-              setView("library");
-            }}
-            onFeedback={sendKnowledgeFeedback}
-          />
-        ) : null}
         {activeView === "library" ? (
-          <KnowledgeLibraryView
-            documents={knowledge}
-            ledgers={knowledgeLedgers}
-            artifacts={artifacts}
-            skills={skills}
-            filteredDocuments={vaultDocuments}
-            focusedKnowledgeId={focusedKnowledgeId}
-            onFocusKnowledge={setFocusedKnowledgeId}
-            onPatch={patchKnowledgePage}
-            onFeedback={sendKnowledgeFeedback}
-          />
+          <section
+            className="view-panel tab-view knowledge-product-view library-ai-layout"
+            data-view="library"
+            data-ai-open={libraryAiOpen ? "true" : "false"}
+            style={{ "--opengrove-library-ai-width": `${libraryAiPanelWidth}px` } as CSSProperties}
+          >
+            <div className="library-document-pane">
+              <KnowledgeLibraryView
+                embedded
+                documents={knowledge}
+                ledgers={knowledgeLedgers}
+                artifacts={artifacts}
+                skills={skills}
+                filteredDocuments={vaultDocuments}
+                focusedKnowledgeId={focusedKnowledgeId}
+                onFocusKnowledge={setFocusedKnowledgeId}
+                onPatch={patchKnowledgePage}
+                onFeedback={sendKnowledgeFeedback}
+              />
+            </div>
+            <button
+              className="library-ai-edge-button"
+              data-open={libraryAiOpen ? "true" : "false"}
+              type="button"
+              onClick={openLibraryAiPanel}
+              title={libraryAiOpen ? t("library.closeAi") : t("library.openAi")}
+              aria-label={libraryAiOpen ? t("library.closeAi") : t("library.openAi")}
+            >
+              <Bot size={15} />
+              <span>{t("library.ai")}</span>
+            </button>
+            {libraryAiOpen ? (
+              <>
+              <div
+                className="library-ai-resize-handle"
+                role="separator"
+                aria-label={t("layout.resizeSidebar")}
+                aria-orientation="vertical"
+                onPointerDown={onLibraryAiResizePointerDown}
+              />
+              <aside className="library-ai-panel" aria-label={t("library.aiTitle")}>
+                <header className="library-ai-header">
+                  <div
+                    className="library-ai-conversation-controls"
+                    onBlur={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        setLibraryAiThreadMenuOpen(false);
+                      }
+                    }}
+                  >
+                    <button
+                      className="library-ai-thread-button"
+                      type="button"
+                      disabled={sending}
+                      onClick={() => setLibraryAiThreadMenuOpen((current) => !current)}
+                      aria-expanded={libraryAiThreadMenuOpen}
+                      aria-label={t("library.selectAiConversation")}
+                      title={t("library.selectAiConversation")}
+                    >
+                      <span>{currentLibraryAiThreadTitle}</span>
+                      <ChevronDown size={13} />
+                    </button>
+                    {libraryAiThreadMenuOpen ? (
+                      <div className="library-ai-thread-menu" role="menu" aria-label={t("library.selectAiConversation")}>
+                        {libraryAiThreadOptions.map((thread) => (
+                          <button
+                            key={thread.id}
+                            className="library-ai-thread-menu-item"
+                            data-active={thread.id === threadId ? "true" : "false"}
+                            type="button"
+                            role="menuitem"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => selectLibraryAiThread(thread.id)}
+                          >
+                            <span>{thread.title || t("conversation.newThreadFallback")}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    <button
+                      className="library-ai-icon-button"
+                      type="button"
+                      disabled={sending}
+                      onClick={createLibraryAiThread}
+                      aria-label={t("library.newAiConversation")}
+                      title={t("library.newAiConversation")}
+                    >
+                      <SquarePen size={14} />
+                    </button>
+                  </div>
+                  <button className="library-ai-icon-button" type="button" onClick={() => setLibraryAiOpen(false)} aria-label={t("library.closeAi")} title={t("library.closeAi")}>
+                    <X size={15} />
+                  </button>
+                </header>
+                <section className="library-ai-thread chat-thread-scroll" aria-live="polite">
+                  {renderSharedThreadShell()}
+                </section>
+                {renderSharedComposer({ messagesEmpty: messages.length === 0, showSuggestions: false })}
+              </aside>
+              </>
+            ) : null}
+          </section>
         ) : null}
-        {activeView === "memory" ? <SimpleEntityView title="记忆原始视图" items={memory} renderItem={renderMemoryCard} emptyText="还没有记忆" /> : null}
-        {activeView === "artifacts" ? (
-          <ArtifactSpaceView
-            artifacts={sortedArtifacts(artifacts)}
-            knowledge={knowledge}
-            ledgers={knowledgeLedgers}
-            workingState={workingState}
-            onAddArtifactToComposer={addArtifactToComposer}
-          />
-        ) : null}
-        {activeView === "skills" ? <SimpleEntityView title="能力原始视图" items={skills} renderItem={renderSkillCard} emptyText="还没有 skills" /> : null}
-        {activeView === "tools" ? <SimpleEntityView title="工具" items={tools} renderItem={renderToolCard} emptyText="还没有 tools" /> : null}
         {activeView === "settings" ? (
           <SettingsDialog
             embedded
@@ -1370,21 +1501,21 @@ export function App() {
           <div className="modal-shell" role="presentation">
             <div className="modal-card vault-create-dialog">
               <div>
-                <div className="modal-title">删除{vaultDeleteDialog.kind === "folder" ? "文件夹" : "笔记"}</div>
+                <div className="modal-title">{vaultDeleteDialog.kind === "folder" ? t("vault.deleteFolder") : t("vault.deleteNote")}</div>
                 <div className="vault-create-dialog-subtitle">
-                  {vaultDeleteDialog.name} 会从本地资料库移除。
+                  {t("vault.deleteCopy", { name: vaultDeleteDialog.name })}
                 </div>
               </div>
               <div className="modal-actions">
                 <button className="ghost-button" type="button" onClick={() => setVaultDeleteDialog(null)}>
-                  取消
+                  {t("common.cancel")}
                 </button>
                 <button
                   className="danger-button"
                   type="button"
                   onClick={() => deleteKnowledgeFileSystemMutation.mutate({ sourcePath: vaultDeleteDialog.path })}
                 >
-                  删除
+                  {t("common.delete")}
                 </button>
               </div>
             </div>

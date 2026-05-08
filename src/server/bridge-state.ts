@@ -19,6 +19,11 @@ import {
   isEnabledEnvFlag,
   normalizeBridgeKernelPreference,
 } from "./kernel-selection.js";
+import {
+  getAllBridgeProviderProfiles,
+  normalizeCustomProviderProfiles,
+  serializeProviderBindings,
+} from "./provider-profiles.js";
 
 export function createBridgeState(options: LocalBridgeServerOptions): BridgeState {
   const state: BridgeState = {
@@ -27,11 +32,13 @@ export function createBridgeState(options: LocalBridgeServerOptions): BridgeStat
     snapshot: {},
     computerSnapshot: {},
     model: DEFAULT_BRIDGE_MODEL_ID,
-    kernel: "scripted",
+    kernel: "codex",
     settings: {
       kernel: "auto",
       providerHttpCaptureEnabled: false,
       kernelKnowledgeSourceEnabled: {},
+      kernelProviderBindings: {},
+      customProviders: [],
     },
     saveCandidateNote: false,
     policyOverrides: [],
@@ -64,6 +71,13 @@ export function getBridgeSettingsSnapshot(state: BridgeState): JsonObject {
     kernel: state.settings.kernel,
     activeKernel: state.kernel,
     kernels: getBridgeKernelOptions(state),
+    providers: getAllBridgeProviderProfiles(state.settings.customProviders) as unknown as JsonObject[],
+    kernelProviderBindings: state.settings.kernelProviderBindings,
+    customProviders: state.settings.customProviders as unknown as JsonObject[],
+    providerBindings: serializeProviderBindings(
+      state.settings.kernelProviderBindings,
+      state.settings.customProviders,
+    ) as unknown as JsonObject[],
     kernelKnowledgeSourceEnabled: state.settings.kernelKnowledgeSourceEnabled,
     providerHttpCapture: getProviderHttpCaptureSnapshot(state),
     settingsPath: bridgeSettingsPath(state),
@@ -86,6 +100,11 @@ export function normalizeBridgeSettingsPatch(input: unknown, base: BridgeSetting
       source.kernelKnowledgeSourceEnabled,
       base.kernelKnowledgeSourceEnabled,
     ),
+    kernelProviderBindings: normalizeKernelProviderBindings(
+      source.kernelProviderBindings,
+      base.kernelProviderBindings,
+    ),
+    customProviders: normalizeCustomProviderProfiles(source.customProviders ?? base.customProviders),
   };
 }
 
@@ -103,6 +122,11 @@ export function loadBridgeSettings(state: BridgeState): BridgeSettings {
         parsed.kernelKnowledgeSourceEnabled,
         defaults.kernelKnowledgeSourceEnabled,
       ),
+      kernelProviderBindings: normalizeKernelProviderBindings(
+        parsed.kernelProviderBindings,
+        defaults.kernelProviderBindings,
+      ),
+      customProviders: normalizeCustomProviderProfiles(parsed.customProviders ?? defaults.customProviders),
     };
   } catch {
     return defaults;
@@ -122,6 +146,8 @@ function defaultBridgeSettings(): BridgeSettings {
       readAppEnv("PROVIDER_CAPTURE_ENABLED") ?? readAppEnv("PROVIDER_HTTP_CAPTURE"),
     ),
     kernelKnowledgeSourceEnabled: {},
+    kernelProviderBindings: {},
+    customProviders: [],
   };
 }
 
@@ -155,6 +181,23 @@ function normalizeKernelSourceSettings(
     }
     if (Object.keys(entries).length) {
       normalized[kernelId] = entries;
+    }
+  }
+  return normalized;
+}
+
+function normalizeKernelProviderBindings(
+  input: unknown,
+  fallback: Record<string, string>,
+): Record<string, string> {
+  if (input === undefined || input === null) {
+    return { ...fallback };
+  }
+  const source = record(input);
+  const normalized: Record<string, string> = {};
+  for (const [kernelId, providerId] of Object.entries(source)) {
+    if (typeof providerId === "string" && providerId.trim()) {
+      normalized[kernelId] = providerId.trim();
     }
   }
   return normalized;

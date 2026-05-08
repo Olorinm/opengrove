@@ -486,6 +486,20 @@ export function resolveKnowledgeFileDescriptor(document: KnowledgeDocument): Kno
   };
 }
 
+export function resolveKnowledgeVaultFilePath(vaultPath: string): string | undefined {
+  const safePath = safeVaultPath(vaultPath);
+  if (!safePath) return undefined;
+  const specs = knowledgeWritableRootSpecs()
+    .filter((spec) => vaultPathContains(safePath, spec.vaultPath))
+    .sort((left, right) => right.vaultPath.length - left.vaultPath.length);
+  const matched = specs[0];
+  if (matched) {
+    const relativePath = relativeVaultPath(matched.vaultPath, safePath);
+    return resolve(matched.path, ...relativePath.split("/").filter(Boolean));
+  }
+  return resolve(knowledgeVaultRoot(), safePath);
+}
+
 export function knowledgeVaultRoot(): string {
   return resolve(process.cwd(), "data", APP_VAULT_DIR);
 }
@@ -646,7 +660,7 @@ function knowledgeSourceKernelId(document: KnowledgeDocument): string {
   if (root === "Codex") return "codex";
   if (root === "Claude") return "claude-code";
   if (root === "Hermes") return "hermes";
-  return "scripted";
+  return APP_PROTOCOL_ID;
 }
 
 function knowledgeSourceId(document: KnowledgeDocument, kernelId: string): string {
@@ -681,10 +695,10 @@ function knowledgeSourceId(document: KnowledgeDocument, kernelId: string): strin
     if (path.includes("/.hermes/memories/")) return "hermes.memories";
     return "hermes.local-skills";
   }
-  if (document.type === "skill") return `scripted.${APP_PROTOCOL_ID}-skills`;
-  if (document.type === "artifact_ref") return `scripted.${APP_PROTOCOL_ID}-artifacts`;
-  if (document.type === "memory") return `scripted.${APP_PROTOCOL_ID}-vault`;
-  return `scripted.${APP_PROTOCOL_ID}-vault`;
+  if (document.type === "skill") return `${APP_PROTOCOL_ID}.skills`;
+  if (document.type === "artifact_ref") return `${APP_PROTOCOL_ID}.artifacts`;
+  if (document.type === "memory") return `${APP_PROTOCOL_ID}.vault`;
+  return `${APP_PROTOCOL_ID}.vault`;
 }
 
 function syncGlobalKernelKnowledgeDocuments(state: BridgeState): void {
@@ -767,7 +781,7 @@ function syncGlobalKernelKnowledgeDocuments(state: BridgeState): void {
     tags: ["hermes", "skill"],
   });
   upsertSkillDirectory(state, {
-    kernelId: "scripted",
+    kernelId: APP_PROTOCOL_ID,
     sourceId: `${APP_PROTOCOL_ID}.cc-switch-skills`,
     dir: join(home, ".cc-switch", "skills"),
     vaultRoot: `${APP_VAULT_ROOT_NAME}/skills`,
@@ -1219,7 +1233,7 @@ function kernelIdForVaultPath(vaultPath: string): string {
   if (vaultPath === "Codex" || vaultPath.startsWith("Codex/")) return "codex";
   if (vaultPath === "Claude" || vaultPath.startsWith("Claude/")) return "claude-code";
   if (vaultPath === "Hermes" || vaultPath.startsWith("Hermes/")) return "hermes";
-  return "scripted";
+  return APP_PROTOCOL_ID;
 }
 
 function sourceIdForVaultPath(vaultPath: string): string {
@@ -1234,7 +1248,7 @@ function sourceIdForVaultPath(vaultPath: string): string {
   if (vaultPath.startsWith("Hermes/skills/")) return "hermes.local-skills";
   if (vaultPath.startsWith("Hermes/memory/")) return "hermes.memories";
   if (vaultPath.startsWith("Hermes/")) return "hermes.local-files";
-  return `scripted.${APP_PROTOCOL_ID}-vault`;
+  return `${APP_PROTOCOL_ID}.vault`;
 }
 
 function safeIdSegment(value: string): string {

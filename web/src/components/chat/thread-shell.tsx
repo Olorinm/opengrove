@@ -1,4 +1,5 @@
 import type { AgentEventRecord, RunRecord, SkillRecord, StoredMessage } from "../../bridge";
+import { useI18n } from "../../i18n";
 import { MessageList } from "./message-list";
 import type { ChatImagePayload } from "./message-types";
 
@@ -13,12 +14,13 @@ export function ThreadShell(props: {
   onSubmitPrompt(prompt: string): void;
   onSaveImageArtifact?(image: ChatImagePayload): void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="thread-shell">
       {props.messages.length === 0 ? (
         <section className="thread-welcome">
           <div className="thread-welcome-copy">
-            <strong>今天想推进什么？</strong>
+            <strong>{t("thread.welcome")}</strong>
           </div>
         </section>
       ) : null}

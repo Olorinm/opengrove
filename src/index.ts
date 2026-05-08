@@ -15,8 +15,6 @@ export * from "./kernel/adapters/hermes.js";
 export * from "./kernel/adapters/pi.js";
 export * from "./knowledge/types.js";
 export * from "./knowledge/store.js";
-export * from "./knowledge/resolver.js";
-export * from "./knowledge/context-planner.js";
 export * from "./knowledge/organizer.js";
 export * from "./knowledge/feedback-scorer.js";
 export * from "./knowledge/memory-view.js";

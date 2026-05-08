@@ -50,9 +50,8 @@ export async function streamAskResponse(
       sessionId: payload.threadId,
       requestedModelId: payload.model,
       requestedEffort: payload.effort,
-      requestedServiceTier: payload.serviceTier,
-      sandbox: payload.sandbox,
-      approvalPolicy: payload.approvalPolicy,
+      responseSpeed: payload.responseSpeed,
+      accessMode: payload.accessMode,
       signal: abortController.signal,
     })) {
       attachModelId([event], payload.model);

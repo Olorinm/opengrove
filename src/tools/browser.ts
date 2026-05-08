@@ -6,7 +6,14 @@ export interface BrowserPageSnapshot {
   selection?: string;
   visibleText?: string;
   locator?: string;
+  vaultFile?: BrowserVaultFileSnapshot;
   attachments?: BrowserPageAttachmentSnapshot[];
+}
+
+export interface BrowserVaultFileSnapshot {
+  knowledgeId?: string;
+  vaultPath?: string;
+  filePath?: string;
 }
 
 export interface BrowserPageAttachmentSnapshot {

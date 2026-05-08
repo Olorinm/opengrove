@@ -234,7 +234,7 @@ export const CODEX_KERNEL_CONTRACT: KernelAdapterContract = {
     {
       feature: "context_assembly",
       owner: "shared",
-      appResponsibility: "Assemble OpenGrove knowledge, artifacts, page/computer state, and user selection context.",
+      appResponsibility: "Pass only explicit user-added context, attachments, and narrow vault UI hints; leave filesystem/page reading to Codex tools.",
       kernelResponsibility: "Apply Codex's own context, history, tool, and compaction policies.",
       adapterResponsibility: "Place OpenGrove context into developer instructions, user input, attachments, and dynamic tool metadata.",
     },
@@ -271,9 +271,9 @@ export const CODEX_KERNEL_CONTRACT: KernelAdapterContract = {
       feature: "sandbox",
       owner: "shared",
       nativeName: "sandboxPolicy / approvalsReviewer",
-      appResponsibility: "Expose user-chosen sandbox policy and approval policy.",
+      appResponsibility: "Expose product-level access modes.",
       kernelResponsibility: "Enforce Codex sandbox semantics.",
-      adapterResponsibility: "Translate OpenGrove sandbox strings into Codex tagged sandboxPolicy objects.",
+      adapterResponsibility: "Translate OpenGrove access modes into Codex sandboxPolicy and approvalPolicy values.",
     },
     {
       feature: "trajectory",

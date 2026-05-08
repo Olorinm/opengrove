@@ -2,6 +2,7 @@ import { Check, Clock, Plus } from "lucide-react";
 import type { StoredMessage } from "../../bridge";
 import { formatDate, summarize } from "../../format";
 import { APP_DEFAULT_PROJECT_ID, APP_DEFAULT_PROJECT_TITLE } from "../../identity";
+import { translate, useI18n, type TranslationFn } from "../../i18n";
 import type { UiProject, UiThread } from "../../store";
 
 export type ConversationSortKey = "createdAt" | "updatedAt";
@@ -11,16 +12,17 @@ export function ConversationSortMenu(props: {
   sortKey: ConversationSortKey;
   onSortKeyChange(key: ConversationSortKey): void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="conversation-sort-menu" role="menu">
       <button type="button" role="menuitem" onClick={() => props.onSortKeyChange("createdAt")}>
         <Plus size={14} />
-        <span>按创建时间</span>
+        <span>{t("conversation.createTime")}</span>
         {props.sortKey === "createdAt" ? <Check size={14} /> : null}
       </button>
       <button type="button" role="menuitem" onClick={() => props.onSortKeyChange("updatedAt")}>
         <Clock size={14} />
-        <span>按更新时间</span>
+        <span>{t("conversation.updateTime")}</span>
         {props.sortKey === "updatedAt" ? <Check size={14} /> : null}
       </button>
     </div>
@@ -111,7 +113,7 @@ export function createSidebarEmptyThread(projectId: string): UiThread {
   return {
     id: `empty:${projectId}`,
     projectId,
-    title: "新线程",
+    title: translate("conversation.newThreadFallback"),
     updatedAt: new Date().toISOString(),
     messages: [],
   };
@@ -122,34 +124,34 @@ export function createSidebarEmptyThread(projectId: string): UiThread {
 export function deriveSidebarThreadTitle(messages: StoredMessage[]): string {
   const userMessage = messages.find((message) => message.role === "user" && message.text.trim());
   if (!userMessage) {
-    return "新线程";
+    return translate("conversation.newThreadFallback");
   }
   return summarize(userMessage.text, 28);
 }
 
 
 
-export function projectSidebarContextLabel(project: UiProject): string {
+export function projectSidebarContextLabel(project: UiProject, t: TranslationFn = translate): string {
   if (project.title === APP_DEFAULT_PROJECT_TITLE) {
-    return "代码项目";
+    return t("conversation.codeProject");
   }
-  return "本地项目";
+  return t("conversation.localProject");
 }
 
 
 
-export function formatSidebarThreadMeta(thread: UiThread): string {
+export function formatSidebarThreadMeta(thread: UiThread, t: TranslationFn = translate): string {
   const updatedAt = Date.parse(thread.updatedAt || "");
   if (!Number.isFinite(updatedAt)) {
-    return "本地";
+    return t("conversation.local");
   }
   const ageMs = Date.now() - updatedAt;
   if (ageMs < 0 || ageMs < 24 * 60 * 60 * 1000) {
-    return "今天";
+    return t("conversation.today");
   }
   const days = Math.max(1, Math.round(ageMs / (24 * 60 * 60 * 1000)));
   if (days <= 30) {
-    return `${days} 天`;
+    return t("conversation.days", { count: days });
   }
   return formatDate(thread.updatedAt);
 }

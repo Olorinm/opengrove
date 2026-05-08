@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import clsx from "clsx";
 import {
   Bot,
@@ -219,10 +219,16 @@ function previousUserMessageText(messages: StoredMessage[], messageIndex: number
   return "";
 }
 
-function messageDurationSeconds(message: StoredMessage, runtimeEvents: AgentEventRecord[] = [], runs: RunRecord[] = [], inputHint = ""): number {
+function messageDurationSeconds(
+  message: StoredMessage,
+  runtimeEvents: AgentEventRecord[] = [],
+  runs: RunRecord[] = [],
+  inputHint = "",
+  nowMs = Date.now(),
+): number {
   const timing = messageTiming(message, runtimeEvents, runs, inputHint);
   const startedAt = Date.parse(timing.startedAt || "");
-  const finishedAt = timing.finishedAt ? Date.parse(timing.finishedAt) : message.pending ? Date.now() : Number.NaN;
+  const finishedAt = timing.finishedAt ? Date.parse(timing.finishedAt) : message.pending ? nowMs : Number.NaN;
   if (!Number.isFinite(startedAt) || !Number.isFinite(finishedAt) || finishedAt < startedAt) {
     return Number.NaN;
   }
@@ -359,6 +365,9 @@ function AssistantMessageBody(props: {
           );
         }
         if (group.type === "note") {
+          if (isCompactionNoteTone(group.part.tone)) {
+            return <CompactionDivider key={group.part.id} text={group.part.text} tone={group.part.tone} />;
+          }
           return (
             <div key={group.part.id} className={clsx("thread-note-block", `tone-${group.part.tone || "muted"}`)}>
               {group.part.text}
@@ -367,6 +376,18 @@ function AssistantMessageBody(props: {
         }
         return null;
       })}
+    </div>
+  );
+}
+
+function isCompactionNoteTone(tone: string | undefined): boolean {
+  return tone === "compaction-started" || tone === "compaction-finished";
+}
+
+function CompactionDivider(props: { text: string; tone?: string }) {
+  return (
+    <div className={clsx("thread-compaction-divider", props.tone === "compaction-started" && "is-active")}>
+      <span>{props.text}</span>
     </div>
   );
 }
@@ -386,12 +407,6 @@ function AssistantPendingBody(props: {
         runs={props.runs}
         inputHint={props.precedingUserText}
       />
-      <div className="thread-typing-shell">
-        <div className="typing-indicator" role="status" aria-label="正在思考">
-          <span className="typing-label">正在思考</span>
-          <span className="typing-flow" aria-hidden="true"></span>
-        </div>
-      </div>
     </div>
   );
 }
@@ -436,23 +451,34 @@ function AssistantTurnStatus(props: {
   inputHint?: string;
 }) {
   const items = props.groups.flatMap((group) => (group.type === "activity" ? buildActivityItems(group.parts) : []));
-  const durationSeconds = messageDurationSeconds(props.message, props.runtimeEvents, props.runs, props.inputHint);
   const hasPendingApproval = items.some(
     (item) => item.type === "approval" && item.part.approvalStatus === "pending" && item.part.approvalId,
   );
   const hasRunningItem = items.some((item) => activityItemStatus(item) === "running");
   const isActive = props.message.pending || hasRunningItem;
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!isActive) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [isActive]);
+
+  const durationSeconds = messageDurationSeconds(props.message, props.runtimeEvents, props.runs, props.inputHint, nowMs);
   const shouldShow = isActive || hasPendingApproval || items.length > 0 || durationSeconds >= 15;
   if (!shouldShow) {
     return null;
   }
-  const statusLabel = hasPendingApproval ? "等待确认" : isActive ? "正在处理" : "已处理";
-  const duration = formatDurationSeconds(durationSeconds);
+  const isShortThinking = isActive && !hasPendingApproval && (!Number.isFinite(durationSeconds) || durationSeconds < 10);
+  const statusLabel = hasPendingApproval ? "等待确认" : isActive ? (isShortThinking ? "正在思考" : "正在处理") : "已处理";
+  const duration = isShortThinking ? "" : formatDurationSeconds(durationSeconds);
 
   return (
     <div className="thread-turn-status" data-active={isActive ? "true" : "false"}>
-      <span className="thread-turn-status-label">
-        {isActive ? <LoaderCircle size={14} className="spin" /> : null}
+      <span className={clsx("thread-turn-status-label", isShortThinking && "thinking-shimmer")}>
+        {isActive && !isShortThinking ? <LoaderCircle size={14} className="spin" /> : null}
         {[statusLabel, duration].filter(Boolean).join(" ")}
       </span>
     </div>
@@ -467,6 +493,7 @@ type AssistantPartGroup =
 function groupAssistantParts(parts: MessagePart[]): AssistantPartGroup[] {
   const groups: AssistantPartGroup[] = [];
   let activityParts: Array<ToolPart | SkillPart> = [];
+  let activityGroupIndex = 0;
 
   const flushActivity = () => {
     if (!activityParts.length) {
@@ -474,7 +501,7 @@ function groupAssistantParts(parts: MessagePart[]): AssistantPartGroup[] {
     }
     groups.push({
       type: "activity",
-      key: activityParts.map((part) => part.id).join(":"),
+      key: `activity-${activityGroupIndex++}-${activityParts[0]?.id || "group"}`,
       parts: activityParts,
     });
     activityParts = [];

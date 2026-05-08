@@ -43,7 +43,7 @@ const noteDraft = app.artifacts.create({
 app.workingState.update({
   sessionId: "smoke",
   taskSummary: "围绕当前划线形成一条可持续编辑的伴读笔记。",
-  activeGoal: "验证页面选区会进入本轮上下文，workingState 里的产物不会被隐式注入。",
+  activeGoal: "验证页面选区通过工具读取，workingState 里的产物不会被隐式注入。",
   pinnedArtifactIds: [readingSelection.id],
   workingArtifactIds: [noteDraft.id],
 });

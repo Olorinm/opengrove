@@ -33,7 +33,9 @@ export async function handleSettingsRoute(options: {
   const nextSettings = normalizeBridgeSettingsPatch(await readJsonBody(request), previousSettings);
   const restartRequired =
     nextSettings.kernel !== previousSettings.kernel ||
-    nextSettings.providerHttpCaptureEnabled !== previousSettings.providerHttpCaptureEnabled;
+    nextSettings.providerHttpCaptureEnabled !== previousSettings.providerHttpCaptureEnabled ||
+    JSON.stringify(nextSettings.kernelProviderBindings) !== JSON.stringify(previousSettings.kernelProviderBindings) ||
+    JSON.stringify(nextSettings.customProviders) !== JSON.stringify(previousSettings.customProviders);
 
   if (!restartRequired) {
     state.settings = nextSettings;

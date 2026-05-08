@@ -12,16 +12,17 @@ import {
   Zap,
 } from "lucide-react";
 import type {
-  ApprovalPolicy,
   AttachmentPayload,
   ContextArtifactPayload,
   ModelId,
   ReasoningEffort,
+  ResponseSpeed,
   RuntimeControls,
-  SandboxPolicy,
+  RuntimeAccessMode,
 } from "../../bridge";
 import { MODEL_OPTIONS } from "../../bridge";
 import { clamp, summarize } from "../../format";
+import { useI18n, type TranslationFn } from "../../i18n";
 import {
   MAX_COMPOSER_HEIGHT,
   MIN_COMPOSER_HEIGHT,
@@ -31,34 +32,29 @@ import {
   type ComposerSkillInvocation,
 } from "../../runtime/ui-model";
 
-const SANDBOX_OPTIONS: Array<{ id: SandboxPolicy; label: string }> = [
-  { id: "workspace-write", label: "工作区写入" },
-  { id: "read-only", label: "只读" },
-  { id: "danger-full-access", label: "完全访问" },
+const ACCESS_PRESETS: Array<{
+  id: RuntimeAccessMode;
+  labelKey: "composer.defaultAccess" | "composer.autoReview" | "composer.fullAccess";
+  danger?: boolean;
+}> = [
+  { id: "default", labelKey: "composer.defaultAccess" },
+  { id: "auto-review", labelKey: "composer.autoReview" },
+  { id: "full-access", labelKey: "composer.fullAccess", danger: true },
 ];
 
-const APPROVAL_POLICY_OPTIONS: Array<{ id: ApprovalPolicy; label: string }> = [
-  { id: "on-request", label: "按需确认" },
-  { id: "on-failure", label: "失败时确认" },
-  { id: "never", label: "不确认" },
-  { id: "untrusted", label: "不可信时确认" },
+const EFFORT_OPTIONS: Array<{ id: ReasoningEffort; labelKey: "composer.effortLow" | "composer.effortMedium" | "composer.effortHigh" | "composer.effortXHigh" }> = [
+  { id: "low", labelKey: "composer.effortLow" },
+  { id: "medium", labelKey: "composer.effortMedium" },
+  { id: "high", labelKey: "composer.effortHigh" },
+  { id: "xhigh", labelKey: "composer.effortXHigh" },
 ];
 
-const EFFORT_OPTIONS: Array<{ id: ReasoningEffort; label: string }> = [
-  { id: "low", label: "低" },
-  { id: "medium", label: "中" },
-  { id: "high", label: "高" },
-  { id: "xhigh", label: "超高" },
+const SPEED_OPTIONS: Array<{ id: ResponseSpeed; labelKey: "composer.speedStandard" | "composer.speedFast"; descriptionKey: "composer.speedStandardDescription" | "composer.speedFastDescription" }> = [
+  { id: "standard", labelKey: "composer.speedStandard", descriptionKey: "composer.speedStandardDescription" },
+  { id: "fast", labelKey: "composer.speedFast", descriptionKey: "composer.speedFastDescription" },
 ];
 
-export type ResponseSpeed = "standard" | "fast";
-
-const SPEED_OPTIONS: Array<{ id: ResponseSpeed; label: string; description: string }> = [
-  { id: "standard", label: "标准", description: "默认速度，常规用量" },
-  { id: "fast", label: "快速", description: "1.5 倍速，用量增加" },
-];
-
-const CODEX_MODEL_LABELS: Record<ModelId, string> = {
+const CODEX_MODEL_LABELS: Record<string, string> = {
   "gpt-5.5": "GPT-5.5",
   "gpt-5.4": "GPT-5.4",
   "gpt-5.4-mini": "GPT-5.4 Mini",
@@ -71,12 +67,12 @@ const CODEX_MODEL_LABELS: Record<ModelId, string> = {
 
 export type ComposerMenuKind = "access" | "model";
 
-type ComposerModelOption = { id: ModelId; label: string; description?: string };
+type ComposerModelOption = { id: string; label: string; description?: string };
 type ComposerEffortOption = { id: ReasoningEffort; label: string; description?: string };
 type ComposerSpeedOption = { id: ResponseSpeed; label: string; description?: string };
 
 function isModelId(value: string): value is ModelId {
-  return MODEL_OPTIONS.some((item) => item.id === value);
+  return Boolean(value.trim());
 }
 
 function isReasoningEffort(value: string): value is ReasoningEffort {
@@ -114,23 +110,28 @@ export function supportsComposerSpeed(kernelId?: string): boolean {
   return kernelId === "codex";
 }
 
-function effortOptionsForRuntime(runtimeControls?: RuntimeControls): ComposerEffortOption[] {
+function effortOptionsForRuntime(t: TranslationFn, runtimeControls?: RuntimeControls): ComposerEffortOption[] {
   const discovered = runtimeControls?.reasoningEfforts
     ?.filter((item): item is ComposerEffortOption => isReasoningEffort(item.id))
     .map((item) => ({ id: item.id, label: item.label, description: item.description }));
-  return discovered?.length ? discovered : EFFORT_OPTIONS;
+  return discovered?.length ? discovered : EFFORT_OPTIONS.map((item) => ({ id: item.id, label: t(item.labelKey) }));
 }
 
-function speedOptionsForRuntime(runtimeControls?: RuntimeControls): ComposerSpeedOption[] {
+function speedOptionsForRuntime(t: TranslationFn, runtimeControls?: RuntimeControls): ComposerSpeedOption[] {
   const discovered = runtimeControls?.speedTiers
     ?.filter((item): item is ComposerSpeedOption => isResponseSpeed(item.id))
     .map((item) => ({ id: item.id, label: item.label, description: item.description }));
-  return discovered?.length ? discovered : SPEED_OPTIONS;
+  return discovered?.length ? discovered : SPEED_OPTIONS.map((item) => ({
+    id: item.id,
+    label: t(item.labelKey),
+    description: t(item.descriptionKey),
+  }));
 }
 
 export interface ChatComposerProps {
   sending: boolean;
   messagesEmpty: boolean;
+  showSuggestions?: boolean;
   contextText: string;
   attachments: AttachmentPayload[];
   contextArtifacts: ContextArtifactPayload[];
@@ -142,8 +143,7 @@ export interface ChatComposerProps {
   runtimeControls?: RuntimeControls;
   effort: ReasoningEffort;
   responseSpeed: ResponseSpeed;
-  sandbox: SandboxPolicy;
-  approvalPolicy: ApprovalPolicy;
+  accessMode: RuntimeAccessMode;
   modelMenuKind: ComposerMenuKind | null;
   modelMenuPlacement: "up" | "down";
   composerInputRef: RefObject<HTMLTextAreaElement | null>;
@@ -163,8 +163,7 @@ export interface ChatComposerProps {
   onSetModel(model: ModelId): void;
   onSetEffort(effort: ReasoningEffort): void;
   onSetResponseSpeed(speed: ResponseSpeed): void;
-  onSetSandbox(policy: SandboxPolicy): void;
-  onSetApprovalPolicy(policy: ApprovalPolicy): void;
+  onSetAccessMode(mode: RuntimeAccessMode): void;
   onSubmitOrStop(): void;
   onRemoveSkillInvocation(): void;
   onUseSuggestion(prompt: string): void;
@@ -172,8 +171,9 @@ export interface ChatComposerProps {
 }
 
 export function ChatComposer(props: ChatComposerProps) {
+  const { t } = useI18n();
   return (
-    <section className="composer-region" aria-label="输入">
+    <section className="composer-region" aria-label={t("composer.placeholder")}>
       {props.skillMenu}
 
       <div
@@ -182,7 +182,7 @@ export function ChatComposer(props: ChatComposerProps) {
         data-skill={props.composerSkillInvocation ? "true" : "false"}
         onPointerDown={props.onPointerDown}
       >
-        <div className="opengrove-composer-resize-handle" data-action="resize-composer" title="拖拽调整输入框高度"></div>
+        <div className="opengrove-composer-resize-handle" data-action="resize-composer"></div>
 
         {props.contextText || props.attachments.length || props.contextArtifacts.length ? (
           <ComposerAttachmentBar
@@ -201,7 +201,7 @@ export function ChatComposer(props: ChatComposerProps) {
               className="opengrove-skill-chip"
               type="button"
               onClick={props.onRemoveSkillInvocation}
-              aria-label={`移除技能 ${formatComposerSkillTitle(props.composerSkillInvocation.skill)}`}
+              aria-label={t("composer.removeSkill", { name: formatComposerSkillTitle(props.composerSkillInvocation.skill) })}
               title={`/${props.composerSkillInvocation.name}`}
             >
               <Package size={15} strokeWidth={2.2} />
@@ -214,7 +214,7 @@ export function ChatComposer(props: ChatComposerProps) {
             className="opengrove-question"
             rows={3}
             value={props.composerQuestionValue}
-            placeholder={props.composerSkillInvocation ? "补充这个技能要做什么..." : "问 Codex，或输入 / 调用能力"}
+            placeholder={props.composerSkillInvocation ? t("composer.skillPlaceholder") : t("composer.placeholder")}
             spellCheck={false}
             onChange={(event) => props.onQuestionChange(event.target.value)}
             onKeyDown={props.onKeyDown}
@@ -233,18 +233,16 @@ export function ChatComposer(props: ChatComposerProps) {
               multiple
               onChange={props.onAttachmentInputChange}
             />
-            <button className="opengrove-action opengrove-composer-plus" type="button" onClick={props.onOpenAttachmentPicker} aria-label="添加图片或文件" title="添加图片或文件">
+            <button className="opengrove-action opengrove-composer-plus" type="button" onClick={props.onOpenAttachmentPicker} aria-label={t("composer.addAttachment")} title={t("composer.addAttachment")}>
               <Plus size={20} strokeWidth={2.1} />
             </button>
             <div className="opengrove-composer-controls">
               <ComposerAccessPicker
-                sandbox={props.sandbox}
-                approvalPolicy={props.approvalPolicy}
+                accessMode={props.accessMode}
                 open={props.modelMenuKind === "access"}
                 placement={props.modelMenuPlacement}
                 onToggle={() => props.onToggleModelMenu("access")}
-                onSetSandbox={props.onSetSandbox}
-                onSetApprovalPolicy={props.onSetApprovalPolicy}
+                onSetAccessMode={props.onSetAccessMode}
               />
             </div>
           </div>
@@ -266,8 +264,8 @@ export function ChatComposer(props: ChatComposerProps) {
               className="opengrove-action opengrove-primary opengrove-send"
               type="button"
               onClick={props.onSubmitOrStop}
-              aria-label={props.sending ? "停止运行" : "发送消息"}
-              title={props.sending ? "停止运行" : "发送消息"}
+              aria-label={props.sending ? t("composer.stop") : t("composer.send")}
+              title={props.sending ? t("composer.stop") : t("composer.send")}
             >
               {props.sending ? <X size={18} /> : <ArrowUp size={18} />}
             </button>
@@ -275,19 +273,19 @@ export function ChatComposer(props: ChatComposerProps) {
         </div>
       </div>
 
-      {props.messagesEmpty ? (
-        <div className="empty-suggestions" aria-label="建议">
+      {(props.showSuggestions ?? true) && props.messagesEmpty ? (
+        <div className="empty-suggestions" aria-label={t("composer.suggestions")}>
           <button type="button" onClick={() => props.onUseSuggestion("把当前目标拆成下一步可以执行的计划")}>
             <MessageSquare size={15} />
-            把当前目标拆成下一步
+            {t("composer.suggestionPlan")}
           </button>
           <button type="button" onClick={() => props.onUseSuggestion("整理一下当前项目里的关键记忆和资料")}>
             <MessageSquare size={15} />
-            整理当前记忆和资料
+            {t("composer.suggestionMemory")}
           </button>
           <button type="button" onClick={() => props.onUseSuggestion("看看最近产物、待确认事项和运行状态")}>
             <MessageSquare size={15} />
-            查看最近产物和待确认
+            {t("composer.suggestionStatus")}
           </button>
         </div>
       ) : null}
@@ -303,6 +301,7 @@ function ComposerAttachmentBar(props: {
   onRemoveContextArtifact(artifactId: string): void;
   onRemoveAttachment(attachmentId: string): void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="attachment-bar">
       {props.contextText ? (
@@ -310,8 +309,8 @@ function ComposerAttachmentBar(props: {
           <span className="opengrove-attachment-icon" aria-hidden="true">
             <ClipboardPlus size={13} />
           </span>
-          <span className="opengrove-attachment-name">已选文本片段 · {summarize(props.contextText, 90)}</span>
-          <button className="opengrove-action opengrove-icon opengrove-attachment-remove" type="button" onClick={props.onClearContext} aria-label="移除上下文">
+          <span className="opengrove-attachment-name">{t("composer.selectedText")} · {summarize(props.contextText, 90)}</span>
+          <button className="opengrove-action opengrove-icon opengrove-attachment-remove" type="button" onClick={props.onClearContext} aria-label={t("composer.removeContext")}>
             ×
           </button>
         </div>
@@ -323,13 +322,13 @@ function ComposerAttachmentBar(props: {
           </span>
           <span className="opengrove-attachment-name">
             {artifact.title}
-            <span className="opengrove-attachment-meta"> · 产物</span>
+            <span className="opengrove-attachment-meta"> · {t("composer.artifact")}</span>
           </span>
           <button
             className="opengrove-action opengrove-icon opengrove-attachment-remove"
             type="button"
             onClick={() => props.onRemoveContextArtifact(artifact.id)}
-            aria-label={`移除产物 ${artifact.title}`}
+            aria-label={t("composer.removeArtifact", { title: artifact.title })}
           >
             ×
           </button>
@@ -350,7 +349,7 @@ function ComposerAttachmentBar(props: {
               className="opengrove-action opengrove-icon opengrove-attachment-remove"
               type="button"
               onClick={() => props.onRemoveAttachment(attachment.id)}
-              aria-label={`移除附件 ${attachment.name}`}
+              aria-label={t("composer.removeAttachment", { name: attachment.name })}
             >
               ×
             </button>
@@ -362,15 +361,14 @@ function ComposerAttachmentBar(props: {
 }
 
 function ComposerAccessPicker(props: {
-  sandbox: SandboxPolicy;
-  approvalPolicy: ApprovalPolicy;
+  accessMode: RuntimeAccessMode;
   open: boolean;
   placement: "up" | "down";
   onToggle(): void;
-  onSetSandbox(policy: SandboxPolicy): void;
-  onSetApprovalPolicy(policy: ApprovalPolicy): void;
+  onSetAccessMode(mode: RuntimeAccessMode): void;
 }) {
-  const sandboxLabel = SANDBOX_OPTIONS.find((item) => item.id === props.sandbox)?.label || props.sandbox;
+  const { t } = useI18n();
+  const activePreset = ACCESS_PRESETS.find((item) => item.id === props.accessMode) ?? ACCESS_PRESETS[0]!;
   return (
     <div className="opengrove-model-picker opengrove-access-picker">
       <button
@@ -378,12 +376,12 @@ function ComposerAccessPicker(props: {
         type="button"
         aria-haspopup="listbox"
         aria-expanded={props.open}
-        aria-label="访问权限"
-        data-danger={props.sandbox === "danger-full-access" ? "true" : "false"}
+        aria-label={t("composer.accessLabel")}
+        data-danger={activePreset.danger ? "true" : "false"}
         onClick={props.onToggle}
       >
         <Shield size={15} strokeWidth={2.2} />
-        <span className="opengrove-model-label">{sandboxLabel}</span>
+        <span className="opengrove-model-label">{t(activePreset.labelKey)}</span>
         <span className="opengrove-chevron" aria-hidden="true"></span>
       </button>
       <div
@@ -391,32 +389,19 @@ function ComposerAccessPicker(props: {
         data-open={props.open ? "true" : "false"}
         data-placement={props.placement}
         role="listbox"
-        aria-label="访问权限列表"
+        aria-label={t("composer.accessLabel")}
       >
-        <div className="opengrove-model-menu-title">访问权限</div>
-        {SANDBOX_OPTIONS.map((item) => (
+        <div className="opengrove-model-menu-title">{t("composer.accessLabel")}</div>
+        {ACCESS_PRESETS.map((item) => (
           <button
             key={item.id}
             className="opengrove-model-option"
             type="button"
-            aria-selected={item.id === props.sandbox}
-            data-danger={item.id === "danger-full-access" ? "true" : "false"}
-            onClick={() => props.onSetSandbox(item.id)}
+            aria-selected={item.id === activePreset.id}
+            data-danger={item.danger ? "true" : "false"}
+            onClick={() => props.onSetAccessMode(item.id)}
           >
-            <span className="opengrove-model-option-name">{item.label}</span>
-            <span className="opengrove-model-option-check" aria-hidden="true"></span>
-          </button>
-        ))}
-        <div className="opengrove-model-menu-title">确认</div>
-        {APPROVAL_POLICY_OPTIONS.map((item) => (
-          <button
-            key={item.id}
-            className="opengrove-model-option"
-            type="button"
-            aria-selected={item.id === props.approvalPolicy}
-            onClick={() => props.onSetApprovalPolicy(item.id)}
-          >
-            <span className="opengrove-model-option-name">{item.label}</span>
+            <span className="opengrove-model-option-name">{t(item.labelKey)}</span>
             <span className="opengrove-model-option-check" aria-hidden="true"></span>
           </button>
         ))}
@@ -438,13 +423,14 @@ function ComposerModelPicker(props: {
   onSetEffort(effort: ReasoningEffort): void;
   onSetResponseSpeed(speed: ResponseSpeed): void;
 }) {
+  const { t } = useI18n();
   const modelOptions = modelOptionsForKernel(props.activeKernel, props.runtimeControls);
   const selectedModel = modelOptions.find((item) => item.id === props.model) ?? modelOptions[0] ?? MODEL_OPTIONS[0];
-  const effortOptions = effortOptionsForRuntime(props.runtimeControls);
-  const speedOptions = speedOptionsForRuntime(props.runtimeControls);
+  const effortOptions = effortOptionsForRuntime(t, props.runtimeControls);
+  const speedOptions = speedOptionsForRuntime(t, props.runtimeControls);
   const effortEnabled = Boolean(props.runtimeControls?.reasoningEfforts?.length) || supportsComposerEffort(props.activeKernel);
   const speedEnabled = Boolean(props.runtimeControls?.speedTiers?.length) || supportsComposerSpeed(props.activeKernel);
-  const effortLabel = effortEnabled ? effortOptions.find((item) => item.id === props.effort)?.label || "高" : "默认";
+  const effortLabel = effortEnabled ? effortOptions.find((item) => item.id === props.effort)?.label || t("composer.effortHigh") : t("common.default");
   const compactModelLabel = selectedModel.id.startsWith("gpt-")
     ? selectedModel.id.replace(/^gpt-/, "").replace(/-codex-spark$/, " spark").replace(/-codex$/, " codex").replace(/-mini$/, " mini")
     : CODEX_MODEL_LABELS[selectedModel.id as ModelId] || selectedModel.label;
@@ -456,7 +442,7 @@ function ComposerModelPicker(props: {
         type="button"
         aria-haspopup="listbox"
         aria-expanded={props.open}
-        aria-label="速度、模型和智能等级"
+        aria-label={t("composer.modelMenuLabel")}
         data-speed={speedEnabled ? props.responseSpeed : undefined}
         onClick={props.onToggle}
       >
@@ -470,11 +456,11 @@ function ComposerModelPicker(props: {
         data-open={props.open ? "true" : "false"}
         data-placement={props.placement}
         role="listbox"
-        aria-label="速度、模型和智能等级列表"
+        aria-label={t("composer.modelMenuLabel")}
       >
         {effortEnabled ? (
           <>
-            <div className="opengrove-model-menu-title">智能</div>
+            <div className="opengrove-model-menu-title">{t("composer.intelligence")}</div>
             {effortOptions.map((item) => (
               <button
                 key={item.id}
@@ -489,9 +475,9 @@ function ComposerModelPicker(props: {
             ))}
           </>
         ) : (
-          <div className="opengrove-model-menu-title">智能由当前内核决定</div>
+          <div className="opengrove-model-menu-title">{t("composer.kernelDecidesIntelligence")}</div>
         )}
-        <div className="opengrove-model-menu-title">模型</div>
+        <div className="opengrove-model-menu-title">{t("composer.model")}</div>
         {modelOptions.map((item) => (
           <button
             key={item.id}
@@ -506,7 +492,7 @@ function ComposerModelPicker(props: {
         ))}
         {speedEnabled ? (
           <>
-            <div className="opengrove-model-menu-title">速度</div>
+            <div className="opengrove-model-menu-title">{t("composer.speed")}</div>
             {speedOptions.map((item) => (
               <button
                 key={item.id}

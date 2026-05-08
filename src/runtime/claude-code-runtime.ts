@@ -12,6 +12,7 @@ import type {
   AgentTurnRequest,
   JsonObject,
   JsonValue,
+  RuntimeAccessMode,
   ToolResult,
 } from "../core.js";
 import {
@@ -59,6 +60,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       normalizeClaudeModelId(request.requestedModelId) ??
       normalizeClaudeModelId(this.options.configuredModel);
     const systemPrompt = buildClaudeSystemPrompt(request);
+    const permissionMode = resolveClaudePermissionMode(request.accessMode, this.options.permissionMode);
     const capture = createClaudeCodeStreamCaptureRecorder(this.options.streamCapture);
     const providerCapture = resolveProviderHttpCaptureOptions(
       this.options.providerHttpCapture,
@@ -76,7 +78,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       sessionId: claudeSessionId,
       model: requestedModel,
       cwd: this.options.cwd ?? process.cwd(),
-      permissionMode: this.options.permissionMode ?? "bypassPermissions",
+      permissionMode,
     });
     capture?.recordTurnInput({
       runId,
@@ -122,7 +124,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       "--output-format",
       "stream-json",
       "--permission-mode",
-      this.options.permissionMode ?? "bypassPermissions",
+      permissionMode,
       "--session-id",
       claudeSessionId,
     ];
@@ -555,6 +557,22 @@ function ancestorDirs(start: string): string[] {
     current = parent;
   }
   return result;
+}
+
+function resolveClaudePermissionMode(
+  accessMode: RuntimeAccessMode | undefined,
+  configured: ClaudeCodeRuntimeOptions["permissionMode"],
+): NonNullable<ClaudeCodeRuntimeOptions["permissionMode"]> {
+  switch (accessMode) {
+    case "default":
+      return "default";
+    case "auto-review":
+      return "acceptEdits";
+    case "full-access":
+      return "bypassPermissions";
+    default:
+      return configured ?? "bypassPermissions";
+  }
 }
 
 function normalizeClaudeModelId(value: string | undefined): string | undefined {

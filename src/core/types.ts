@@ -22,6 +22,8 @@ export type MemoryConfidence = "asserted" | "observed" | "inferred";
 export type MemoryWriteMode = "direct" | "propose" | "ask";
 export type SandboxPolicy = "read-only" | "workspace-write" | "danger-full-access";
 export type ApprovalPolicy = "never" | "on-request" | "on-failure" | "untrusted";
+export type RuntimeAccessMode = "default" | "auto-review" | "full-access";
+export type ResponseSpeed = "standard" | "fast";
 
 export interface SourceRef {
   title?: string;
@@ -598,7 +600,14 @@ export interface AgentPageContext {
   selection?: string;
   visibleText?: string;
   locator?: string;
+  vaultFile?: AgentVaultFileContext;
   attachments?: AgentAttachmentContext[];
+}
+
+export interface AgentVaultFileContext {
+  knowledgeId?: string;
+  vaultPath?: string;
+  filePath?: string;
 }
 
 export interface AgentAttachmentContext {
@@ -656,10 +665,9 @@ export interface AgentTurnRequest {
   assembledContext?: ContextEnvelope;
   requestedModelId?: string;
   requestedEffort?: string;
-  requestedServiceTier?: string;
+  responseSpeed?: ResponseSpeed;
+  accessMode?: RuntimeAccessMode;
   requestedSkillInvocation?: InvokedSkillRecord;
-  sandbox?: SandboxPolicy;
-  approvalPolicy?: ApprovalPolicy;
   signal?: AbortSignal;
   skills?: SkillManifest[];
   packs?: PackManifest[];

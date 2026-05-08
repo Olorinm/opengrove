@@ -38,7 +38,7 @@ export function AssistantProcessBlock(props: {
   const items = props.entries.map(({ item }) => item);
   const hasRunningItem = props.entries.some(({ item }) => activityItemStatus(item) === "running");
   const hasProblem = props.entries.some(({ item }) => ["blocked", "incomplete", "rejected"].includes(activityItemStatus(item)));
-  const defaultOpen = hasRunningItem || hasPendingApproval || hasActiveChoiceForm;
+  const forceOpen = hasPendingApproval || hasActiveChoiceForm;
   const summary = summarizeActivityItems(items, {
     active: hasRunningItem,
     pendingApproval: hasPendingApproval,
@@ -54,7 +54,7 @@ export function AssistantProcessBlock(props: {
         hasPendingApproval ? "tone-approval" : null,
       )}
       data-active={hasRunningItem ? "true" : "false"}
-      open={defaultOpen ? true : undefined}
+      open={forceOpen ? true : undefined}
     >
       <summary>
         <span className="thread-activity-summary">

@@ -253,7 +253,7 @@ export function createRuntimeAdapterContract(
       {
         feature: "context_assembly",
         owner: "app",
-        appResponsibility: "Assemble OpenGrove knowledge, memory, page, computer, and artifact context.",
+        appResponsibility: "Pass explicit user-added context, attachments, and narrow surface hints; do not auto-inject broad knowledge or UI state.",
         adapterResponsibility: "Place assembled context into the kernel's expected request fields.",
       },
       {
@@ -284,9 +284,9 @@ export function createRuntimeAdapterContract(
       {
         feature: "sandbox",
         owner: "shared",
-        appResponsibility: "Expose user/workspace sandbox policy.",
+        appResponsibility: "Expose product-level access modes.",
         kernelResponsibility: "Enforce the native sandbox or permission mode.",
-        adapterResponsibility: "Translate OpenGrove sandbox policy into native sandbox semantics.",
+        adapterResponsibility: "Translate OpenGrove access modes into native sandbox and approval semantics.",
       },
       {
         feature: "trajectory",

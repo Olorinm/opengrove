@@ -13,9 +13,10 @@ export const APP_STORAGE_KEYS = {
   bridgeToken: `${APP_PROTOCOL_ID}BridgeToken`,
   reasoningEffort: `${APP_PROTOCOL_ID}ReasoningEffort`,
   responseSpeed: `${APP_PROTOCOL_ID}ResponseSpeed`,
-  sandbox: `${APP_PROTOCOL_ID}Sandbox`,
-  approvalPolicy: `${APP_PROTOCOL_ID}ApprovalPolicy`,
+  accessMode: `${APP_PROTOCOL_ID}AccessMode`,
+  language: `${APP_PROTOCOL_ID}Language`,
   sidebarWidth: `${APP_PROTOCOL_ID}SidebarWidth`,
+  libraryAiPanelWidth: `${APP_PROTOCOL_ID}LibraryAiPanelWidth`,
   vaultOpenPaths: `${APP_PROTOCOL_ID}VaultOpenPaths`,
   vaultTreeOrder: `${APP_PROTOCOL_ID}VaultTreeOrder`,
 } as const;

@@ -124,6 +124,9 @@ export class PiAgentRuntime implements AgentRuntime {
           if (!tool) {
             return { mode: "deny", reason: `Unknown tool: ${gate.toolId}` };
           }
+          if (request.accessMode === "full-access") {
+            return { mode: "allow", reason: "OpenGrove full-access mode allows host tool execution for this turn." };
+          }
           return evaluateToolPolicy(tool.spec, policy, gate.capabilityId);
         },
       };

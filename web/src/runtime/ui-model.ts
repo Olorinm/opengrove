@@ -1,24 +1,19 @@
 import { File as FileIcon, FileText, Image as ImageIcon } from "lucide-react";
 import type { QueryClient } from "@tanstack/react-query";
 import type {
-  ApprovalPolicy,
-  ArtifactRecord,
   AskFinalPayload,
   AttachmentPayload,
-  ComputerStateRecord,
-  ContextArtifactPayload,
   ExecutionRecord,
   InventoryResponse,
+  RuntimeAccessMode,
   RunRecord,
-  SandboxPolicy,
   SessionRecord,
   SkillRecord,
   StoredMessage,
   WorkingStateRecord,
 } from "../bridge";
 import { APP_STORAGE_KEYS } from "../identity";
-import { hasRenderableComputerState, normalizeComputerState, sortedArtifacts, sortedExecutions, sortedRuns, summarize, uniqueIds } from "../format";
-import { artifactImagePreview, artifactKind, artifactTitle } from "../components/knowledge/knowledge-model";
+import { sortedExecutions, sortedRuns, uniqueIds } from "../format";
 
 export const MIN_COMPOSER_HEIGHT = 56;
 export const MAX_COMPOSER_HEIGHT = 88;
@@ -27,7 +22,6 @@ export const MAX_FILE_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 export const MAX_TEXT_ATTACHMENT_BYTES = 1.5 * 1024 * 1024;
 export const MAX_TEXT_ATTACHMENT_CHARS = 80_000;
 export const MAX_COMPOSER_ATTACHMENTS = 8;
-export const MAX_COMPOSER_CONTEXT_ARTIFACTS = 6;
 
 export function parseSlashSkillQuery(value: string): { active: boolean; keyword: string } {
   const input = String(value || "").trimStart();
@@ -231,32 +225,6 @@ export async function readComposerAttachment(file: File): Promise<AttachmentPayl
   };
 }
 
-export function artifactToComposerContext(artifact: ArtifactRecord): ContextArtifactPayload {
-  const title = artifactTitle(artifact);
-  return {
-    id: String(artifact?.id || title),
-    title,
-    type: String(artifact?.type || artifactKind(artifact) || "artifact"),
-    summary: summarizeArtifactForContext(artifact),
-    imageUri: artifactImagePreview(artifact) || undefined,
-  };
-}
-
-export function summarizeArtifactForContext(artifact: ArtifactRecord): string {
-  return [
-    artifact?.preview?.text,
-    artifact?.data?.text,
-    artifact?.data?.summary,
-    artifact?.data?.description,
-    artifact?.data?.markdown,
-    artifact?.data?.uri,
-    artifact?.data?.imageUri,
-  ]
-    .filter((value) => typeof value === "string" && value.trim())
-    .map(String)
-    .map((value) => summarize(value, 500))[0] || "";
-}
-
 export function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -362,20 +330,6 @@ export function formatBytes(bytes: number): string {
   return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-export function computeRuntimeCount(session: SessionRecord | undefined, runs: RunRecord[], executions: ExecutionRecord[], sessionId: string): number {
-  const sessionRuns = sortedRuns(runs.filter((item) => !sessionId || item?.sessionId === sessionId)).slice(0, 3);
-  const executionItems = sortedExecutions(executions.filter((item) => !sessionId || item?.sessionId === sessionId)).slice(0, 5);
-  return (session ? 1 : 0) + sessionRuns.length + executionItems.length;
-}
-
-export function resolveDisplayedComputerState(liveComputerState: ComputerStateRecord, artifacts: ArtifactRecord[]) {
-  if (hasRenderableComputerState(liveComputerState)) {
-    return liveComputerState;
-  }
-  const fallback = sortedArtifacts(artifacts).find((artifact) => artifact.type === "computer_snapshot" && artifact.data);
-  return fallback ? normalizeComputerState(fallback.data) : liveComputerState;
-}
-
 export function collectMessageRunIds(messages: StoredMessage[]): string[] {
   return uniqueIds(
     messages
@@ -451,22 +405,12 @@ export function formatKernelLabel(value: string | undefined): string {
   if (value === "pi") {
     return "Pi kernel";
   }
-  if (value === "scripted") {
-    return "Scripted demo kernel";
-  }
   return "";
 }
 
-export function readStoredSandboxPolicy(): SandboxPolicy {
-  const value = typeof window === "undefined" ? "" : window.localStorage.getItem(APP_STORAGE_KEYS.sandbox);
-  return value === "read-only" || value === "workspace-write" || value === "danger-full-access"
+export function readStoredAccessMode(): RuntimeAccessMode {
+  const value = typeof window === "undefined" ? "" : window.localStorage.getItem(APP_STORAGE_KEYS.accessMode);
+  return value === "default" || value === "auto-review" || value === "full-access"
     ? value
-    : "workspace-write";
-}
-
-export function readStoredApprovalPolicy(): ApprovalPolicy {
-  const value = typeof window === "undefined" ? "" : window.localStorage.getItem(APP_STORAGE_KEYS.approvalPolicy);
-  return value === "never" || value === "on-request" || value === "on-failure" || value === "untrusted"
-    ? value
-    : "on-request";
+    : "default";
 }

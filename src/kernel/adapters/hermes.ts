@@ -324,7 +324,7 @@ export const HERMES_KERNEL_CONTRACT: KernelAdapterContract = {
     {
       feature: "context_assembly",
       owner: "app",
-      appResponsibility: `Assemble ${APP_PRODUCT_NAME} context and knowledge bundles.`,
+      appResponsibility: `Pass explicit user-added context, attachments, and narrow ${APP_PRODUCT_NAME} surface hints.`,
     },
     {
       feature: "artifact_extraction",

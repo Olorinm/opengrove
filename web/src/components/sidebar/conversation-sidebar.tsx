@@ -11,6 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { UiThread } from "../../store";
+import { useI18n } from "../../i18n";
 import {
   ConversationSortMenu,
   formatSidebarThreadMeta,
@@ -43,17 +44,18 @@ export interface ConversationSidebarProps {
 }
 
 export function ConversationSidebar(props: ConversationSidebarProps) {
+  const { t } = useI18n();
   return (
-    <div className="project-section" aria-label="对话">
+    <div className="project-section" aria-label={t("app.chat")}>
       <div className="thread-heading-row">
-        <span>对话</span>
+        <span>{t("app.chat")}</span>
         <span className="thread-heading-actions">
           <button
             className="sidebar-mini-action"
             type="button"
             onClick={props.onToggleAllProjectsCollapsed}
-            aria-label={props.allProjectsCollapsed ? "展开所有项目" : "收起所有项目"}
-            title={props.allProjectsCollapsed ? "展开所有项目" : "收起所有项目"}
+            aria-label={props.allProjectsCollapsed ? t("conversation.expandAll") : t("conversation.collapseAll")}
+            title={props.allProjectsCollapsed ? t("conversation.expandAll") : t("conversation.collapseAll")}
           >
             {props.allProjectsCollapsed ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
           </button>
@@ -62,12 +64,12 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
             type="button"
             onClick={props.onOpenConversationSortMenu}
             aria-expanded={props.conversationSortMenuOpen}
-            aria-label="项目排序"
-            title="排序"
+            aria-label={t("conversation.sortProjects")}
+            title={t("conversation.sort")}
           >
             <ListChecks size={13} />
           </button>
-          <button className="sidebar-mini-action" type="button" onClick={props.onOpenNewProject} disabled={props.sending} aria-label="新建项目" title="新建项目">
+          <button className="sidebar-mini-action" type="button" onClick={props.onOpenNewProject} disabled={props.sending} aria-label={t("conversation.newProject")} title={t("conversation.newProject")}>
             <FolderPlus size={13} />
           </button>
           {props.conversationSortMenuOpen ? (
@@ -98,7 +100,7 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                   <Folder size={17} />
                   <span className="project-item-copy">
                     <span className="project-item-title">{project.title}</span>
-                    <span className="project-item-context">{projectSidebarContextLabel(project)}</span>
+                    <span className="project-item-context">{projectSidebarContextLabel(project, t)}</span>
                   </span>
                 </span>
                 <span className="project-item-count">{project.threads.length}</span>
@@ -109,8 +111,8 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                   type="button"
                   onClick={() => props.onOpenNewThread(project.id)}
                   disabled={props.sending}
-                  aria-label={`在 ${project.title} 中新建对话`}
-                  title="新对话"
+                  aria-label={`${project.title} · ${t("conversation.newThread")}`}
+                  title={t("conversation.newThread")}
                 >
                   <SquarePen size={14} />
                 </button>
@@ -119,8 +121,8 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                   type="button"
                   onClick={() => props.onToggleProjectMenu(project.id)}
                   aria-expanded={props.projectMenuOpenId === project.id}
-                  aria-label={`${project.title} 更多操作`}
-                  title="更多"
+                  aria-label={`${project.title} · ${t("conversation.more")}`}
+                  title={t("conversation.more")}
                 >
                   <MoreHorizontal size={14} />
                 </button>
@@ -129,11 +131,11 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                 <div className="project-row-menu" role="menu">
                   <button type="button" role="menuitem" onClick={() => props.onRenameProject(project)}>
                     <Pencil size={14} />
-                    重命名项目
+                    {t("conversation.renameProject")}
                   </button>
                   <button type="button" role="menuitem" onClick={() => props.onDeleteProject(project)} disabled={props.sending}>
                     <Trash2 size={13} />
-                    移除
+                    {t("common.remove")}
                   </button>
                 </div>
               ) : null}
@@ -171,6 +173,8 @@ function ThreadRow(props: {
   onDeleteThread(thread: UiThread): void;
 }) {
   const empty = props.thread.id.startsWith("empty:");
+  const { t } = useI18n();
+  const title = props.thread.title || t("conversation.newThreadFallback");
   return (
     <div className="thread-row">
       <button
@@ -178,11 +182,11 @@ function ThreadRow(props: {
         type="button"
         onClick={() => (empty ? props.onOpenNewThread(props.thread.projectId) : props.onOpenThread(props.thread.id))}
       >
-        <span>{props.thread.title || "新线程"}</span>
+        <span>{title}</span>
         <span>
           {props.active && props.pendingApprovalCount
-            ? `${props.pendingApprovalCount} 待确认`
-            : formatSidebarThreadMeta(props.thread)}
+            ? `${props.pendingApprovalCount} ${t("conversation.pendingApproval")}`
+            : formatSidebarThreadMeta(props.thread, t)}
         </span>
       </button>
       {!empty ? (
@@ -191,7 +195,7 @@ function ThreadRow(props: {
           type="button"
           onClick={() => props.onDeleteThread(props.thread)}
           disabled={props.sending}
-          aria-label={`删除对话 ${props.thread.title || "新线程"}`}
+          aria-label={`${t("conversation.deleteThread")} ${title}`}
         >
           <Trash2 size={13} />
         </button>

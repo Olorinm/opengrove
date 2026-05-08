@@ -9,6 +9,8 @@ import type {
   KernelKnowledgeSourceScope,
 } from "./types.js";
 
+const COMMAND_VERSION_CACHE = new Map<string, string | undefined>();
+
 export interface KernelSourceInput {
   id: string;
   title: string;
@@ -46,6 +48,10 @@ export function resolveHomePath(...parts: string[]): string {
 
 export function commandVersion(command: string | undefined, args: string[] = ["--version"]): string | undefined {
   if (!command) return undefined;
+  const cacheKey = JSON.stringify([command, args]);
+  if (COMMAND_VERSION_CACHE.has(cacheKey)) {
+    return COMMAND_VERSION_CACHE.get(cacheKey);
+  }
   try {
     const result = spawnSync(command, args, {
       encoding: "utf8",
@@ -53,8 +59,11 @@ export function commandVersion(command: string | undefined, args: string[] = ["-
       timeout: 2_000,
     });
     const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
-    return output.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+    const version = output.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+    COMMAND_VERSION_CACHE.set(cacheKey, version);
+    return version;
   } catch {
+    COMMAND_VERSION_CACHE.set(cacheKey, undefined);
     return undefined;
   }
 }

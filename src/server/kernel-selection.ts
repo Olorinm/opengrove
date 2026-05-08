@@ -16,6 +16,13 @@ import {
 import { createRuntimeKernelAdapter } from "../kernel/adapter.js";
 import { createClaudeCodeKernelAdapter, discoverClaudeCodeKernel } from "../kernel/adapters/claude-code.js";
 import { createCodexKernelAdapter, discoverCodexKernel } from "../kernel/adapters/codex.js";
+import {
+  EXTERNAL_CLI_KERNELS,
+  createExternalCliKernelAdapter,
+  discoverExternalCliKernel,
+  externalCliDefinition,
+  resolveExternalCliCommand,
+} from "../kernel/adapters/external-cli.js";
 import { createHermesKernelAdapter, discoverHermesKernel } from "../kernel/adapters/hermes.js";
 import { PI_KERNEL_CONTRACT } from "../kernel/adapters/pi.js";
 import type { KernelAdapter, KernelDiscovery, KernelKnowledgeSource } from "../kernel/types.js";
@@ -24,7 +31,6 @@ import { resolveCodexCommandPath } from "../runtime/codex-runtime.js";
 import { resolveHermesCommandPath } from "../runtime/hermes-runtime.js";
 import { createNativePiSessionFactory } from "../runtime/native-pi-session.js";
 import { PiAgentRuntime } from "../runtime/pi-runtime.js";
-import { createScriptedCompanionSession } from "../runtime/scripted-session.js";
 import { defaultHermesExternalSkillDir } from "../skills/native-publisher.js";
 import {
   providerHttpCaptureSummary,
@@ -44,11 +50,23 @@ import {
   BRIDGE_KERNEL_IDS,
   DEFAULT_BRIDGE_MODEL_ID,
 } from "./bridge-types.js";
+import {
+  providerEnvForKernel,
+  providerModelsForKernel,
+  resolveProviderForKernel,
+} from "./provider-profiles.js";
 
 export function createBridgeKernel(state: BridgeState): KernelAdapter {
   const kernel = resolveBridgeKernel(state.settings.kernel);
   state.kernel = kernel;
   const providerHttpCapture = readProviderHttpCaptureOptions(state, kernel);
+  const provider = resolveProviderForKernel(kernel, state.settings.kernelProviderBindings, state.settings.customProviders);
+  const providerModelOptions = providerModelsForKernel(kernel, provider);
+  const providerDefaultModel = providerModelOptions.some((item) => item.id === state.model)
+    ? state.model
+    : providerModelOptions[0]?.id;
+  const selectedModel = providerDefaultModel || state.model;
+  const providerEnv = providerEnvForKernel(kernel, provider, selectedModel);
 
   if (kernel === "claude-code") {
     const cliPath = resolveClaudeCodeCliPath(process.cwd());
@@ -60,9 +78,10 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
       cwd: process.cwd(),
       configuredBaseUrl: readClaudeBaseUrl(),
       configuredAuthToken: readClaudeAuthToken(),
-      configuredModel: readClaudeConfiguredModel(),
+      configuredModel: provider ? (selectedModel || readClaudeConfiguredModel()) : readClaudeConfiguredModel(),
       permissionMode: "bypassPermissions",
       providerHttpCapture,
+      env: providerEnv,
     });
   }
 
@@ -74,11 +93,12 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
     return createCodexKernelAdapter({
       command,
       cwd: process.cwd(),
-      configuredModel: readCodexConfiguredModel(),
+      configuredModel: provider ? (selectedModel || readCodexConfiguredModel()) : readCodexConfiguredModel(),
       approvalPolicy: readCodexApprovalPolicy(),
       sandbox: readCodexSandbox(),
       statePath: resolve(dirname(state.store.path), "codex-threads.json"),
       providerHttpCapture,
+      env: providerEnv,
     });
   }
 
@@ -95,6 +115,7 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
       toolsets: readHermesToolsets(),
       nativeSkillDir: defaultHermesExternalSkillDir(process.cwd()),
       providerHttpCapture,
+      env: providerEnv,
     });
   }
 
@@ -105,8 +126,8 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
       runtime: new PiAgentRuntime({
         createSession: createNativePiSessionFactory({
           model: (requestedModelId) =>
-            resolveNativeModel(readBridgeModelOverride(requestedModelId) ?? state.model),
-          getApiKey: getBridgeModelApiKey,
+            resolveNativeModel(readBridgeModelOverride(requestedModelId) ?? state.model, providerEnv),
+          getApiKey: (providerName) => providerEnv?.MODEL_API_KEY || getBridgeModelApiKey(providerName),
           thinkingLevel: (requestedEffort) =>
             resolveRequestedThinkingLevel(requestedEffort) ?? readThinkingLevel(),
           toolExecution: "sequential",
@@ -135,34 +156,18 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
     });
   }
 
-  return createRuntimeKernelAdapter({
-    id: "scripted",
-    title: "Scripted",
-    runtime: new PiAgentRuntime({
-      createSession: () =>
-        createScriptedCompanionSession({
-          saveCandidateNote: state.saveCandidateNote,
-        }),
-    }),
-    capabilities: {
-      streaming: true,
-      toolCalls: true,
-      hostTools: true,
-      approvals: true,
-      elicitation: false,
-      artifacts: true,
-      compaction: false,
-      authRefresh: false,
-      sandbox: ["danger-full-access"],
-      knowledge: {
-        nativeSkills: false,
-        toolMediatedSkills: true,
-        progressiveDisclosure: true,
-        nativeArtifacts: false,
-        deliveryLedger: true,
-      },
-    },
-  });
+  const external = externalCliDefinition(kernel);
+  if (external) {
+    const command = resolveExternalCliCommand(external);
+    return createExternalCliKernelAdapter(external, {
+      command,
+      cwd: process.cwd(),
+      env: providerEnv,
+      providerHttpCapture,
+    });
+  }
+
+  throw new Error(`Unsupported kernel: ${kernel}`);
 }
 
 export function getBridgeKernelOptions(state: BridgeState): JsonObject[] {
@@ -171,7 +176,7 @@ export function getBridgeKernelOptions(state: BridgeState): JsonObject[] {
     {
       id: "auto",
       label: "自动选择",
-      description: "按 Codex → Claude Code → Hermes → Pi → Scripted 的顺序选择可用内核。",
+      description: "按 Codex → Claude Code → OpenClaw → Hermes → Pi → DeepSeek TUI → 其他可用内核的顺序选择。",
       available: true,
       active: state.settings.kernel === "auto",
       resolved: active,
@@ -179,56 +184,22 @@ export function getBridgeKernelOptions(state: BridgeState): JsonObject[] {
   ];
 
   for (const id of BRIDGE_KERNEL_IDS) {
-    const available =
-      id === "codex"
-        ? canUseCodexKernel()
-        : id === "claude-code"
-          ? canUseClaudeKernel()
-          : id === "hermes"
-            ? canUseHermesKernel()
-            : id === "pi"
-              ? canUsePiKernel()
-              : true;
+    const available = canUseBridgeKernel(id);
     const discovery = buildKernelDiscoverySnapshot(id, state, available);
+    const provider = resolveProviderForKernel(id, state.settings.kernelProviderBindings, state.settings.customProviders);
     options.push(stripUndefined({
       id,
-      label:
-        id === "claude-code"
-          ? "Claude Code"
-          : id === "hermes"
-            ? "Hermes"
-            : id === "pi"
-              ? "Pi"
-              : id === "scripted"
-                ? "Scripted demo"
-                : "Codex",
-      description:
-        id === "codex"
-          ? "使用 Codex CLI / app-server，保留 Codex 原生工具、审批、elicitation、compact 等能力。"
-          : id === "claude-code"
-            ? "使用 Claude Code CLI。当前桥接仍偏 CLI stream，审批/host tool parity 低于 Codex。"
-            : id === "hermes"
-            ? `使用 Hermes CLI oneshot。支持 Hermes 原生 skill list/view/external_dirs；当前 ${APP_PRODUCT_NAME} 只能看到最终文本，原生工具细节还不会逐条流回。`
-            : id === "pi"
-                ? `使用 ${APP_PRODUCT_NAME} 自带的 OpenAI-compatible loop，适合调试 ${APP_PRODUCT_NAME} 自有工具链。`
-                : "本地脚本内核，用于无模型依赖的 UI/知识库流程演示。",
+      label: kernelLabel(id),
+      description: kernelDescription(id),
       available,
       active: state.settings.kernel === id,
-      reason: available
-        ? ""
-        : id === "codex"
-          ? "未找到 Codex CLI。"
-          : id === "claude-code"
-            ? "未找到 Claude Code CLI。"
-            : id === "hermes"
-              ? `未找到 Hermes CLI。安装 Hermes 或设置 ${appEnvName("HERMES_BIN")}。`
-              : id === "pi"
-                ? `缺少 ${appEnvName("MODEL_BASE_URL")} 或 OpenAI-compatible API key。`
-            : "",
+      reason: available ? "" : unavailableReason(id),
       installed: discovery.installed,
       binaryPath: discovery.binaryPath,
       version: discovery.version,
       configHome: discovery.configHome,
+      providerId: provider?.id,
+      providerLabel: provider?.name,
       sources: discovery.knowledgeSources
         .filter(isPrimarySettingsKnowledgeSource)
         .map((source) => serializeKernelSource(id, source, state)),
@@ -243,16 +214,18 @@ export function getBridgeKernelOptions(state: BridgeState): JsonObject[] {
 
 export function getBridgeRuntimeControls(state: BridgeState): JsonObject {
   const active = resolveBridgeKernel(state.settings.kernel);
+  const provider = resolveProviderForKernel(active, state.settings.kernelProviderBindings, state.settings.customProviders);
+  const providerModels = providerModelsForKernel(active, provider);
   const controls =
     active === "codex"
-      ? buildCodexRuntimeControls()
+      ? mergeProviderRuntimeControls(buildCodexRuntimeControls(), providerModels, provider?.id)
       : active === "claude-code"
-        ? buildSingleModelRuntimeControls({
+        ? mergeProviderRuntimeControls(buildSingleModelRuntimeControls({
             kernel: active,
             source: "claude-code-config",
-            model: readClaudeConfiguredModel() ?? "claude-opus-4-6",
-            label: "Claude Opus 4.6",
-          })
+            model: readClaudeConfiguredModel() ?? providerModels[0]?.id ?? "claude-opus-4-6",
+            label: providerModels[0]?.label ?? "Claude Opus 4.6",
+          }), providerModels, provider?.id)
         : active === "hermes"
           ? buildSingleModelRuntimeControls({
               kernel: active,
@@ -261,13 +234,10 @@ export function getBridgeRuntimeControls(state: BridgeState): JsonObject {
               label: readHermesConfiguredModel() ?? "Hermes 默认模型",
             })
           : active === "pi"
-            ? buildPiRuntimeControls()
-            : buildSingleModelRuntimeControls({
-                kernel: active,
-                source: "scripted",
-                model: "scripted",
-                label: "Scripted demo",
-              });
+            ? mergeProviderRuntimeControls(buildPiRuntimeControls(), providerModels, provider?.id)
+            : externalCliDefinition(active)
+              ? buildExternalRuntimeControls(active, providerModels, provider?.id)
+              : buildPiRuntimeControls();
   return stripUndefined(controls as unknown as Record<string, unknown>) as JsonObject;
 }
 
@@ -339,7 +309,36 @@ function buildSingleModelRuntimeControls(input: {
   };
 }
 
-const MODEL_LABELS: Record<BridgeModelId, string> = {
+function buildExternalRuntimeControls(
+  kernel: BridgeKernelId,
+  providerModels: BridgeRuntimeControlOption[],
+  providerId: string | undefined,
+): BridgeRuntimeControls {
+  return {
+    kernel,
+    source: providerId ? `provider:${providerId}` : "external-cli",
+    models: providerModels.length ? providerModels : [{ id: `${kernel}-default`, label: "Default" }],
+    defaultModel: providerModels[0]?.id,
+    reasoningEfforts: [],
+    speedTiers: [],
+  };
+}
+
+function mergeProviderRuntimeControls(
+  controls: BridgeRuntimeControls,
+  providerModels: BridgeRuntimeControlOption[],
+  providerId: string | undefined,
+): BridgeRuntimeControls {
+  if (!providerModels.length) return controls;
+  return {
+    ...controls,
+    source: providerId ? `provider:${providerId}` : controls.source,
+    models: providerModels,
+    defaultModel: providerModels[0]?.id ?? controls.defaultModel,
+  };
+}
+
+const MODEL_LABELS: Record<string, string> = {
   "MiMo-V2-Pro": "MiMo-V2-Pro",
   "gpt-5.5": "GPT-5.5",
   "gpt-5.4": "GPT-5.4",
@@ -467,7 +466,15 @@ function buildKernelDiscoverySnapshot(
       available,
     };
   }
-  const base = createRuntimeKernelDiscovery(id, id === "pi" ? "Pi" : "Scripted demo", available, cwd);
+  const external = externalCliDefinition(id);
+  if (external) {
+    return {
+      ...discoverExternalCliKernel(external),
+      installed: available,
+      available,
+    };
+  }
+  const base = createRuntimeKernelDiscovery(id, "Pi", available, cwd);
   return base;
 }
 
@@ -534,11 +541,7 @@ function createRuntimeKernelDiscovery(
         syncMode: "mirror",
       },
     ],
-    notes: [
-      kernelId === "pi"
-        ? `Pi 使用 ${APP_PRODUCT_NAME} 自己的 tool-mediated skill/memory/artifact 机制，没有单独原生目录。`
-        : `Scripted demo 只用于本地演示，真实知识来源都在 ${APP_PRODUCT_NAME} Vault。`,
-    ],
+    notes: [`Pi 使用 ${APP_PRODUCT_NAME} 自己的 tool-mediated skill/memory/artifact 机制，没有单独原生目录。`],
   };
 }
 
@@ -599,7 +602,7 @@ export function readProviderHttpCaptureOptions(
     };
   }
 
-  if (kernel === "pi" || kernel === "scripted") {
+  if (kernel === "pi") {
     return {
       enabled: true,
       inject: false,
@@ -652,25 +655,29 @@ export function getProviderHttpCaptureSnapshot(state: BridgeState): JsonObject {
 
 export function resolveBridgeKernel(preferred: BridgeKernelPreference): BridgeKernelId {
   if (preferred !== "auto") {
-    if (preferred === "codex" && !canUseCodexKernel()) {
-      throw new Error("Codex kernel is not available. Install Codex CLI or choose another kernel.");
-    }
-    if (preferred === "claude-code" && !canUseClaudeKernel()) {
-      throw new Error("Claude Code kernel is not available. Install Claude Code CLI or choose another kernel.");
-    }
-    if (preferred === "hermes" && !canUseHermesKernel()) {
-      throw new Error("Hermes kernel is not available. Install Hermes CLI or choose another kernel.");
-    }
-    if (preferred === "pi" && !canUsePiKernel()) {
-      throw new Error(`Pi kernel is not available. Configure ${appEnvName("MODEL_BASE_URL")} and API key or choose another kernel.`);
+    if (!canUseBridgeKernel(preferred)) {
+      throw new Error(`${kernelLabel(preferred)} is not available. ${unavailableReason(preferred)}`);
     }
     return preferred;
   }
   if (canUseCodexKernel()) return "codex";
   if (canUseClaudeKernel()) return "claude-code";
+  if (canUseExternalCliKernel("openclaw")) return "openclaw";
   if (canUseHermesKernel()) return "hermes";
   if (canUsePiKernel()) return "pi";
-  return "scripted";
+  if (canUseExternalCliKernel("deepseek-tui")) return "deepseek-tui";
+  for (const definition of EXTERNAL_CLI_KERNELS) {
+    if (canUseExternalCliKernel(definition.id)) return definition.id;
+  }
+  throw new Error("No available kernel was found. Install Codex, Claude Code, Hermes, Pi, or configure an external CLI kernel.");
+}
+
+function canUseBridgeKernel(id: BridgeKernelId): boolean {
+  if (id === "codex") return canUseCodexKernel();
+  if (id === "claude-code") return canUseClaudeKernel();
+  if (id === "hermes") return canUseHermesKernel();
+  if (id === "pi") return canUsePiKernel();
+  return canUseExternalCliKernel(id);
 }
 
 function canUseClaudeKernel() {
@@ -700,8 +707,56 @@ function canUsePiKernel() {
   );
 }
 
-function resolveNativeModel(modelId: BridgeModelId): Model<any> {
-  const metadata = {
+function canUseExternalCliKernel(id: BridgeKernelId): boolean {
+  const definition = externalCliDefinition(id);
+  return Boolean(definition && resolveExternalCliCommand(definition));
+}
+
+function kernelLabel(id: BridgeKernelId): string {
+  const external = externalCliDefinition(id);
+  if (external) return external.title;
+  if (id === "claude-code") return "Claude Code";
+  if (id === "codex") return "Codex";
+  if (id === "hermes") return "Hermes";
+  if (id === "pi") return "Pi";
+  return id;
+}
+
+function kernelDescription(id: BridgeKernelId): string {
+  if (id === "codex") {
+    return "使用 Codex CLI / app-server，保留 Codex 原生工具、审批、elicitation、compact 等能力。";
+  }
+  if (id === "claude-code") {
+    return "使用 Claude Code CLI。当前桥接仍偏 CLI stream，审批/host tool parity 低于 Codex。";
+  }
+  if (id === "hermes") {
+    return `使用 Hermes CLI oneshot。支持 Hermes 原生 skill list/view/external_dirs；当前 ${APP_PRODUCT_NAME} 只能看到最终文本，原生工具细节还不会逐条流回。`;
+  }
+  if (id === "pi") {
+    return `使用 ${APP_PRODUCT_NAME} 自带的 OpenAI-compatible loop，适合调试 ${APP_PRODUCT_NAME} 自有工具链。`;
+  }
+  const external = externalCliDefinition(id);
+  return external
+    ? `${external.title} 外部 CLI 适配器。OpenGrove 负责发现、provider 环境注入和输出归一化。`
+    : id;
+}
+
+function unavailableReason(id: BridgeKernelId): string {
+  if (id === "codex") return "未找到 Codex CLI。";
+  if (id === "claude-code") return "未找到 Claude Code CLI。";
+  if (id === "hermes") return `未找到 Hermes CLI。安装 Hermes 或设置 ${appEnvName("HERMES_BIN")}。`;
+  if (id === "pi") return `缺少 ${appEnvName("MODEL_BASE_URL")} 或 OpenAI-compatible API key。`;
+  const external = externalCliDefinition(id);
+  return external
+    ? `未找到 ${external.title} CLI。安装它或设置 ${appEnvName(external.envName)}。`
+    : "未找到内核。";
+}
+
+function resolveNativeModel(modelId: BridgeModelId, providerEnv?: NodeJS.ProcessEnv): Model<any> {
+  const metadata: Record<
+    string,
+    { apiId: string; name: string; contextWindow: number; maxTokens: number; reasoning: boolean }
+  > = {
     "MiMo-V2-Pro": {
       apiId: "mimo-v2-pro",
       name: "MiMo-V2-Pro",
@@ -758,18 +813,21 @@ function resolveNativeModel(modelId: BridgeModelId): Model<any> {
       maxTokens: 64_000,
       reasoning: false,
     },
-  } satisfies Record<
-    BridgeModelId,
-    { apiId: string; name: string; contextWindow: number; maxTokens: number; reasoning: boolean }
-  >;
-  const config = metadata[modelId];
+  };
+  const config = metadata[modelId] ?? {
+    apiId: modelId,
+    name: MODEL_LABELS[modelId] ?? modelId,
+    contextWindow: 200_000,
+    maxTokens: 32_000,
+    reasoning: true,
+  };
 
   return {
     id: config.apiId,
     name: config.name,
     api: "openai-completions",
     provider: "openai",
-    baseUrl: readModelBaseUrl(),
+    baseUrl: providerEnv?.MODEL_BASE_URL || readModelBaseUrl(),
     reasoning: config.reasoning,
     input: ["text"],
     cost: {
@@ -903,9 +961,7 @@ function readHermesToolsets() {
 }
 
 function readBridgeModelOverride(value: unknown): BridgeModelId | undefined {
-  return typeof value === "string" && (BRIDGE_MODEL_IDS as readonly string[]).includes(value)
-    ? (value as BridgeModelId)
-    : undefined;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function resolveRequestedThinkingLevel(value: unknown) {
@@ -1007,15 +1063,8 @@ export function isEnabledEnvFlag(value: string | undefined): boolean {
 }
 
 export function normalizeBridgeKernelPreference(value: unknown, fallback: BridgeKernelPreference): BridgeKernelPreference {
-  if (
-    value === "auto" ||
-    value === "codex" ||
-    value === "claude-code" ||
-    value === "hermes" ||
-    value === "pi" ||
-    value === "scripted"
-  ) {
-    return value;
+  if (value === "auto" || (typeof value === "string" && (BRIDGE_KERNEL_IDS as readonly string[]).includes(value))) {
+    return value as BridgeKernelPreference;
   }
   return fallback;
 }

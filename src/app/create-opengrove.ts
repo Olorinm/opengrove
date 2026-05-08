@@ -17,10 +17,10 @@ import {
   type AgentContext,
   type ActivitySpace,
   type AgentRuntime,
-  type ApprovalPolicy,
   type InvokedSkillRecord,
   type PolicyRule,
-  type SandboxPolicy,
+  type ResponseSpeed,
+  type RuntimeAccessMode,
   type SkillCatalog,
   type SkillManifest,
 } from "../core.js";
@@ -62,7 +62,6 @@ import {
 import { PI_KERNEL_CONTRACT } from "../kernel/adapters/pi.js";
 import type { KernelAdapter } from "../kernel/types.js";
 import { createKnowledgeBackedArtifactStore } from "../knowledge/artifact-view.js";
-import { createKnowledgeContextPlanner } from "../knowledge/context-planner.js";
 import { createKnowledgeBackedMemoryLedger } from "../knowledge/memory-view.js";
 import {
   createKnowledgeFeedbackScorer,
@@ -72,7 +71,6 @@ import {
   createKnowledgeOrganizer,
   type KnowledgeOrganizer,
 } from "../knowledge/organizer.js";
-import { createKnowledgeResolver } from "../knowledge/resolver.js";
 import {
   createKnowledgeSkillCatalogView,
   skillKnowledgeId,
@@ -116,9 +114,8 @@ export interface AgentTurnOptions {
   sessionId?: string;
   requestedModelId?: string;
   requestedEffort?: string;
-  requestedServiceTier?: string;
-  sandbox?: SandboxPolicy;
-  approvalPolicy?: ApprovalPolicy;
+  responseSpeed?: ResponseSpeed;
+  accessMode?: RuntimeAccessMode;
   signal?: AbortSignal;
 }
 
@@ -281,14 +278,7 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
   );
 
   const runtime = createRuntime(options);
-  const knowledgeResolver = createKnowledgeResolver({ store: knowledge });
-  const knowledgePlanner = createKnowledgeContextPlanner({
-    resolver: knowledgeResolver,
-    store: knowledge,
-    kernelId: options.kernel?.id,
-    kernelCapabilities: options.kernel?.capabilities,
-  });
-  const assembleContext = options.assembleContext ?? createDefaultContextAssembler({ knowledgePlanner });
+  const assembleContext = options.assembleContext ?? createDefaultContextAssembler();
 
   const app: OpenGroveApp = {
     events,
@@ -362,6 +352,13 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
         kernelId: options.kernel?.id,
         kernelCapabilities: options.kernel?.capabilities,
       });
+      recordRequestedSkillDelivery({
+        knowledge,
+        invocation: preparedInput.invocation,
+        runId,
+        sessionId,
+        kernel: options.kernel,
+      });
       sessions.startRun({
         id: runId,
         sessionId,
@@ -378,10 +375,9 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
         assembledContext,
         requestedModelId: turnOptions.requestedModelId ?? preparedInput.requestedModelId,
         requestedEffort: turnOptions.requestedEffort ?? preparedInput.requestedEffort,
-        requestedServiceTier: turnOptions.requestedServiceTier,
+        responseSpeed: turnOptions.responseSpeed,
+        accessMode: turnOptions.accessMode,
         requestedSkillInvocation: preparedInput.invocation,
-        sandbox: turnOptions.sandbox,
-        approvalPolicy: turnOptions.approvalPolicy,
         signal: turnOptions.signal,
         tools: tools.list(),
         capabilities: capabilities.list(),
@@ -523,6 +519,7 @@ function toAgentPageContext(page: BrowserPageSnapshot) {
     selection: page.selection,
     visibleText: page.visibleText,
     locator: page.locator,
+    vaultFile: page.vaultFile,
     attachments: Array.isArray(page.attachments) ? page.attachments : [],
   };
 }
@@ -533,6 +530,53 @@ function toAgentComputerContext(computer: ComputerStateSnapshot) {
 
 function createRunId(): string {
   return `run_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function recordRequestedSkillDelivery(options: {
+  knowledge: KnowledgeStore;
+  invocation?: InvokedSkillRecord;
+  runId: string;
+  sessionId: string;
+  kernel?: KernelAdapter;
+}): void {
+  const { invocation } = options;
+  if (!invocation) {
+    return;
+  }
+
+  const mode = options.kernel?.capabilities.knowledge?.nativeSkills ? "native_skill" : "loaded_skill";
+  options.knowledge.recordDelivery({
+    id: `skill_delivery_${options.runId}`,
+    runId: options.runId,
+    sessionId: options.sessionId,
+    kernelId: options.kernel?.id,
+    createdAt: new Date().toISOString(),
+    query: invocation.args || invocation.skillName,
+    decisions: [
+      {
+        knowledgeId: skillKnowledgeId(invocation.skillId),
+        knowledgeType: "skill",
+        title: invocation.title || invocation.skillName,
+        mode,
+        reason:
+          mode === "native_skill"
+            ? "Skill is available through the native kernel skill loader."
+            : "Skill body is delivered through requestedSkillInvocation, not duplicated in assembled context.",
+        score: 1,
+        includeInPrompt: false,
+        metadata: {
+          skillId: invocation.skillId,
+          skillName: invocation.skillName,
+          origin: invocation.origin,
+          source: invocation.source,
+        },
+      },
+    ],
+    metadata: {
+      source: "requested_skill",
+      promptItemCount: 0,
+    },
+  });
 }
 
 function prepareTurnInput(

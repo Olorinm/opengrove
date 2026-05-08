@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent } from "react";
-import { ChevronRight, FilePlus2, FileText, Folder, FolderPlus, MoreHorizontal, Pencil, Search, Trash2 } from "lucide-react";
+import { ChevronRight, FilePlus2, FileText, Folder, FolderPlus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import {
-  isLowConfidence,
-  knowledgeDisplaySummary,
-  knowledgeStatusLabel,
-  knowledgeTypeGlyph,
-  knowledgeTypeLabel,
   knowledgeVaultPath,
-  needsKnowledgeReview,
-  sortKnowledgeDocumentsForView,
 } from "../knowledge/knowledge-model";
 import { APP_STORAGE_KEYS } from "../../identity";
+import { useI18n } from "../../i18n";
 
 type VaultTreeNode = {
   id: string;
@@ -70,6 +64,7 @@ export function VaultSidebarPanel(props: {
   onRenameEntry(sourcePath: string, name: string): void;
   onStartRename(sourcePath: string): void;
 }) {
+  const { t } = useI18n();
   const [menuState, setMenuState] = useState<VaultMenuState | null>(null);
   const [selectedFolderPath, setSelectedFolderPath] = useState("");
   const [dropTargetPath, setDropTargetPath] = useState("");
@@ -193,7 +188,7 @@ export function VaultSidebarPanel(props: {
   }
 
   return (
-    <section className="sidebar-library-panel" aria-label="资料库文件">
+    <section className="sidebar-library-panel" aria-label={t("vault.files")}>
       <div className="sidebar-library-files">
         {tree.length ? (
           tree.map((node) => (
@@ -224,7 +219,7 @@ export function VaultSidebarPanel(props: {
             />
           ))
         ) : (
-          <div className="sidebar-library-empty">这个目录里还没有文件。</div>
+          <div className="sidebar-library-empty">{t("vault.empty")}</div>
         )}
       </div>
     </section>
@@ -286,119 +281,6 @@ function writeStoredVaultTreeOrder(order: VaultTreeOrder): void {
   }
 }
 
-export function WikiSidebarPanel(props: {
-  documents: any[];
-  filteredDocuments: any[];
-  focusedKnowledgeId: string;
-  query: string;
-  onQueryChange(query: string): void;
-  onOpenKnowledge(knowledgeId: string): void;
-}) {
-  const allDocuments = useMemo(
-    () => [...props.documents].filter(Boolean).sort(sortKnowledgeDocumentsForView),
-    [props.documents],
-  );
-  const reviewDocuments = useMemo(() => allDocuments.filter(needsKnowledgeReview).slice(0, 6), [allDocuments]);
-  const recentDocuments = useMemo(() => allDocuments.slice(0, 8), [allDocuments]);
-  const verifiedDocuments = useMemo(
-    () => allDocuments.filter((document) => !needsKnowledgeReview(document) && !isLowConfidence(document)).slice(0, 6),
-    [allDocuments],
-  );
-  const isSearching = Boolean(props.query.trim());
-
-  return (
-    <section className="sidebar-panel-space wiki-sidebar-panel" aria-label="Wiki">
-      <div className="sidebar-space-header">
-        <div>
-          <div className="sidebar-space-kicker">Wiki</div>
-          <div className="sidebar-space-title">知识网络</div>
-        </div>
-        <span className="sidebar-space-count">{props.documents.length}</span>
-      </div>
-      <label className="wiki-jump-search">
-        <Search size={14} />
-        <input
-          value={props.query}
-          onChange={(event) => props.onQueryChange(event.target.value)}
-          placeholder="搜索或跳转页面"
-        />
-      </label>
-      {isSearching ? (
-        <WikiSidebarSection
-          title="搜索结果"
-          documents={props.filteredDocuments}
-          focusedKnowledgeId={props.focusedKnowledgeId}
-          emptyText="没有匹配页面。"
-          onOpenKnowledge={props.onOpenKnowledge}
-        />
-      ) : (
-        <>
-          <WikiSidebarSection
-            title="待确认"
-            documents={reviewDocuments}
-            focusedKnowledgeId={props.focusedKnowledgeId}
-            emptyText="没有待确认页面。"
-            onOpenKnowledge={props.onOpenKnowledge}
-          />
-          <WikiSidebarSection
-            title="最近页面"
-            documents={recentDocuments}
-            focusedKnowledgeId={props.focusedKnowledgeId}
-            emptyText="还没有页面。"
-            onOpenKnowledge={props.onOpenKnowledge}
-          />
-          <WikiSidebarSection
-            title="已确认"
-            documents={verifiedDocuments}
-            focusedKnowledgeId={props.focusedKnowledgeId}
-            emptyText="还没有已确认页面。"
-            onOpenKnowledge={props.onOpenKnowledge}
-          />
-        </>
-      )}
-    </section>
-  );
-}
-
-function WikiSidebarSection(props: {
-  title: string;
-  documents: any[];
-  focusedKnowledgeId: string;
-  emptyText: string;
-  onOpenKnowledge(knowledgeId: string): void;
-}) {
-  return (
-    <div className="wiki-sidebar-section">
-      <div className="wiki-sidebar-section-title">
-        <span>{props.title}</span>
-        <strong>{props.documents.length}</strong>
-      </div>
-      <div className="wiki-sidebar-result-list">
-        {props.documents.map((document) => (
-          <button
-            className="wiki-sidebar-result"
-            data-active={document.id === props.focusedKnowledgeId ? "true" : "false"}
-            key={document.id}
-            type="button"
-            onClick={() => props.onOpenKnowledge(document.id)}
-          >
-            <span className="wiki-sidebar-glyph">{knowledgeTypeGlyph(document.type)}</span>
-            <span className="wiki-sidebar-result-main">
-              <strong>{document.title || document.slug || document.id}</strong>
-              <small>
-                {[knowledgeTypeLabel(document.type), knowledgeStatusLabel(document), knowledgeDisplaySummary(document, 48)]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </small>
-            </span>
-          </button>
-        ))}
-        {!props.documents.length ? <div className="sidebar-library-empty">{props.emptyText}</div> : null}
-      </div>
-    </div>
-  );
-}
-
 function VaultTreeNodeView(props: {
   depth: number;
   focusedKnowledgeId: string;
@@ -431,6 +313,7 @@ function VaultTreeNodeView(props: {
   const isEditing = props.editingPath === props.node.path;
   const menuOpen = props.menuPath === props.node.path;
   const displayName = isFolder ? props.node.name : displayVaultFileName(props.node.name);
+  const { t } = useI18n();
   const [draftName, setDraftName] = useState(displayName);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -542,14 +425,14 @@ function VaultTreeNodeView(props: {
             props.onCreateNote(props.node.path);
           }}>
             <FilePlus2 size={13} />
-            <span>新建笔记</span>
+            <span>{t("vault.newNote")}</span>
           </button>
           <button type="button" role="menuitem" onClick={() => {
             props.onOpenMenu("");
             props.onCreateFolder(props.node.path);
           }}>
             <FolderPlus size={13} />
-            <span>新建文件夹</span>
+            <span>{t("vault.newFolder")}</span>
           </button>
         </>
       ) : null}
@@ -561,14 +444,14 @@ function VaultTreeNodeView(props: {
             props.onStartRename(props.node.path);
           }}>
             <Pencil size={13} />
-            <span>重命名</span>
+            <span>{t("vault.rename")}</span>
           </button>
           <button className="danger" type="button" role="menuitem" onClick={() => {
             props.onOpenMenu("");
             props.onDeleteEntry(props.node.path, props.node.kind, displayName);
           }}>
             <Trash2 size={13} />
-            <span>删除</span>
+            <span>{t("common.delete")}</span>
           </button>
         </>
       ) : null}
@@ -599,7 +482,7 @@ function VaultTreeNodeView(props: {
           <button
             className="sidebar-tree-more"
             type="button"
-            aria-label={`${props.node.name} 操作`}
+            aria-label={`${props.node.name} ${t("conversation.more")}`}
             aria-expanded={menuOpen}
             onClick={(event) => {
               event.preventDefault();
@@ -672,7 +555,7 @@ function VaultTreeNodeView(props: {
       <button
         className="sidebar-tree-more"
         type="button"
-        aria-label={`${displayName} 操作`}
+        aria-label={`${displayName} ${t("conversation.more")}`}
         aria-expanded={menuOpen}
         onClick={(event) => {
           event.preventDefault();

@@ -1,127 +1,5 @@
-import type * as React from "react";
 import { formatDate } from "../../format";
 import { formatBytes } from "../../runtime/ui-model";
-
-export function SimpleEntityView(props: { title: string; items: any[]; renderItem(item: any): React.ReactNode; emptyText: string }) {
-  return (
-    <section className="view-panel tab-view system-raw-view" data-view={props.title.toLowerCase()}>
-      <div className="tab-page">
-        <div className="panel-section">
-          <div className="panel-header">
-            <div className="panel-header-copy">
-              <div className="panel-kicker">System</div>
-              <div className="panel-title">{props.title}</div>
-            </div>
-            <span className="panel-count">{props.items.length}</span>
-          </div>
-          <div className="panel-list">
-            {props.items.length ? (
-              props.items.map((item, index) => (
-                <div className="panel-list-row" key={item.id || item.name || index}>
-                  {props.renderItem(item)}
-                </div>
-              ))
-            ) : (
-              <div className="panel-empty">{props.emptyText}</div>
-            )}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-
-
-export function renderMemoryCard(item: any) {
-  return (
-    <div className="panel-item entity-row" data-kind="memory">
-      <div className="panel-item-title">{`${item.kind || "memory"} · ${item.scope || "unknown"}`}</div>
-      <div className="panel-item-meta">{[item.id, item.confidence, formatDate(item.updatedAt)].filter(Boolean).join(" · ")}</div>
-      <div className="panel-item-text">{item.text || ""}</div>
-      {Array.isArray(item.tags) && item.tags.length ? (
-        <div className="panel-tags">
-          {item.tags.map((tag: string) => (
-            <span key={tag} className="panel-tag">
-              {tag}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-
-
-export function renderKnowledgeCard(item: any) {
-  const meta = [
-    item.type,
-    item.scope,
-    item.lifecycle,
-    item.confidence ? `confidence ${item.confidence}` : "",
-    formatDate(item.updatedAt),
-  ].filter(Boolean);
-  const source = Array.isArray(item.sourceRefs) ? item.sourceRefs[0] : undefined;
-
-  return (
-    <div className="panel-item entity-row" data-kind="knowledge">
-      <div className="panel-item-title">{item.title || item.slug || item.id || "knowledge"}</div>
-      <div className="panel-item-meta">{[item.id, ...meta].filter(Boolean).join(" · ")}</div>
-      <div className="panel-item-text">{item.body || ""}</div>
-      {source?.url || source?.locator ? (
-        <div className="panel-item-meta">{[source.title, source.url, source.locator].filter(Boolean).join(" · ")}</div>
-      ) : null}
-      {Array.isArray(item.tags) && item.tags.length ? (
-        <div className="panel-tags">
-          {item.tags.slice(0, 10).map((tag: string) => (
-            <span key={tag} className="panel-tag">
-              {tag}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-
-
-export function renderSkillCard(skill: any) {
-  return (
-    <div className="panel-item entity-row" data-kind="skill">
-      <div className="panel-item-title">{skill.title || skill.name || skill.id || "skill"}</div>
-      <div className="panel-item-meta">{[skill.name || skill.id, (skill.activities || []).join(", "), skill.context].filter(Boolean).join(" · ")}</div>
-      <div className="panel-item-text">{[skill.description || "", skill.whenToUse ? `When: ${skill.whenToUse}` : ""].filter(Boolean).join("\n")}</div>
-      <div className="panel-tags">
-        {[...(skill.allowedTools || []), ...(skill.tags || [])].map((tag: string) => (
-          <span key={tag} className="panel-tag">
-            {tag}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-
-
-export function renderToolCard(tool: any) {
-  return (
-    <div className="panel-item entity-row" data-kind="tool">
-      <div className="panel-item-title">{tool.title || tool.id || "tool"}</div>
-      <div className="panel-item-meta">{[tool.id, tool.activity, tool.risk, tool.permission?.mode].filter(Boolean).join(" · ")}</div>
-      <div className="panel-item-text">{tool.description || ""}</div>
-      {tool.permission?.reason ? (
-        <div className="panel-tags">
-          <span className="panel-tag">{tool.permission.reason}</span>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-
 
 export function compactIdentifier(value: unknown): string {
   const text = String(value || "");
@@ -130,8 +8,6 @@ export function compactIdentifier(value: unknown): string {
   }
   return `${text.slice(0, 12)}...${text.slice(-6)}`;
 }
-
-
 
 export function renderContextRecordCard(record: any) {
   const context = record.context || {};
@@ -193,8 +69,6 @@ export function renderContextRecordCard(record: any) {
   );
 }
 
-
-
 export function ProviderHttpCaptureBlock(props: { capture: any }) {
   const capture = props.capture || {};
   const flows = Array.isArray(capture.flows) ? capture.flows : [];
@@ -229,19 +103,17 @@ export function ProviderHttpCaptureBlock(props: { capture: any }) {
         <div className="panel-list provider-capture-flow-list">
           {flows.map((flow: any) => (
             <div className="panel-item provider-capture-flow" key={flow.flowId}>
-              <div className="panel-item-title">
-                {providerCaptureFlowTitle(flow)}
-              </div>
+              <div className="panel-item-title">{providerCaptureFlowTitle(flow)}</div>
               <div className="panel-item-meta">
                 {[formatDate(flow.startedAt), flow.durationMs ? `${flow.durationMs}ms` : "", flow.request?.path].filter(Boolean).join(" · ")}
               </div>
               <div className="panel-item-text">
-                {[flow.request?.bodyBytes !== undefined ? `request ${formatBytes(flow.request.bodyBytes)}` : "",
+                {[
+                  flow.request?.bodyBytes !== undefined ? `request ${formatBytes(flow.request.bodyBytes)}` : "",
                   flow.response?.bodyBytes !== undefined ? `response ${formatBytes(flow.response.bodyBytes)}` : "",
                   flow.websocket?.bodyBytes !== undefined ? `ws ${formatBytes(flow.websocket.bodyBytes)}` : "",
-                  flow.websocket?.messageCount !== undefined ? `ws messages ${flow.websocket.messageCount}` : ""]
-                  .filter(Boolean)
-                  .join(" · ") || "没有记录 body 大小"}
+                  flow.websocket?.messageCount !== undefined ? `ws messages ${flow.websocket.messageCount}` : "",
+                ].filter(Boolean).join(" · ") || "没有记录 body 大小"}
               </div>
               {flow.request?.bodyPath || flow.response?.bodyPath || flow.websocket?.bodyPath ? (
                 <div className="provider-capture-paths">
@@ -276,8 +148,6 @@ function ProviderCaptureBodyPreview(props: { title: string; text?: string; trunc
   );
 }
 
-
-
 export function providerCaptureFlowTitle(flow: any) {
   if (flow?.kind === "websocket_message") {
     const direction = flow.websocket?.direction === "client_to_server" ? "WS ->" : "WS <-";
@@ -290,8 +160,6 @@ export function providerCaptureFlowTitle(flow: any) {
   }
   return [flow.request?.method, flow.response?.statusCode, flow.request?.host].filter(Boolean).join(" · ");
 }
-
-
 
 export function ContextBlock(props: { title: string; text?: string; emptyText: string; collapsed?: boolean }) {
   const content = String(props.text || "").trim();

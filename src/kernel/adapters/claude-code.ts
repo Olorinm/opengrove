@@ -241,7 +241,7 @@ export const CLAUDE_CODE_KERNEL_CONTRACT: KernelAdapterContract = {
       appResponsibility: "Own approval UI and durable approval records.",
       kernelResponsibility: "Decide native tool confirmation requirements.",
       adapterResponsibility: "Future full bridge should map ToolUseConfirm into OpenGrove approval requests.",
-      notes: "Current local bridge uses bypassPermissions, so it does not yet provide Codex-level approval parity.",
+      notes: "Current CLI bridge passes Claude permission modes, but it does not yet map native confirmation prompts into OpenGrove approval records.",
     },
     {
       feature: "user_question",
@@ -270,7 +270,7 @@ export const CLAUDE_CODE_KERNEL_CONTRACT: KernelAdapterContract = {
     {
       feature: "context_assembly",
       owner: "shared",
-      appResponsibility: "Assemble OpenGrove knowledge/context bundle.",
+      appResponsibility: "Pass explicit user-added context, attachments, and narrow vault UI hints; leave project reading to Claude Code tools.",
       kernelResponsibility: "Add Claude Code native system/user/tool context.",
       adapterResponsibility: "Keep OpenGrove context distinct from Claude native prompt internals.",
     },
@@ -308,7 +308,7 @@ export const CLAUDE_CODE_KERNEL_CONTRACT: KernelAdapterContract = {
       nativeName: "permission mode",
       appResponsibility: "Expose OpenGrove policy preference.",
       kernelResponsibility: "Enforce Claude Code permission mode.",
-      adapterResponsibility: "Map OpenGrove sandbox/approval policy into Claude permission modes.",
+      adapterResponsibility: "Map OpenGrove access modes into Claude permission modes.",
     },
     {
       feature: "trajectory",

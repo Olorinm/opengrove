@@ -54,8 +54,8 @@ async function main() {
   const assembled = events.find((event) => event.type === "context.assembled");
   assert.ok(assembled && assembled.type === "context.assembled", "turn should assemble context");
   assert.ok(
-    assembled.context.items.some((item) => item.id === `knowledge.memory.${memory.id}`),
-    "context should include resolved memory knowledge",
+    !assembled.context.items.some((item) => item.id === `knowledge.memory.${memory.id}`),
+    "generic turns should not inject resolved memory knowledge unless the user explicitly adds it",
   );
   assert.ok(
     !assembled.context.items.some((item) =>
@@ -64,10 +64,10 @@ async function main() {
     "generic context planning should not inject skill reference files unless a skill is explicit",
   );
   assert.ok(
-    app.knowledge.listDeliveries({ runId: assembled.runId }).some((delivery) =>
+    !app.knowledge.listDeliveries({ runId: assembled.runId }).some((delivery) =>
       delivery.knowledgeId === `memory.${memory.id}` && delivery.mode === "prompt_snippet"
     ),
-    "context planning should record how memory knowledge was delivered",
+    "generic turns should not record memory prompt delivery when no context was explicitly added",
   );
   assert.ok(
     events.some((event) => event.type === "turn.finished"),

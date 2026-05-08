@@ -12,11 +12,22 @@ export const MODEL_OPTIONS = [
   { id: "MiMo-V2-Pro", label: "MiMo-V2-Pro" },
 ] as const;
 
-export type ModelId = (typeof MODEL_OPTIONS)[number]["id"];
+export type KnownModelId = (typeof MODEL_OPTIONS)[number]["id"];
+export type ModelId = string;
 export type ReasoningEffort = "low" | "medium" | "high" | "xhigh";
-export type SandboxPolicy = "read-only" | "workspace-write" | "danger-full-access";
-export type ApprovalPolicy = "never" | "on-request" | "on-failure" | "untrusted";
-export type KernelPreference = "auto" | "codex" | "claude-code" | "hermes" | "pi" | "scripted";
+export type RuntimeAccessMode = "default" | "auto-review" | "full-access";
+export type ResponseSpeed = "standard" | "fast";
+export type KernelPreference =
+  | "auto"
+  | "codex"
+  | "claude-code"
+  | "hermes"
+  | "pi"
+  | "openclaw"
+  | "deepseek-tui"
+  | "gemini-cli"
+  | "qwen-code"
+  | "opencode";
 export interface RuntimeControlOption {
   id: string;
   label: string;
@@ -33,15 +44,8 @@ export interface RuntimeControls {
   defaultSpeedTier?: string;
 }
 export type ViewId =
-  | "workspace"
   | "chat"
-  | "inbox"
   | "library"
-  | "memory"
-  | "artifacts"
-  | "skills"
-  | "tools"
-  | "context"
   | "settings";
 
 export type JsonValue =
@@ -334,6 +338,8 @@ export interface KernelOption {
   binaryPath?: string;
   version?: string;
   configHome?: string;
+  providerId?: string;
+  providerLabel?: string;
   sources?: KernelKnowledgeSource[];
   installActions?: KernelInstallAction[];
   diagnostics?: Record<string, unknown>;
@@ -392,9 +398,37 @@ export interface BridgeSettings {
   kernel: KernelPreference;
   activeKernel: string;
   kernels: KernelOption[];
+  providers?: ProviderProfile[];
+  customProviders?: ProviderProfile[];
+  kernelProviderBindings?: Record<string, string>;
+  providerBindings?: ProviderBinding[];
   kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
   providerHttpCapture: ProviderHttpCaptureSettings;
   settingsPath?: string;
+}
+
+export interface ProviderProfile {
+  id: string;
+  name: string;
+  protocol: string;
+  custom?: boolean;
+  description?: string;
+  openaiBaseUrl?: string;
+  anthropicBaseUrl?: string;
+  geminiBaseUrl?: string;
+  apiKeyEnv?: string;
+  models?: RuntimeControlOption[];
+  recommendedFor?: string[];
+  websiteUrl?: string;
+}
+
+export interface ProviderBinding {
+  kernelId: string;
+  providerId: string;
+  enabled: boolean;
+  mode: string;
+  status?: string;
+  notes?: string[];
 }
 
 export interface BridgeSettingsResponse {
@@ -437,47 +471,28 @@ export function createClientId(prefix: string): string {
 }
 
 export function supportedModel(value: string): ModelId {
-  return (MODEL_OPTIONS.find((model) => model.id === value)?.id ?? MODEL_OPTIONS[0].id) as ModelId;
+  return value?.trim() || MODEL_OPTIONS[0].id;
 }
 
 export function modelLabel(modelId: string): string {
-  return MODEL_OPTIONS.find((model) => model.id === modelId)?.label ?? MODEL_OPTIONS[0].label;
+  return MODEL_OPTIONS.find((model) => model.id === modelId)?.label ?? modelId;
 }
 
 export function supportedView(value: string): ViewId {
-  if (value === "context") {
-    return "settings";
-  }
-  if (value === "wiki") {
+  if (value === "library" || value === "inbox" || value === "artifacts") {
     return "library";
   }
-  return ([
-    "workspace",
-    "chat",
-    "inbox",
-    "library",
-    "memory",
-    "artifacts",
-    "skills",
-    "tools",
-    "settings",
-  ] as readonly string[]).includes(value)
-    ? (value as ViewId)
-    : "chat";
+  if (value === "settings" || value === "context" || value === "memory" || value === "skills" || value === "tools") {
+    return "settings";
+  }
+  return "chat";
 }
 
 export function viewTitle(view: ViewId): string {
   return (
     {
-      workspace: "工作台",
       chat: "新线程",
-      inbox: "收件箱",
       library: "资料库",
-      memory: "记忆",
-      artifacts: "产物",
-      skills: "Skills",
-      tools: "Tools",
-      context: "Context",
       settings: "设置",
     }[view] ?? "新线程"
   );
@@ -534,14 +549,13 @@ export async function runAskStream(
     question: string;
     model: string;
     effort?: ReasoningEffort;
-    serviceTier?: "fast";
+    responseSpeed?: ResponseSpeed;
+    accessMode?: RuntimeAccessMode;
     threadId: string;
     snapshot: unknown;
     computerSnapshot: unknown;
     allowMemory: boolean;
     saveCandidateNote: boolean;
-    sandbox?: SandboxPolicy;
-    approvalPolicy?: ApprovalPolicy;
   },
   onChunk: (chunk: BridgeStreamChunk) => void,
   options: { signal?: AbortSignal } = {},

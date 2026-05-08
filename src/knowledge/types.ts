@@ -109,12 +109,6 @@ export interface KnowledgeSearchOptions extends KnowledgeFilter {
   query?: string;
 }
 
-export interface ResolvedKnowledgeDocument {
-  document: KnowledgeDocument;
-  score: number;
-  reason: string;
-}
-
 export interface KnowledgeEvidenceRecord {
   id: string;
   knowledgeId: string;

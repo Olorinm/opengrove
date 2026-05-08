@@ -3,6 +3,9 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./styles.css";
 import { App } from "./app";
+import { applyDocumentLanguage } from "./i18n";
+
+applyDocumentLanguage();
 
 const queryClient = new QueryClient({
   defaultOptions: {

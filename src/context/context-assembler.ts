@@ -3,23 +3,12 @@ import type {
   AgentAttachmentContext,
   ContextEnvelope,
   ContextItem,
-  ExecutionRecord,
-  MemoryRecord,
-  RunRecord,
-  SessionRecord,
 } from "../core.js";
 import type { KernelCapabilities } from "../kernel/types.js";
-import type { KnowledgeContextPlanner } from "../knowledge/context-planner.js";
-import type { KnowledgeResolver } from "../knowledge/resolver.js";
-import type { ContextDeliveryPlan } from "../knowledge/types.js";
 
 export interface ContextAssemblerOptions {
   maxItems?: number;
   maxCharacters?: number;
-  memoryLimit?: number;
-  knowledgePlanner?: KnowledgeContextPlanner;
-  knowledgeResolver?: KnowledgeResolver;
-  knowledgeLimit?: number;
 }
 
 export type ContextAssembler = (
@@ -46,271 +35,109 @@ export function assembleDefaultContext(
   options: ContextAssemblerOptions = {},
   request: ContextAssemblyRequest = {},
 ): ContextEnvelope {
+  void input;
+  void request;
   const maxItems = options.maxItems ?? 8;
   const maxCharacters = options.maxCharacters ?? 6000;
-  const memoryLimit = options.memoryLimit ?? 4;
-  const items: ContextItem[] = [];
-  let knowledgeDeliveryPlan: ContextDeliveryPlan | undefined;
-  const workingState = context.workingState.get();
+  const isVaultTurn = Boolean(context.page?.vaultFile?.vaultPath || context.page?.vaultFile?.filePath);
 
-  if (workingState.taskSummary || workingState.activeGoal) {
-    items.push({
-      id: "task.current",
-      kind: "task",
-      title: "Active task",
-      text: [workingState.taskSummary, workingState.activeGoal].filter(Boolean).join("\n"),
-      data: workingState.selectedModel
-        ? {
-            selectedModel: workingState.selectedModel,
-          }
-        : undefined,
-    });
+  if (isVaultTurn) {
+    const selected = fitContext(assembleVaultContextItems(context), maxItems, maxCharacters);
+    return createEnvelope(selected, maxItems, maxCharacters, renderVaultPromptBlock(selected.items, selected.truncated));
   }
 
-  if (context.page?.title || context.page?.url) {
+  const items = assembleExplicitContextItems(context);
+  const selected = fitContext(items, maxItems, maxCharacters);
+  return createEnvelope(selected, maxItems, maxCharacters, renderExplicitPromptBlock(selected.items, selected.truncated));
+}
+
+function assembleVaultContextItems(context: AgentContext): ContextItem[] {
+  const items: ContextItem[] = [];
+  const vaultFile = context.page?.vaultFile;
+  if (vaultFile?.vaultPath || vaultFile?.filePath) {
     items.push({
-      id: "page.current",
-      kind: "page",
-      title: context.page.title || "Current page",
-      text: [context.page.title, context.page.url].filter(Boolean).join("\n"),
+      id: "vault.current_file",
+      kind: "knowledge",
+      title: "Current OpenGrove vault file",
+      text: renderVaultFileContext(vaultFile),
       source: {
-        title: context.page.title,
-        url: context.page.url,
-        locator: context.page.locator,
+        locator: vaultFile.filePath || vaultFile.vaultPath,
+      },
+      data: {
+        knowledgeId: vaultFile.knowledgeId ?? "",
+        vaultPath: vaultFile.vaultPath ?? "",
+        filePath: vaultFile.filePath ?? "",
       },
     });
   }
 
-  if (context.page?.selection) {
+  items.push(...assembleExplicitContextItems(context));
+
+  return items;
+}
+
+function assembleExplicitContextItems(context: AgentContext): ContextItem[] {
+  const items: ContextItem[] = [];
+
+  if (isExplicitUserSelection(context.page)) {
     items.push({
-      id: "selection.current",
+      id: "user.explicit_context",
       kind: "selection",
-      title: "Current selection",
+      title: "Explicitly added user context",
       text: context.page.selection,
       source: {
-        title: context.page.title,
-        url: context.page.url,
-        locator: context.page.locator,
         quote: context.page.selection,
       },
     });
   }
 
-  if (context.page?.visibleText && context.page.visibleText !== context.page.selection) {
-    items.push({
-      id: "page.surrounding-text",
-      kind: "page",
-      title: "Visible surrounding text",
-      text: context.page.visibleText,
-      source: {
-        title: context.page.title,
-        url: context.page.url,
-        locator: context.page.locator,
-      },
-    });
-  }
-
   for (const attachment of context.page?.attachments ?? []) {
-    items.push({
-      id: `attachment.${attachment.id || attachment.name}`,
-      kind: "attachment",
-      title: attachment.name || "Attached file",
-      text: summarizeAttachment(attachment),
-      data: {
-        name: attachment.name,
-        kind: attachment.kind,
-        mimeType: attachment.mimeType ?? "",
-        size: attachment.size ?? 0,
-        hasText: Boolean(attachment.text),
-        hasImage: Boolean(attachment.dataUrl && attachment.kind === "image"),
-        localPath: attachment.localPath ?? "",
-      },
-    });
+    items.push(createAttachmentContextItem(attachment));
   }
 
-  if (context.computer && hasComputerContext(context.computer)) {
-    items.push({
-      id: "computer.current",
-      kind: "computer",
-      title: [context.computer.app, context.computer.windowTitle].filter(Boolean).join(" · ") || "Current computer state",
-      text: summarizeComputer(context.computer),
-      source: context.computer.screenshotArtifactId
-        ? {
-            locator: `artifact:${context.computer.screenshotArtifactId}`,
-          }
-        : undefined,
-      data: {
-        app: context.computer.app ?? "",
-        windowTitle: context.computer.windowTitle ?? "",
-        focusedElement: context.computer.focusedElement ?? "",
-        screenshotArtifactId: context.computer.screenshotArtifactId ?? "",
-      },
-    });
+  return items;
+}
 
-    if (context.computer.accessibilityTree) {
-      items.push({
-        id: "computer.accessibility",
-        kind: "computer",
-        title: "Accessibility tree",
-        text: truncate(context.computer.accessibilityTree, 2200),
-      });
-    }
-  }
+function isExplicitUserSelection(page: AgentContext["page"]): page is NonNullable<AgentContext["page"]> & { selection: string } {
+  return Boolean(page?.selection && (page.locator === "standalone-ui" || page.title === "Added context"));
+}
 
-  const session = context.sessions.get(context.sessionId);
-  const recentRuns = context.sessions.listRuns({ sessionId: context.sessionId, limit: 3 });
-  if (session || recentRuns.length) {
-    items.push({
-      id: "session.current",
-      kind: "session",
-      title: session?.title || `Session · ${context.sessionId}`,
-      text: summarizeSession(session, recentRuns),
-      data: {
-        sessionId: context.sessionId,
-        status: session?.status ?? "",
-        activeRunId: session?.activeRunId ?? "",
-        latestRunId: session?.latestRunId ?? "",
-      },
-    });
-  }
-
-  const recentExecutions = context.executions.list({ sessionId: context.sessionId, limit: 6 });
-  if (recentExecutions.length) {
-    items.push({
-      id: "execution.recent",
-      kind: "execution",
-      title: "Recent execution",
-      text: summarizeExecutions(recentExecutions),
-    });
-  }
-
-  if (options.knowledgePlanner) {
-    const planned = options.knowledgePlanner.plan(input, context, {
-      limit: options.knowledgeLimit ?? memoryLimit,
-      runId: request.runId,
-      sessionId: context.sessionId,
-      kernelId: request.kernelId,
-      kernelCapabilities: request.kernelCapabilities,
-      recordDelivery: false,
-    });
-    knowledgeDeliveryPlan = planned.plan;
-    items.push(...planned.items);
-  } else if (options.knowledgeResolver) {
-    const knowledgeItems = options.knowledgeResolver.toContextItems(
-      options.knowledgeResolver.resolve(input, context, {
-        limit: options.knowledgeLimit ?? memoryLimit,
-      }),
-    );
-    items.push(...knowledgeItems);
-  } else {
-    for (const memory of rankMemories(input, context).slice(0, memoryLimit)) {
-      items.push({
-        id: `memory.${memory.record.id}`,
-        kind: "memory",
-        title: `${memory.record.kind} (${memory.record.scope})`,
-        text: memory.record.text,
-        score: memory.score,
-        source: memory.record.source.ref,
-        data: {
-          memoryId: memory.record.id,
-          confidence: memory.record.confidence,
-          tags: memory.record.tags,
-        },
-      });
-    }
-  }
-
-  const selected = fitContext(items, maxItems, maxCharacters);
-  if (knowledgeDeliveryPlan && options.knowledgePlanner) {
-    options.knowledgePlanner.recordDelivery(finalizeKnowledgeDeliveryPlan(knowledgeDeliveryPlan, selected.items));
-  }
-
+function createAttachmentContextItem(attachment: AgentAttachmentContext): ContextItem {
   return {
-    id: `ctx_${Date.now()}`,
-    createdAt: new Date().toISOString(),
-    summary: summarizeContext(selected.items),
-    items: selected.items,
-    budget: {
-      maxItems,
-      usedItems: selected.items.length,
-      maxCharacters,
-      usedCharacters: selected.usedCharacters,
-      truncated: selected.truncated,
+    id: `attachment.${attachment.id || attachment.name}`,
+    kind: "attachment",
+    title: attachment.name || "Attached file",
+    text: summarizeAttachment(attachment),
+    data: {
+      name: attachment.name,
+      kind: attachment.kind,
+      mimeType: attachment.mimeType ?? "",
+      size: attachment.size ?? 0,
+      hasText: Boolean(attachment.text),
+      hasImage: Boolean(attachment.dataUrl && attachment.kind === "image"),
+      localPath: attachment.localPath ?? "",
     },
-    promptBlock: renderPromptBlock(selected.items, selected.truncated),
   };
 }
 
-function finalizeKnowledgeDeliveryPlan(
-  plan: ContextDeliveryPlan,
-  selectedItems: ContextItem[],
-): ContextDeliveryPlan {
-  const selectedIds = new Set(selectedItems.map((item) => item.id));
-  return {
-    ...plan,
-    decisions: plan.decisions.map((decision) => {
-      const selected = Boolean(decision.contextItemId && selectedIds.has(decision.contextItemId));
-      if (!decision.includeInPrompt || selected) {
-        return decision;
-      }
-      return {
-        ...decision,
-        includeInPrompt: false,
-        reason: `${decision.reason}; planned prompt item was trimmed by context budget`,
-        metadata: {
-          ...decision.metadata,
-          plannedIncludeInPrompt: true,
-          trimmedByContextBudget: true,
-        },
-      };
-    }),
-  };
-}
-
-function rankMemories(
-  input: string,
-  context: AgentContext,
-): Array<{ record: MemoryRecord; score: number }> {
-  const query = [
-    input,
-    context.page?.selection ?? "",
-    context.page?.title ?? "",
-    context.page?.url ?? "",
-  ].join(" ");
-  const queryTokens = tokenize(query);
-
-  return context.memory
-    .list()
-    .map((record) => ({ record, score: scoreMemory(record, query, queryTokens) }))
-    .filter((item) => item.score > 0)
-    .sort((left, right) => right.score - left.score);
-}
-
-function scoreMemory(record: MemoryRecord, query: string, queryTokens: string[]): number {
-  const haystack = [
-    record.kind,
-    record.scope,
-    record.text,
-    record.tags.join(" "),
-    record.source.ref?.title ?? "",
-    record.source.ref?.url ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
-  const normalizedQuery = query.trim().toLowerCase();
-
-  let score = 0;
-  if (normalizedQuery && haystack.includes(normalizedQuery.slice(0, 80))) {
-    score += 5;
+function renderVaultFileContext(vaultFile: NonNullable<AgentContext["page"]>["vaultFile"]): string {
+  const lines = ["<opengrove_context>"];
+  if (vaultFile?.filePath) {
+    lines.push(`  <current_vault_file>${escapeXml(vaultFile.filePath)}</current_vault_file>`);
   }
-
-  for (const token of queryTokens) {
-    if (haystack.includes(token)) {
-      score += token.length > 8 ? 2 : 1;
-    }
+  if (vaultFile?.vaultPath) {
+    lines.push(`  <vault_display_path>${escapeXml(vaultFile.vaultPath)}</vault_display_path>`);
   }
-
-  return score;
+  lines.push(
+    "  <note>",
+    "    This is ambient UI context from the OpenGrove vault. It is not an attachment,",
+    "    not quoted content, and may or may not be relevant to the user's request.",
+    "    Do not assume the request is about this file. If the file matters, inspect it",
+    "    with the normal filesystem tools before relying on its contents.",
+    "  </note>",
+    "</opengrove_context>",
+  );
+  return lines.join("\n");
 }
 
 function fitContext(
@@ -357,12 +184,34 @@ function summarizeContext(items: ContextItem[]): string {
     .join(", ") || "empty context";
 }
 
-function renderPromptBlock(items: ContextItem[], truncated: boolean): string {
+function createEnvelope(
+  selected: { items: ContextItem[]; usedCharacters: number; truncated: boolean },
+  maxItems: number,
+  maxCharacters: number,
+  promptBlock: string,
+): ContextEnvelope {
+  return {
+    id: `ctx_${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    summary: summarizeContext(selected.items),
+    items: selected.items,
+    budget: {
+      maxItems,
+      usedItems: selected.items.length,
+      maxCharacters,
+      usedCharacters: selected.usedCharacters,
+      truncated: selected.truncated,
+    },
+    promptBlock,
+  };
+}
+
+function renderExplicitPromptBlock(items: ContextItem[], truncated: boolean): string {
   if (items.length === 0) {
-    return "Context: none.";
+    return "";
   }
 
-  const lines = ["Context assembled for this turn:"];
+  const lines = ["Explicit context added by the user for this turn:"];
   for (const item of items) {
     lines.push(`\n[${item.kind}] ${item.title}`);
     if (item.source?.url) {
@@ -381,16 +230,38 @@ function renderPromptBlock(items: ContextItem[], truncated: boolean): string {
   return lines.join("\n");
 }
 
-function tokenize(value: string): string[] {
-  return Array.from(
-    new Set(
-      value
-        .toLowerCase()
-        .split(/[^a-z0-9\u4e00-\u9fff]+/u)
-        .map((token) => token.trim())
-        .filter((token) => token.length >= 2),
-    ),
-  );
+function renderVaultPromptBlock(items: ContextItem[], truncated: boolean): string {
+  if (items.length === 0) {
+    return "";
+  }
+
+  const lines: string[] = [];
+  const vaultFile = items.find((item) => item.id === "vault.current_file");
+  if (vaultFile) {
+    lines.push(vaultFile.text);
+  }
+
+  for (const item of items) {
+    if (item.id === "vault.current_file") {
+      continue;
+    }
+    lines.push(`\n[${item.kind}] ${item.title}`);
+    lines.push(item.text);
+  }
+
+  if (truncated) {
+    lines.push("\nSome explicitly added context was trimmed to stay within budget.");
+  }
+
+  return lines.join("\n");
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function summarizeAttachment(attachment: AgentAttachmentContext): string {
@@ -415,106 +286,6 @@ function summarizeAttachment(attachment: AgentAttachmentContext): string {
   return meta.join("\n");
 }
 
-function summarizeComputer(
-  computer: NonNullable<AgentContext["computer"]>,
-): string {
-  const elements = Array.isArray(computer.elements) ? computer.elements : [];
-  const lines = [
-    computer.app ? `App: ${computer.app}` : "",
-    computer.windowTitle ? `Window: ${computer.windowTitle}` : "",
-    computer.url ? `URL: ${computer.url}` : "",
-    computer.focusedElement ? `Focused element: ${computer.focusedElement}` : "",
-    computer.observation ? `Observation: ${computer.observation}` : "",
-    computer.screenshotArtifactId ? `Screenshot artifact: ${computer.screenshotArtifactId}` : "",
-    computer.observedAt ? `Observed at: ${computer.observedAt}` : "",
-    elements.length ? `Elements: ${elements.length}` : "",
-  ].filter(Boolean);
-
-  if (elements.length) {
-    const preview = elements
-      .slice(0, 6)
-      .map((item) => [item.id, item.role, item.name || item.value || item.description].filter(Boolean).join(" · "))
-      .filter(Boolean)
-      .join("\n");
-    if (preview) {
-      lines.push(`Visible controls:\n${preview}`);
-    }
-  }
-
-  return lines.join("\n");
-}
-
-function summarizeSession(
-  session: SessionRecord | undefined,
-  runs: RunRecord[],
-): string {
-  const sortedRuns = [...runs].sort((left, right) =>
-    String(right.updatedAt || right.startedAt || "").localeCompare(String(left.updatedAt || left.startedAt || "")),
-  );
-  const lines = [
-    `Session ID: ${session?.id ?? "unknown"}`,
-    session?.activity ? `Activity: ${session.activity}` : "",
-    session?.status ? `Status: ${session.status}` : "",
-    session?.lastUserInput ? `Last input: ${truncate(session.lastUserInput, 280)}` : "",
-    sortedRuns.length ? `Recent runs: ${sortedRuns.length}` : "",
-  ].filter(Boolean);
-
-  if (sortedRuns.length) {
-    lines.push(
-      sortedRuns
-        .map((run) =>
-          [
-            run.id,
-            run.status,
-            run.activity,
-            run.modelId ? `model=${run.modelId}` : "",
-            run.summary ? truncate(run.summary, 120) : "",
-          ]
-            .filter(Boolean)
-            .join(" · "),
-        )
-        .join("\n"),
-    );
-  }
-
-  return lines.join("\n");
-}
-
-function summarizeExecutions(records: ExecutionRecord[]): string {
-  return [...records]
-    .sort((left, right) => String(right.at || "").localeCompare(String(left.at || "")))
-    .map((record) =>
-      [
-        record.title,
-        record.status ? `status=${record.status}` : "",
-        record.toolId ? `tool=${record.toolId}` : "",
-        record.approvalId ? `approval=${record.approvalId}` : "",
-        record.artifactId ? `artifact=${record.artifactId}` : "",
-        record.at ? `at=${record.at}` : "",
-      ]
-        .filter(Boolean)
-        .join(" · "),
-    )
-    .join("\n");
-}
-
-function hasComputerContext(computer: NonNullable<AgentContext["computer"]>) {
-  return Boolean(
-    computer.app ||
-      computer.windowTitle ||
-      computer.url ||
-      computer.focusedElement ||
-      computer.observation ||
-      computer.accessibilityTree ||
-      computer.screenshotArtifactId ||
-      (Array.isArray(computer.elements) && computer.elements.length > 0),
-  );
-}
-
 function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, Math.max(0, max - 3))}...`;
-}
-
-function dedupe(values: string[]): string[] {
-  return Array.from(new Set(values));
 }

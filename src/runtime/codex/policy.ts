@@ -1,7 +1,8 @@
 import type {
   AgentTurnRequest,
-  ApprovalPolicy,
   JsonObject,
+  ResponseSpeed,
+  RuntimeAccessMode,
   SandboxPolicy,
 } from "../../core.js";
 import type {
@@ -27,9 +28,9 @@ export function resolveCodexSandboxMode(
   request: AgentTurnRequest,
   configured: CodexSandboxMode | undefined,
 ): CodexSandboxMode {
-  const requested = normalizeSandboxPolicy(request.sandbox);
-  if (requested) {
-    return requested;
+  const modeSandbox = codexPolicyForAccessMode(request.accessMode)?.sandbox;
+  if (modeSandbox) {
+    return modeSandbox;
   }
   const capabilitySandbox = strongestSandboxPolicy(
     (request.capabilities ?? [])
@@ -43,15 +44,10 @@ export function resolveCodexSandboxMode(
 }
 
 export function resolveCodexApprovalPolicy(
-  requested: ApprovalPolicy | string | undefined,
+  requested: RuntimeAccessMode | undefined,
   configured: CodexApprovalPolicy | undefined,
 ): CodexApprovalPolicy {
-  return requested === "never" ||
-    requested === "on-request" ||
-    requested === "on-failure" ||
-    requested === "untrusted"
-    ? requested
-    : configured ?? "never";
+  return codexPolicyForAccessMode(requested)?.approvalPolicy ?? configured ?? "never";
 }
 
 export function resolveCodexApprovalsReviewer(configured: CodexApprovalsReviewer | undefined): CodexApprovalsReviewer {
@@ -87,17 +83,27 @@ export function resolveReasoningEffort(value: string | undefined): "minimal" | "
     : undefined;
 }
 
-export function resolveCodexServiceTier(requested: string | undefined, configured: string | undefined): string | undefined {
+export function resolveCodexServiceTier(requested: ResponseSpeed | undefined, configured: string | undefined): string | undefined {
   if (requested === "fast") {
     return "fast";
   }
   return configured?.trim() || undefined;
 }
 
-function normalizeSandboxPolicy(value: SandboxPolicy | string | undefined): CodexSandboxMode | undefined {
-  return value === "read-only" || value === "workspace-write" || value === "danger-full-access"
-    ? value
-    : undefined;
+function codexPolicyForAccessMode(value: RuntimeAccessMode | undefined): {
+  sandbox: CodexSandboxMode;
+  approvalPolicy: CodexApprovalPolicy;
+} | undefined {
+  switch (value) {
+    case "default":
+      return { sandbox: "workspace-write", approvalPolicy: "on-request" };
+    case "auto-review":
+      return { sandbox: "workspace-write", approvalPolicy: "on-failure" };
+    case "full-access":
+      return { sandbox: "danger-full-access", approvalPolicy: "never" };
+    default:
+      return undefined;
+  }
 }
 
 function strongestSandboxPolicy(values: SandboxPolicy[]): CodexSandboxMode | undefined {

@@ -2,7 +2,6 @@ import type { OpenGroveApp } from "../app/create-opengrove.js";
 import type {
   AgentEvent,
   AgentSessionTrace,
-  ApprovalPolicy,
   CapabilityManifest,
   ContextEnvelope,
   ExecutionRecord,
@@ -11,8 +10,9 @@ import type {
   ModelMessage,
   PackManifest,
   PolicyRule,
+  ResponseSpeed,
   RunRecord,
-  SandboxPolicy,
+  RuntimeAccessMode,
   SessionRecord,
   SkillManifest,
   ToolSpec,
@@ -36,12 +36,54 @@ export const BRIDGE_MODEL_IDS = [
   "gpt-5.2",
   "claude-opus-4-6",
 ] as const;
-export type BridgeModelId = (typeof BRIDGE_MODEL_IDS)[number];
-export const DEFAULT_BRIDGE_MODEL_ID: BridgeModelId = "MiMo-V2-Pro";
+export type BridgeKnownModelId = (typeof BRIDGE_MODEL_IDS)[number];
+export type BridgeModelId = string;
+export const DEFAULT_BRIDGE_MODEL_ID: BridgeKnownModelId = "MiMo-V2-Pro";
 
-export const BRIDGE_KERNEL_IDS = ["codex", "claude-code", "hermes", "pi", "scripted"] as const;
+export const BRIDGE_KERNEL_IDS = [
+  "codex",
+  "claude-code",
+  "hermes",
+  "pi",
+  "openclaw",
+  "deepseek-tui",
+  "gemini-cli",
+  "qwen-code",
+  "opencode",
+] as const;
 export type BridgeKernelId = (typeof BRIDGE_KERNEL_IDS)[number];
 export type BridgeKernelPreference = BridgeKernelId | "auto";
+
+export type BridgeProviderProtocol =
+  | "native-oauth"
+  | "openai-compatible"
+  | "anthropic-compatible"
+  | "gemini-compatible"
+  | "custom-gateway";
+
+export interface BridgeProviderProfile {
+  id: string;
+  name: string;
+  protocol: BridgeProviderProtocol;
+  custom?: boolean;
+  description?: string;
+  openaiBaseUrl?: string;
+  anthropicBaseUrl?: string;
+  geminiBaseUrl?: string;
+  apiKeyEnv?: string;
+  models: BridgeRuntimeControlOption[];
+  recommendedFor?: BridgeKernelId[];
+  websiteUrl?: string;
+}
+
+export interface BridgeKernelProviderBinding {
+  kernelId: BridgeKernelId;
+  providerId: string;
+  enabled: boolean;
+  mode: "env" | "config-file" | "cli-flag" | "native-api";
+  status?: "ready" | "missing-key" | "unsupported" | "not-configured";
+  notes?: string[];
+}
 
 export interface BridgeRuntimeControlOption {
   id: string;
@@ -82,14 +124,13 @@ export interface BridgeAskPayload {
   question: string;
   model: BridgeModelId;
   effort?: string;
-  serviceTier?: string;
+  responseSpeed?: ResponseSpeed;
+  accessMode?: RuntimeAccessMode;
   threadId: string;
   snapshot: BrowserPageSnapshot;
   computerSnapshot: ComputerStateSnapshot;
   allowMemory: boolean;
   saveCandidateNote: boolean;
-  sandbox?: SandboxPolicy;
-  approvalPolicy?: ApprovalPolicy;
 }
 
 export interface BridgeContextRecord {
@@ -171,6 +212,8 @@ export interface BridgeSettings {
   kernel: BridgeKernelPreference;
   providerHttpCaptureEnabled: boolean;
   kernelKnowledgeSourceEnabled: Record<string, Record<string, boolean>>;
+  kernelProviderBindings: Record<string, string>;
+  customProviders: BridgeProviderProfile[];
 }
 
 export interface BridgeState {

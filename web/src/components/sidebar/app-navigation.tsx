@@ -6,23 +6,19 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ViewId } from "../../bridge";
+import { useI18n } from "../../i18n";
 
 export type RailSectionId = "chat" | "library" | "settings";
 
-type NavItem = { id: ViewId; label: string; icon: LucideIcon };
+type NavItem = { id: ViewId; labelKey: "app.library"; icon: LucideIcon };
 
 const PRIMARY_NAV_ITEMS: NavItem[] = [
-  { id: "library", label: "资料库", icon: BookOpenText },
+  { id: "library", labelKey: "app.library", icon: BookOpenText },
 ];
-
-export function isAdvancedView(view: ViewId): boolean {
-  return view === "context";
-}
 
 export function railSectionForView(view: ViewId): RailSectionId {
   if (view === "settings") return "settings";
-  if (isAdvancedView(view)) return "settings";
-  if (view === "library" || view === "inbox" || view === "artifacts") return "library";
+  if (view === "library") return "library";
   return "chat";
 }
 
@@ -31,18 +27,19 @@ export function AppRail(props: {
   onOpenSection(section: RailSectionId): void;
   onOpenSettings(): void;
 }) {
+  const { t } = useI18n();
   return (
-    <aside className="app-rail" aria-label="主空间">
+    <aside className="app-rail" aria-label={t("app.mainNav")}>
       <nav className="app-rail-nav">
         <RailButton
           active={props.activeSection === "chat"}
-          label="对话"
+          label={t("app.chat")}
           icon={MessageSquare}
           onClick={() => props.onOpenSection("chat")}
         />
         <RailButton
           active={props.activeSection === "library"}
-          label="资料库"
+          label={t("app.library")}
           icon={BookOpenText}
           onClick={() => props.onOpenSection("library")}
         />
@@ -50,7 +47,7 @@ export function AppRail(props: {
       <div className="app-rail-bottom">
         <RailButton
           active={props.activeSection === "settings"}
-          label="设置"
+          label={t("app.settings")}
           icon={Settings}
           onClick={props.onOpenSettings}
         />
@@ -63,18 +60,20 @@ export function MobileNav(props: {
   activeView: ViewId;
   onSelect(view: ViewId): void;
 }) {
+  const { t } = useI18n();
   return (
-    <nav className="mobile-nav" aria-label="移动端入口">
+    <nav className="mobile-nav" aria-label={t("app.mobileNav")}>
       <button
         className={clsx("mobile-nav-item", props.activeView === "chat" && "active")}
         type="button"
         onClick={() => props.onSelect("chat")}
       >
         <MessageSquare size={15} />
-        <span>对话</span>
+        <span>{t("app.chat")}</span>
       </button>
       {PRIMARY_NAV_ITEMS.map((item) => {
         const Icon = item.icon;
+        const label = t(item.labelKey);
         return (
           <button
             className={clsx("mobile-nav-item", props.activeView === item.id && "active")}
@@ -83,7 +82,7 @@ export function MobileNav(props: {
             onClick={() => props.onSelect(item.id)}
           >
             <Icon size={15} />
-            <span>{item.label}</span>
+            <span>{label}</span>
           </button>
         );
       })}

@@ -4,6 +4,7 @@ import { APP_PRODUCT_NAME } from "../identity";
 export function createSnapshot(
   context: { text: string } | null,
   attachments: AttachmentPayload[] = [],
+  vaultFile?: { knowledgeId?: string; vaultPath?: string } | null,
 ): Record<string, unknown> {
   const text = context?.text || "";
   const hasExplicitContext = Boolean(text.trim() || attachments.length);
@@ -13,6 +14,12 @@ export function createSnapshot(
     selection: text,
     visibleText: text,
     locator: "standalone-ui",
+    vaultFile: vaultFile?.vaultPath
+      ? {
+          knowledgeId: vaultFile.knowledgeId,
+          vaultPath: vaultFile.vaultPath,
+        }
+      : undefined,
     attachments: attachments.map((attachment) => ({
       id: attachment.id,
       name: attachment.name,

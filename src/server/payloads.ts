@@ -1,11 +1,9 @@
 import type {
-  ApprovalPolicy,
   ArtifactCreateRequest,
   ArtifactRecord,
   JsonObject,
   JsonValue,
   MemoryRecord,
-  SandboxPolicy,
   WorkingStateRecord,
 } from "../core.js";
 import { normalizeComputerSnapshot } from "../environment/computer-adapter.js";
@@ -25,6 +23,7 @@ import {
   stringArray,
   stringValue,
 } from "./http-utils.js";
+import { resolveKnowledgeVaultFilePath } from "./knowledge-files.js";
 
 export function normalizeAskPayload(input: unknown): BridgeAskPayload {
   const object = record(input);
@@ -35,6 +34,7 @@ export function normalizeAskPayload(input: unknown): BridgeAskPayload {
     selection: stringValue(snapshot.selection),
     visibleText: stringValue(snapshot.visibleText),
     locator: stringValue(snapshot.locator),
+    vaultFile: normalizeVaultFileSnapshot(snapshot.vaultFile),
     attachments: normalizeSnapshotAttachments(snapshot.attachments),
   };
   const normalizedComputerSnapshot = normalizeComputerSnapshot(record(object.computerSnapshot));
@@ -43,19 +43,40 @@ export function normalizeAskPayload(input: unknown): BridgeAskPayload {
     question: stringValue(object.question) || "Please help me understand this passage.",
     model: normalizeBridgeModelId(object.model),
     effort: normalizeReasoningEffort(object.effort),
-    serviceTier: normalizeServiceTier(object.serviceTier),
+    responseSpeed: normalizeResponseSpeed(object.responseSpeed),
+    accessMode: normalizeRuntimeAccessMode(object.accessMode),
     threadId: normalizeThreadId(object.threadId, normalizedSnapshot),
     allowMemory: booleanValue(object.allowMemory),
     saveCandidateNote: booleanValue(object.saveCandidateNote),
-    sandbox: normalizeSandboxPolicy(object.sandbox),
-    approvalPolicy: normalizeApprovalPolicy(object.approvalPolicy),
     snapshot: normalizedSnapshot,
     computerSnapshot: normalizedComputerSnapshot,
   };
 }
 
-function normalizeServiceTier(input: unknown): string | undefined {
-  return input === "fast" ? "fast" : undefined;
+function normalizeVaultFileSnapshot(value: unknown): BrowserPageSnapshot["vaultFile"] {
+  const object = record(value);
+  const vaultPath = normalizeVaultPath(stringValue(object.vaultPath));
+  if (!vaultPath) return undefined;
+  const explicitFilePath = stringValue(object.filePath);
+  return {
+    knowledgeId: stringValue(object.knowledgeId) || undefined,
+    vaultPath,
+    filePath: explicitFilePath || resolveKnowledgeVaultFilePath(vaultPath),
+  };
+}
+
+function normalizeVaultPath(value: string): string | undefined {
+  const normalized = value.replace(/\\/g, "/").split("/").filter(Boolean).join("/");
+  if (!normalized || normalized.startsWith("/") || normalized.includes("../") || normalized === "..") return undefined;
+  return normalized;
+}
+
+function normalizeResponseSpeed(input: unknown): "standard" | "fast" | undefined {
+  return input === "standard" || input === "fast" ? input : undefined;
+}
+
+function normalizeRuntimeAccessMode(input: unknown): "default" | "auto-review" | "full-access" | undefined {
+  return input === "default" || input === "auto-review" || input === "full-access" ? input : undefined;
 }
 
 function normalizeReasoningEffort(input: unknown): string | undefined {
@@ -226,18 +247,6 @@ export function isExecutionKind(value: string): value is "loop" | "model" | "too
     value === "memory" ||
     value === "error"
   );
-}
-
-function normalizeSandboxPolicy(value: unknown): SandboxPolicy | undefined {
-  return value === "read-only" || value === "workspace-write" || value === "danger-full-access"
-    ? value
-    : undefined;
-}
-
-function normalizeApprovalPolicy(value: unknown): ApprovalPolicy | undefined {
-  return value === "never" || value === "on-request" || value === "on-failure" || value === "untrusted"
-    ? value
-    : undefined;
 }
 
 function normalizeSnapshotAttachments(value: unknown): BrowserPageSnapshot["attachments"] {
