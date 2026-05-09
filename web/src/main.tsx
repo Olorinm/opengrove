@@ -4,8 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./styles.css";
 import { App } from "./app";
 import { applyDocumentLanguage } from "./i18n";
+import { applyDocumentTheme } from "./theme";
 
 applyDocumentLanguage();
+applyDocumentTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: {

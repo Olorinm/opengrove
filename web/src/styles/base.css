@@ -1,5 +1,7 @@
 body {
   margin: 0;
+  background: var(--c-bg);
+  color: var(--c-text);
 }
 
 #root {

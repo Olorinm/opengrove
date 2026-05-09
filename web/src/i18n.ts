@@ -119,6 +119,7 @@ export type TranslationKey =
   | "settings.appearance"
   | "settings.nav"
   | "settings.kicker"
+  | "settings.general"
   | "settings.kernelsDescription"
   | "settings.providersDescription"
   | "settings.networkDescription"
@@ -211,6 +212,11 @@ export type TranslationKey =
   | "settings.noContextRecords"
   | "settings.appearanceEmptyTitle"
   | "settings.appearanceEmptyCopy"
+  | "settings.theme"
+  | "settings.themeCopy"
+  | "settings.themeSystem"
+  | "settings.themeLight"
+  | "settings.themeDark"
   | "settings.language"
   | "settings.languageCopy"
   | "settings.languageSystem"
@@ -380,8 +386,9 @@ const ZH_CN: Dictionary = {
   "settings.appearance": "外观",
   "settings.nav": "设置分类",
   "settings.kicker": "Settings",
+  "settings.general": "常规",
   "settings.kernelsDescription": "选择默认内核，并管理它们暴露给资料库的本机知识来源。",
-  "settings.providersDescription": "管理可绑定到不同内核的模型网关和 coding plan。密钥只从环境变量读取，不写入设置文件。",
+  "settings.providersDescription": "管理可绑定到不同内核的模型网关和 coding plan。",
   "settings.networkDescription": "配置内核和安装命令使用的代理；未开启时会继承终端环境代理。",
   "settings.providerList": "供应商列表",
   "settings.providerBindings": "内核绑定",
@@ -423,7 +430,7 @@ const ZH_CN: Dictionary = {
   "settings.providerEnabled": "已启用",
   "settings.providerDisabled": "未启用",
   "settings.diagnosticsDescription": "管理 RPC、原生日志、provider HTTPS 抓包和 trajectory。",
-  "settings.appearanceDescription": "界面外观偏好。",
+  "settings.appearanceDescription": "主题和界面语言。",
   "settings.workMode": "工作模式",
   "settings.workModeCopy": "决定新回合默认交给哪个内核。自动模式会按可用性选择。",
   "settings.autoMode": "自动选择",
@@ -472,8 +479,13 @@ const ZH_CN: Dictionary = {
   "settings.noContextRecords": "还没有上下文记录",
   "settings.appearanceEmptyTitle": "外观设置还没有接入",
   "settings.appearanceEmptyCopy": "当前先保持系统默认主题。后续这里放主题、字体和编辑器偏好。",
+  "settings.theme": "主题",
+  "settings.themeCopy": "应用外观",
+  "settings.themeSystem": "跟随系统",
+  "settings.themeLight": "浅色",
+  "settings.themeDark": "深色",
   "settings.language": "语言",
-  "settings.languageCopy": "默认跟随浏览器/系统语言，也可以固定为中文或英文。",
+  "settings.languageCopy": "应用 UI 语言",
   "settings.languageSystem": "跟随系统",
   "settings.languageChinese": "简体中文",
   "settings.languageEnglish": "English",
@@ -639,8 +651,9 @@ const EN: Dictionary = {
   "settings.appearance": "Appearance",
   "settings.nav": "Settings sections",
   "settings.kicker": "Settings",
+  "settings.general": "General",
   "settings.kernelsDescription": "Choose the default kernel and manage the local knowledge sources it exposes to the library.",
-  "settings.providersDescription": "Manage model gateways and coding plans that can be bound to different kernels. Secrets are read from environment variables and never persisted in settings.",
+  "settings.providersDescription": "Manage model gateways and coding plans that can be bound to different kernels.",
   "settings.networkDescription": "Configure the proxy used by kernels and install commands. When disabled, terminal proxy environment variables are inherited.",
   "settings.providerList": "Provider list",
   "settings.providerBindings": "Kernel bindings",
@@ -682,7 +695,7 @@ const EN: Dictionary = {
   "settings.providerEnabled": "Enabled",
   "settings.providerDisabled": "Disabled",
   "settings.diagnosticsDescription": "Manage RPC, native logs, provider HTTPS capture, and trajectories.",
-  "settings.appearanceDescription": "Interface preferences.",
+  "settings.appearanceDescription": "Theme and interface language.",
   "settings.workMode": "Work mode",
   "settings.workModeCopy": "Choose which kernel new turns use by default. Auto mode resolves by availability.",
   "settings.autoMode": "Auto",
@@ -731,8 +744,13 @@ const EN: Dictionary = {
   "settings.noContextRecords": "No context records yet",
   "settings.appearanceEmptyTitle": "Appearance settings are not wired yet",
   "settings.appearanceEmptyCopy": "For now the app keeps the system theme. Theme, font, and editor preferences will live here later.",
+  "settings.theme": "Theme",
+  "settings.themeCopy": "App appearance",
+  "settings.themeSystem": "System",
+  "settings.themeLight": "Light",
+  "settings.themeDark": "Dark",
   "settings.language": "Language",
-  "settings.languageCopy": "Follow the browser/system language by default, or pin the interface to Chinese or English.",
+  "settings.languageCopy": "App UI language",
   "settings.languageSystem": "System",
   "settings.languageChinese": "简体中文",
   "settings.languageEnglish": "English",

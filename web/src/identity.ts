@@ -16,6 +16,7 @@ export const APP_STORAGE_KEYS = {
   responseSpeed: `${APP_PROTOCOL_ID}ResponseSpeed`,
   accessMode: `${APP_PROTOCOL_ID}AccessMode`,
   language: `${APP_PROTOCOL_ID}Language`,
+  theme: `${APP_PROTOCOL_ID}Theme`,
   sidebarWidth: `${APP_PROTOCOL_ID}SidebarWidth`,
   sidebarCollapsed: `${APP_PROTOCOL_ID}SidebarCollapsed`,
   libraryAiPanelWidth: `${APP_PROTOCOL_ID}LibraryAiPanelWidth`,

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bug, Check, ChevronDown, Cpu, Globe2, Palette, PlugZap, Plus, Trash2 } from "lucide-react";
 import type { BridgeSettings, KernelOption, KernelPathOverride, KernelPreference, KernelProxySettings, ProviderProfile } from "../../bridge";
 import { useI18n, type LanguagePreference, type TranslationFn } from "../../i18n";
+import { useThemePreference, type ThemePreference } from "../../theme";
 import { renderContextRecordCard } from "../system/system-views";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { KernelIcon, ProviderIcon } from "../ui/entity-icons";
@@ -25,6 +26,15 @@ const LANGUAGE_OPTIONS: Array<{
   { id: "en", labelKey: "settings.languageEnglish" },
 ];
 
+const THEME_OPTIONS: Array<{
+  id: ThemePreference;
+  labelKey: "settings.themeSystem" | "settings.themeLight" | "settings.themeDark";
+}> = [
+  { id: "system", labelKey: "settings.themeSystem" },
+  { id: "light", labelKey: "settings.themeLight" },
+  { id: "dark", labelKey: "settings.themeDark" },
+];
+
 export function SettingsDialog(props: {
   settings?: BridgeSettings;
   contextRecords?: Record<string, unknown>[];
@@ -45,7 +55,10 @@ export function SettingsDialog(props: {
     customProviders: ProviderProfile[];
   }): void;
 }) {
-  const { t, preference, setLanguagePreference } = useI18n();
+  const { t, preference: languagePreference, setLanguagePreference } = useI18n();
+  const { preference: themePreference, setThemePreference } = useThemePreference();
+  const themeSelectOptions = THEME_OPTIONS.map((option) => ({ id: option.id, label: t(option.labelKey) }));
+  const languageSelectOptions = LANGUAGE_OPTIONS.map((option) => ({ id: option.id, label: t(option.labelKey) }));
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("kernels");
   const [kernel, setKernel] = useState<KernelPreference>("auto");
   const [providerHttpCaptureEnabled, setProviderHttpCaptureEnabled] = useState(false);
@@ -1014,28 +1027,37 @@ export function SettingsDialog(props: {
 
           {activeSection === "appearance" ? (
             <div className="settings-page-stack">
-              <section className="settings-list-section">
+              <section className="settings-list-section settings-appearance-section">
                 <div className="settings-list-section-heading">
-                  <h2>{t("settings.language")}</h2>
+                  <h2>{t("settings.general")}</h2>
                 </div>
-                <div className="settings-list">
-                  {LANGUAGE_OPTIONS.map((option) => (
-                    <button
-                      key={option.id}
-                      className={preference === option.id ? "settings-list-row choice active" : "settings-list-row choice"}
-                      type="button"
-                      onClick={() => setLanguagePreference(option.id)}
-                    >
-                      <span className="settings-list-icon"><Globe2 size={17} /></span>
-                      <span className="settings-list-row-main">
-                        <strong>{t(option.labelKey)}</strong>
-                        <small>{t("settings.languageCopy")}</small>
-                      </span>
-                      <span className="settings-list-row-control">
-                        {preference === option.id ? <Check size={16} /> : null}
-                      </span>
-                    </button>
-                  ))}
+                <div className="settings-list settings-preference-list">
+                  <div className="settings-list-row settings-preference-row">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.theme")}</strong>
+                      <small>{t("settings.themeCopy")}</small>
+                    </span>
+                    <span className="settings-list-row-control wide">
+                      <InlineSelect
+                        value={themePreference}
+                        options={themeSelectOptions}
+                        onChange={(value) => setThemePreference(value as ThemePreference)}
+                      />
+                    </span>
+                  </div>
+                  <div className="settings-list-row settings-preference-row">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.language")}</strong>
+                      <small>{t("settings.languageCopy")}</small>
+                    </span>
+                    <span className="settings-list-row-control wide">
+                      <InlineSelect
+                        value={languagePreference}
+                        options={languageSelectOptions}
+                        onChange={(value) => setLanguagePreference(value as LanguagePreference)}
+                      />
+                    </span>
+                  </div>
                 </div>
               </section>
             </div>
