@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Open-source personal knowledge agent for calm, organized work.",
+  "license": "Apache-2.0",
   "scripts": {
     "build": "npm run build:server && npm run build:web",
     "build:server": "tsc",

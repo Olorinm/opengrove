@@ -1,11 +1,20 @@
-# OpenGrove
+<h1 align="center">
+  <img src="assets/brand/opengrove-sapling.png" alt="OpenGrove logo" width="34" />
+  OpenGrove — Local-first Agent Host
+</h1>
 
 <p align="center">
-  <img src="assets/brand/opengrove-wordmark-on-light.png" alt="OpenGrove" width="420" />
+  <img src="assets/brand/opengrove-wordmark.png" alt="OpenGrove wordmark" width="420" />
 </p>
 
 <p align="center">
   <strong>A local-first agent host for calm, organized work.</strong>
+</p>
+
+<p align="center">
+  <a href="#development"><img alt="Build" src="https://img.shields.io/badge/build-local-555555?style=for-the-badge" /></a>
+  <img alt="Release" src="https://img.shields.io/badge/release-source--only-0b8ec2?style=for-the-badge" />
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-0b8ec2?style=for-the-badge" /></a>
 </p>
 
 <p align="center">
@@ -351,4 +360,4 @@ Stop the bridge, back up `data/local-state.json` and `data/bridge-settings.json`
 
 ## License
 
-No license file is currently present in this checkout. Add a license before publishing the repository as open source.
+OpenGrove is licensed under the [Apache License 2.0](LICENSE).

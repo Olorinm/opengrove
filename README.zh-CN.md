@@ -1,11 +1,20 @@
-# OpenGrove
+<h1 align="center">
+  <img src="assets/brand/opengrove-sapling.png" alt="OpenGrove logo" width="34" />
+  OpenGrove — 本地优先 Agent Host
+</h1>
 
 <p align="center">
-  <img src="assets/brand/opengrove-wordmark-on-light.png" alt="OpenGrove" width="420" />
+  <img src="assets/brand/opengrove-wordmark.png" alt="OpenGrove wordmark" width="420" />
 </p>
 
 <p align="center">
   <strong>一个本地优先的 agent host，让工作更安静、更有组织。</strong>
+</p>
+
+<p align="center">
+  <a href="#开发"><img alt="Build" src="https://img.shields.io/badge/build-local-555555?style=for-the-badge" /></a>
+  <img alt="Release" src="https://img.shields.io/badge/release-source--only-0b8ec2?style=for-the-badge" />
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-0b8ec2?style=for-the-badge" /></a>
 </p>
 
 <p align="center">
@@ -351,4 +360,4 @@ curl http://127.0.0.1:37371/health
 
 ## License
 
-当前 checkout 中还没有 license 文件。正式开源发布前需要先补充 license。
+OpenGrove 使用 [Apache License 2.0](LICENSE) 开源。
