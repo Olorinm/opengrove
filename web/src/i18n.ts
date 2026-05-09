@@ -228,6 +228,7 @@ export type TranslationKey =
   | "settings.saveFailed"
   | "system.saveSettingsFailed"
   | "system.chooseWorkspaceFailed"
+  | "system.chooseWorkspaceBridgeOutdated"
   | "system.savedLocalFile"
   | "system.saveLibraryPageFailed"
   | "system.createLocalFileFailed"
@@ -499,6 +500,7 @@ const ZH_CN: Dictionary = {
   "settings.saveFailed": "保存设置失败",
   "system.saveSettingsFailed": "保存设置失败：{message}",
   "system.chooseWorkspaceFailed": "选择工作目录失败：{message}",
+  "system.chooseWorkspaceBridgeOutdated": "选择工作目录失败：本地 bridge 还没更新到支持目录选择，请重启 OpenGrove 后再试。",
   "system.savedLocalFile": "已保存到本地文件：{name}",
   "system.saveLibraryPageFailed": "保存资料库页面失败：{message}",
   "system.createLocalFileFailed": "创建本地文件失败：{message}",
@@ -768,6 +770,7 @@ const EN: Dictionary = {
   "settings.saveFailed": "Failed to save settings",
   "system.saveSettingsFailed": "Failed to save settings: {message}",
   "system.chooseWorkspaceFailed": "Failed to choose working directory: {message}",
+  "system.chooseWorkspaceBridgeOutdated": "Failed to choose a working directory: restart OpenGrove so the local bridge can use the folder picker.",
   "system.savedLocalFile": "Saved to local file: {name}",
   "system.saveLibraryPageFailed": "Failed to save library page: {message}",
   "system.createLocalFileFailed": "Failed to create local file: {message}",

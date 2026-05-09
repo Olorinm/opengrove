@@ -484,7 +484,10 @@ export function App() {
       }
       return result.path;
     } catch (error) {
-      appendMessage("system", t("system.chooseWorkspaceFailed", { message: error instanceof Error ? error.message : String(error) }));
+      const message = error instanceof Error ? error.message : String(error);
+      appendMessage("system", message === "not_found"
+        ? t("system.chooseWorkspaceBridgeOutdated")
+        : t("system.chooseWorkspaceFailed", { message }));
       return undefined;
     } finally {
       setWorkspacePickerPending(false);
@@ -819,7 +822,7 @@ export function App() {
   }
 
   function openNewProject() {
-    startNewProject();
+    startNewProject({ workspaceRoot: activeWorkspaceRoot || undefined });
     setQuestion("");
     setComposerSkillInvocation(null);
     setActiveSlashIndex(0);
