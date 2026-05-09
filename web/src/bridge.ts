@@ -391,20 +391,39 @@ export interface ProviderHttpCaptureSettings {
   runDir?: string;
   summaryPath?: string;
   statePath?: string;
+  upstreamProxy?: string;
   warning?: string;
+}
+
+export interface KernelProxySettings {
+  enabled: boolean;
+  injected?: boolean;
+  proxyUrl: string;
+  noProxy: string;
+  nodeUseEnvProxy: boolean;
+  environmentProxyUrl?: string;
+  source?: string;
 }
 
 export interface BridgeSettings {
   kernel: KernelPreference;
+  providerSetupVersion?: number;
   activeKernel: string;
   kernels: KernelOption[];
   providers?: ProviderProfile[];
   customProviders?: ProviderProfile[];
   kernelProviderBindings?: Record<string, string>;
   providerBindings?: ProviderBinding[];
+  kernelPathOverrides?: Record<string, KernelPathOverride>;
   kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
+  kernelProxy: KernelProxySettings;
   providerHttpCapture: ProviderHttpCaptureSettings;
   settingsPath?: string;
+}
+
+export interface KernelPathOverride {
+  binaryPath?: string;
+  configHome?: string;
 }
 
 export interface ProviderProfile {
@@ -412,11 +431,21 @@ export interface ProviderProfile {
   name: string;
   protocol: string;
   custom?: boolean;
+  deleted?: boolean;
+  enabled?: boolean;
+  origin?: string;
+  sourceKernel?: string;
+  source?: string;
+  sourcePaths?: string[];
+  authConfigured?: boolean;
   description?: string;
   openaiBaseUrl?: string;
   anthropicBaseUrl?: string;
   geminiBaseUrl?: string;
+  apiKey?: string;
   apiKeyEnv?: string;
+  credentialKind?: "none" | "native-login" | "api-key" | "env-key" | "aws" | "google-adc" | "kernel-native";
+  codexWireApi?: "chat" | "responses";
   models?: RuntimeControlOption[];
   recommendedFor?: string[];
   websiteUrl?: string;
@@ -435,6 +464,18 @@ export interface BridgeSettingsResponse {
   ok: boolean;
   restarted?: boolean;
   settings: BridgeSettings;
+  error?: string;
+}
+
+export interface KernelInstallResponse {
+  ok: boolean;
+  kernelId?: string;
+  actionId?: string;
+  command?: string[];
+  exitCode?: number;
+  stdout?: string;
+  stderr?: string;
+  settings?: BridgeSettings;
   error?: string;
 }
 
@@ -556,6 +597,10 @@ export async function runAskStream(
     computerSnapshot: unknown;
     allowMemory: boolean;
     saveCandidateNote: boolean;
+    requestedSkill?: {
+      name: string;
+      args?: string;
+    };
   },
   onChunk: (chunk: BridgeStreamChunk) => void,
   options: { signal?: AbortSignal } = {},

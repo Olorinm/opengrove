@@ -36,6 +36,8 @@ export interface ClaudeCodeRuntimeOptions {
   configuredBaseUrl?: string;
   configuredAuthToken?: string;
   configuredModel?: string;
+  runtimeBindingFingerprint?: string;
+  modelAliases?: Record<string, string>;
   streamCapture?: ClaudeCodeStreamCaptureOptions;
   providerHttpCapture?: ProviderHttpCaptureOptions;
   env?: NodeJS.ProcessEnv;
@@ -49,16 +51,17 @@ interface ClaudeToolCallRecord {
 }
 
 export class ClaudeCodeRuntime implements AgentRuntime {
-  private isolatedHome?: string;
-
   constructor(private readonly options: ClaudeCodeRuntimeOptions) {}
 
   async *runTurn(request: AgentTurnRequest): AsyncIterable<AgentEvent> {
     const runId = request.runId ?? `run_${Date.now()}`;
     const claudeSessionId = toStableClaudeSessionId(request.context.sessionId);
     const requestedModel =
-      normalizeClaudeModelId(request.requestedModelId) ??
-      normalizeClaudeModelId(this.options.configuredModel);
+      resolveClaudeRuntimeModel(
+        request.requestedModelId,
+        this.options.configuredModel,
+        this.options.modelAliases,
+      );
     const systemPrompt = buildClaudeSystemPrompt(request);
     const permissionMode = resolveClaudePermissionMode(request.accessMode, this.options.permissionMode);
     const capture = createClaudeCodeStreamCaptureRecorder(this.options.streamCapture);
@@ -151,6 +154,22 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       env: launch.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    let aborted = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const abortChild = () => {
+      aborted = true;
+      if (!child.killed) {
+        child.kill("SIGTERM");
+        killTimer = setTimeout(() => {
+          if (!child.killed) child.kill("SIGKILL");
+        }, 2_000);
+      }
+    };
+    if (request.signal?.aborted) {
+      abortChild();
+    } else {
+      request.signal?.addEventListener("abort", abortChild, { once: true });
+    }
     capture?.recordLifecycle("process.spawned", {
       runId,
       sessionId: claudeSessionId,
@@ -212,12 +231,22 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     const exitCode = await new Promise<number | null>((resolveExit) => {
       child.once("close", resolveExit);
     });
+    request.signal?.removeEventListener("abort", abortChild);
+    if (killTimer) clearTimeout(killTimer);
     capture?.recordLifecycle("process.closed", {
       runId,
       sessionId: claudeSessionId,
       exitCode,
       stderrBytes: Buffer.byteLength(stderrBuffer, "utf8"),
     });
+    if (aborted) {
+      yield {
+        type: "error",
+        runId,
+        message: "claude_code_aborted",
+      };
+      return;
+    }
 
     if (stdoutBuffer.trim()) {
       const tailLine = stdoutBuffer.trim();
@@ -306,10 +335,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
   }
 
   private ensureIsolatedHome(): string {
-    if (!this.isolatedHome) {
-      this.isolatedHome = mkdtempSync(join(tmpdir(), "opengrove-claude-"));
-    }
-    return this.isolatedHome;
+    return mkdtempSync(join(tmpdir(), "opengrove-claude-"));
   }
 }
 
@@ -456,9 +482,6 @@ function writeClaudeConfig(
   if (config.authToken) env.ANTHROPIC_AUTH_TOKEN = config.authToken;
   if (config.model) {
     env.ANTHROPIC_MODEL = config.model;
-    env.ANTHROPIC_DEFAULT_SONNET_MODEL = config.model;
-    env.ANTHROPIC_DEFAULT_OPUS_MODEL = config.model;
-    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = config.model;
   }
 
   writeFileSync(resolve(claudeDir, "settings.json"), JSON.stringify({ env }, null, 2));
@@ -581,10 +604,42 @@ function normalizeClaudeModelId(value: string | undefined): string | undefined {
     return undefined;
   }
   const normalized = trimmed.toLowerCase();
-  if (normalized === "mimo-v2-pro" || normalized.startsWith("gpt-")) {
+  if (
+    normalized === "mimo-v2-pro" ||
+    normalized === "claude-code-default" ||
+    normalized === "claude-opus-4-6" ||
+    normalized === "claude-sonnet-4-6" ||
+    normalized.startsWith("gpt-")
+  ) {
     return undefined;
   }
   return trimmed;
+}
+
+function resolveClaudeRuntimeModel(
+  requestedModel: string | undefined,
+  configuredModel: string | undefined,
+  aliases: Record<string, string> | undefined,
+): string | undefined {
+  return (
+    normalizeClaudeModelId(resolveModelAlias(requestedModel, aliases)) ??
+    normalizeClaudeModelId(resolveModelAlias(configuredModel, aliases))
+  );
+}
+
+function resolveModelAlias(
+  value: string | undefined,
+  aliases: Record<string, string> | undefined,
+): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const direct = aliases?.[trimmed]?.trim();
+  if (direct) return direct;
+  const normalized = trimmed.toLowerCase();
+  const insensitive = Object.entries(aliases ?? {})
+    .find(([key]) => key.toLowerCase() === normalized)?.[1]
+    ?.trim();
+  return insensitive || trimmed;
 }
 
 function toStableClaudeSessionId(input: string): string {

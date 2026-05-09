@@ -114,8 +114,11 @@ export interface AgentTurnOptions {
   sessionId?: string;
   requestedModelId?: string;
   requestedEffort?: string;
+  requestedSkillName?: string;
+  requestedSkillArgs?: string;
   responseSpeed?: ResponseSpeed;
   accessMode?: RuntimeAccessMode;
+  policy?: PolicyRule[];
   signal?: AbortSignal;
 }
 
@@ -331,6 +334,8 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
         skills,
         workingState,
         kernel: options.kernel,
+        requestedSkillName: turnOptions.requestedSkillName,
+        requestedSkillArgs: turnOptions.requestedSkillArgs,
       });
       const context: AgentContext = {
         sessionId,
@@ -383,7 +388,7 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
         capabilities: capabilities.list(),
         skills: availableSkills,
         packs: packs.list(),
-        policy: [...(options.policy ?? []), ...capabilities.policy()],
+        policy: [...(options.policy ?? []), ...(turnOptions.policy ?? []), ...capabilities.policy()],
       })) {
         workingState.update({
           sessionId,
@@ -588,6 +593,8 @@ function prepareTurnInput(
     skills: SkillCatalog;
     workingState: WorkingStateStore;
     kernel?: KernelAdapter;
+    requestedSkillName?: string;
+    requestedSkillArgs?: string;
   },
 ): {
   originalInput: string;
@@ -601,89 +608,104 @@ function prepareTurnInput(
   const originalInput = input.trim();
   const currentWorkingState = options.workingState.get();
   const prefixEvents: AgentEvent[] = [];
+  const requestedSkillName = options.requestedSkillName?.trim();
 
-  if (!originalInput.startsWith("/")) {
-    options.workingState.update({
-      ...clearActiveSkillState(currentWorkingState, "new-turn"),
-    });
-    return {
-      originalInput,
-      contextInput: originalInput,
-      runtimeInput: originalInput,
-      requestedModelId: undefined,
-      requestedEffort: undefined,
-      invocation: undefined,
-      prefixEvents,
-    };
+  if (requestedSkillName) {
+    const manifest = options.skills.resolve(requestedSkillName, { includeDisabled: true });
+    if (manifest) {
+      const requestedSkillArgs = resolveRequestedSkillArgs({
+        originalInput,
+        requestedSkillName: manifest.name,
+        requestedSkillArgs: options.requestedSkillArgs,
+      });
+      const useNativeSkill = options.kernel?.capabilities.knowledge?.nativeSkills === true;
+      const invocation = useNativeSkill
+        ? createNativeSkillInvocation(manifest, requestedSkillArgs, {
+            kernelId: options.kernel?.id,
+            cwd: options.cwd,
+          })
+        : createInvokedSkillRecord(options.skills.load(manifest.name, requestedSkillArgs, options.sessionId), "user");
+      options.workingState.update({
+        ...recordInvokedSkill(currentWorkingState, invocation),
+      });
+      prefixEvents.push({
+        type: "skill.invoked",
+        runId: options.runId,
+        skill: manifest,
+        invocation,
+      });
+      prefixEvents.push({
+        type: "skill.loaded",
+        runId: options.runId,
+        skillId: manifest.id,
+        contentPreview: invocation.contentPreview,
+        allowedTools: [...manifest.allowedTools],
+        model: manifest.model,
+        effort: manifest.effort,
+        context: manifest.context,
+      });
+
+      const runtimeInput = useNativeSkill
+        ? nativeSkillRuntimeInput(options.kernel?.id, manifest.name, requestedSkillArgs)
+        : requestedSkillArgs || `Use /${manifest.name} and continue with the loaded instructions.`;
+      return {
+        originalInput: originalInput || (requestedSkillArgs ? `/${manifest.name} ${requestedSkillArgs}` : `/${manifest.name}`),
+        contextInput: requestedSkillArgs || manifest.whenToUse || manifest.description,
+        runtimeInput,
+        requestedModelId: manifest.model,
+        requestedEffort: manifest.effort,
+        invocation,
+        prefixEvents,
+      };
+    }
   }
 
-  const parsed = parseSkillSlashInput(originalInput);
-  if (!parsed) {
-    return {
-      originalInput,
-      contextInput: originalInput,
-      runtimeInput: originalInput,
-      requestedModelId: undefined,
-      requestedEffort: undefined,
-      invocation: undefined,
-      prefixEvents,
-    };
-  }
-
-  const manifest = options.skills.resolve(parsed.skill, { includeDisabled: true });
-  if (!manifest) {
-    return {
-      originalInput,
-      contextInput: originalInput,
-      runtimeInput: originalInput,
-      requestedModelId: undefined,
-      requestedEffort: undefined,
-      invocation: undefined,
-      prefixEvents,
-    };
-  }
-
-  const useNativeSkill = options.kernel?.capabilities.knowledge?.nativeSkills === true;
-  const invocation = useNativeSkill
-    ? createNativeSkillInvocation(manifest, parsed.args, {
-        kernelId: options.kernel?.id,
-        cwd: options.cwd,
-      })
-    : createInvokedSkillRecord(options.skills.load(manifest.name, parsed.args, options.sessionId), "user");
   options.workingState.update({
-    ...recordInvokedSkill(currentWorkingState, invocation),
+    ...clearActiveSkillState(currentWorkingState, "new-turn"),
   });
-  prefixEvents.push({
-    type: "skill.invoked",
-    runId: options.runId,
-    skill: manifest,
-    invocation,
-  });
-  prefixEvents.push({
-    type: "skill.loaded",
-    runId: options.runId,
-    skillId: manifest.id,
-    contentPreview: invocation.contentPreview,
-    allowedTools: [...manifest.allowedTools],
-    model: manifest.model,
-    effort: manifest.effort,
-    context: manifest.context,
-  });
-
-  const runtimeInput = useNativeSkill
-    ? parsed.args
-      ? `$${manifest.name} ${parsed.args}`
-      : `$${manifest.name}`
-    : parsed.args || `Use /${manifest.name} and continue with the loaded instructions.`;
   return {
     originalInput,
-    contextInput: parsed.args || manifest.whenToUse || manifest.description,
-    runtimeInput,
-    requestedModelId: manifest.model,
-    requestedEffort: manifest.effort,
-    invocation,
+    contextInput: originalInput,
+    runtimeInput: originalInput,
+    requestedModelId: undefined,
+    requestedEffort: undefined,
+    invocation: undefined,
     prefixEvents,
   };
+}
+
+function nativeSkillRuntimeInput(
+  kernelId: string | undefined,
+  skillName: string,
+  args: string | undefined,
+): string {
+  if (kernelId === "claude-code") {
+    return args
+      ? `Use the ${skillName} skill for this task:\n${args}`
+      : `Use the ${skillName} skill for this task.`;
+  }
+  return args ? `$${skillName} ${args}` : `$${skillName}`;
+}
+
+function resolveRequestedSkillArgs(options: {
+  originalInput: string;
+  requestedSkillName: string;
+  requestedSkillArgs?: string;
+}): string | undefined {
+  if (options.requestedSkillArgs !== undefined) {
+    return options.requestedSkillArgs.trim() || undefined;
+  }
+
+  const parsed = parseSkillSlashInput(options.originalInput);
+  if (parsed?.skill === options.requestedSkillName) {
+    return parsed.args;
+  }
+
+  if (options.originalInput && !options.originalInput.startsWith("/")) {
+    return options.originalInput;
+  }
+
+  return undefined;
 }
 
 function createNativeSkillInvocation(

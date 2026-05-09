@@ -1,31 +1,31 @@
 import {
-  ClaudeCodeRuntime,
-  type ClaudeCodeRuntimeOptions,
-} from "../../runtime/claude-code-runtime.js";
+  ClaudeAgentSdkRuntime,
+  type ClaudeAgentSdkRuntimeOptions,
+} from "../../runtime/claude-agent-sdk-runtime.js";
 import { APP_PROTOCOL_ID, appEnvName, readAppEnv } from "../../identity.js";
 import { RuntimeKernelAdapter } from "../adapter.js";
 import { commandVersion, directorySource, fileSource, plannedInstallAction, resolveHomePath } from "../discovery.js";
 import type { KernelAdapterContract, KernelDiscovery } from "../types.js";
 
 export class ClaudeCodeKernelAdapter extends RuntimeKernelAdapter {
-  constructor(private readonly claudeOptions: ClaudeCodeRuntimeOptions) {
+  constructor(private readonly claudeOptions: ClaudeAgentSdkRuntimeOptions) {
     super({
       id: "claude-code",
       title: "Claude Code",
-      runtime: new ClaudeCodeRuntime(claudeOptions),
+      runtime: new ClaudeAgentSdkRuntime(claudeOptions),
       capabilities: {
         streaming: true,
         toolCalls: true,
-        hostTools: false,
+        hostTools: true,
         approvals: true,
-        elicitation: false,
+        elicitation: true,
         artifacts: true,
-        compaction: false,
+        compaction: true,
         authRefresh: true,
         sandbox: ["danger-full-access"],
         knowledge: {
           nativeSkills: true,
-          toolMediatedSkills: false,
+          toolMediatedSkills: true,
           progressiveDisclosure: true,
           nativeArtifacts: false,
           deliveryLedger: true,
@@ -41,25 +41,24 @@ export class ClaudeCodeKernelAdapter extends RuntimeKernelAdapter {
 }
 
 export function createClaudeCodeKernelAdapter(
-  options: ClaudeCodeRuntimeOptions,
+  options: ClaudeAgentSdkRuntimeOptions,
 ): ClaudeCodeKernelAdapter {
   return new ClaudeCodeKernelAdapter(options);
 }
 
 export function discoverClaudeCodeKernel(
-  options: Partial<ClaudeCodeRuntimeOptions> = {},
+  options: Partial<ClaudeAgentSdkRuntimeOptions> = {},
   cwd = process.cwd(),
   diagnostics = CLAUDE_CODE_KERNEL_CONTRACT.diagnostics,
 ): KernelDiscovery {
-  const claudeHome = process.env.CLAUDE_CONFIG_DIR || resolveHomePath(".claude");
+  const claudeHome = options.env?.CLAUDE_CONFIG_DIR || process.env.CLAUDE_CONFIG_DIR || resolveHomePath(".claude");
   const cliPath = options.cliPath || readAppEnv("CLAUDE_CLI_PATH") || "claude";
   const version = commandVersion(cliPath);
-  const installed = Boolean(options.cliPath || version);
   return {
     kernelId: "claude-code",
     title: "Claude Code",
-    installed,
-    available: installed,
+    installed: true,
+    available: true,
     binaryPath: options.cliPath,
     version,
     configHome: claudeHome,
@@ -185,7 +184,6 @@ export function discoverClaudeCodeKernel(
         id: "claude.install",
         title: "安装 Claude Code CLI",
         command: ["npm", "install", "-g", "@anthropic-ai/claude-code"],
-        description: "如果本机没有 claude 命令，可以按官方 CLI 安装；执行前需要用户确认。",
       }),
     ],
     notes: [
@@ -209,9 +207,8 @@ export const CLAUDE_CODE_KERNEL_CONTRACT: KernelAdapterContract = {
       owner: "shared",
       nativeName: "stream-json messages",
       appResponsibility: "Record normalized run lifecycle and trajectory.",
-      kernelResponsibility: "Stream assistant/tool events through Claude Code.",
-      adapterResponsibility: "Map Claude stream-json events into OpenGrove AgentEvent.",
-      notes: "Current adapter is still a CLI stream bridge, not the full QueryEngine/RemoteSession harness.",
+      kernelResponsibility: "Stream assistant/tool events through Claude Code's Agent SDK harness.",
+      adapterResponsibility: "Map SDK messages into OpenGrove AgentEvent without rebuilding Claude's inner loop.",
     },
     {
       feature: "model_loop",
@@ -231,8 +228,8 @@ export const CLAUDE_CODE_KERNEL_CONTRACT: KernelAdapterContract = {
       feature: "host_tool_execution",
       owner: "shared",
       appResponsibility: "Own OpenGrove host tools and tool-side artifacts.",
-      kernelResponsibility: "Can call exposed MCP/SDK tools when a deeper bridge is wired.",
-      adapterResponsibility: "Current CLI bridge has limited host-tool parity; future SDK bridge should expose OpenGrove tools natively.",
+      kernelResponsibility: "Call exposed SDK MCP tools when OpenGrove host capabilities are useful.",
+      adapterResponsibility: "Expose OpenGrove tools through an in-process SDK MCP server and execute them through OpenGrove policy/approval stores.",
     },
     {
       feature: "approval",
@@ -240,8 +237,7 @@ export const CLAUDE_CODE_KERNEL_CONTRACT: KernelAdapterContract = {
       nativeName: "CanUseToolFn / ToolUseConfirm",
       appResponsibility: "Own approval UI and durable approval records.",
       kernelResponsibility: "Decide native tool confirmation requirements.",
-      adapterResponsibility: "Future full bridge should map ToolUseConfirm into OpenGrove approval requests.",
-      notes: "Current CLI bridge passes Claude permission modes, but it does not yet map native confirmation prompts into OpenGrove approval records.",
+      adapterResponsibility: "Map CanUseTool permission prompts into OpenGrove approval requests and return the user's decision to Claude.",
     },
     {
       feature: "user_question",
@@ -249,7 +245,7 @@ export const CLAUDE_CODE_KERNEL_CONTRACT: KernelAdapterContract = {
       nativeName: "handleElicitation / ask user",
       appResponsibility: "Own structured question UI.",
       kernelResponsibility: "May request user information through native elicitation paths.",
-      adapterResponsibility: "Future SDK/RemoteSession bridge should map elicitation separately from approval.",
+      adapterResponsibility: "Map SDK onElicitation requests into OpenGrove user-input approvals and return accepted form content.",
     },
     {
       feature: "skill_discovery",
@@ -292,7 +288,7 @@ export const CLAUDE_CODE_KERNEL_CONTRACT: KernelAdapterContract = {
       nativeName: "Claude compact boundary",
       appResponsibility: "Record OpenGrove memory/context snapshots.",
       kernelResponsibility: "Run native compact.",
-      adapterResponsibility: "Future full bridge should map compact start/finish into OpenGrove events.",
+      adapterResponsibility: "Map SDK compact status/boundary messages into OpenGrove compaction events.",
     },
     {
       feature: "auth",
@@ -341,30 +337,42 @@ export const CLAUDE_CODE_KERNEL_CONTRACT: KernelAdapterContract = {
       appEvent: "approval.requested",
       nativeRequest: "ToolUseConfirm / CanUseToolFn",
       direction: "bidirectional",
-      adapterResponsibility: "Planned for full SDK/RemoteSession bridge; not provided by the current bypassPermissions CLI bridge.",
+      adapterResponsibility: "Handled by the SDK canUseTool bridge.",
     },
     {
       appEvent: "userQuestion.requested",
       nativeRequest: "handleElicitation",
       direction: "bidirectional",
-      adapterResponsibility: "Planned for full SDK/RemoteSession bridge.",
+      adapterResponsibility: "Handled by the SDK onElicitation bridge.",
     },
     {
       appEvent: "compaction.started / compaction.finished",
       nativeEvent: "Claude compact lifecycle",
       direction: "native_to_app",
-      adapterResponsibility: "Planned for full SDK/RemoteSession bridge.",
+      adapterResponsibility: "Handled from SDK compact status and boundary messages.",
     },
   ],
   diagnostics: {
-    defaultModeId: "claude-cli-stream",
+    defaultModeId: "claude-agent-sdk",
     modes: [
+      {
+        id: "claude-agent-sdk",
+        title: "Claude Agent SDK event stream",
+        layer: "adapter-rpc",
+        status: "implemented",
+        enabledByDefault: true,
+        redaction: "redacted",
+        notes: [
+          "Runs Claude Code through @anthropic-ai/claude-agent-sdk, including native tools, MCP, skills, slash commands, permission callbacks, elicitation, hooks, and compact messages.",
+          "OpenGrove host tools are exposed as an in-process SDK MCP server named opengrove.",
+        ],
+      },
       {
         id: "claude-cli-stream",
         title: "Claude CLI stream-json capture",
         layer: "process-stdio",
-        status: "implemented",
-        enabledByDefault: true,
+        status: "planned",
+        enabledByDefault: false,
         output: "data/claude-code-captures/",
         env: [
           appEnvName("CLAUDE_CODE_CAPTURE"),
@@ -432,7 +440,7 @@ export const CLAUDE_CODE_KERNEL_CONTRACT: KernelAdapterContract = {
       ],
     },
     notes: [
-      "Claude Code needs a deeper SDK/RemoteSession adapter before OpenGrove can claim full parity with Claude's native harness.",
+      "Claude Code is driven through the Claude Agent SDK. The older CLI stream-json runtime remains in the codebase as a diagnostic fallback but is no longer the Claude kernel's primary adapter.",
     ],
   },
 };

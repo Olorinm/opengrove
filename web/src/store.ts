@@ -54,8 +54,17 @@ interface UiState {
     context?: MessageContext | null,
     options?: { parts?: MessagePart[]; pending?: boolean; runId?: string },
   ): string;
+  appendMessageToThread(
+    threadId: string,
+    role: StoredMessage["role"],
+    text: string,
+    context?: MessageContext | null,
+    options?: { parts?: MessagePart[]; pending?: boolean; runId?: string },
+  ): string;
   appendAssistantMessage(): string;
+  appendAssistantMessageToThread(threadId: string): string;
   updateMessage(messageId: string, updater: (message: StoredMessage) => void): void;
+  updateThreadMessage(threadId: string, messageId: string, updater: (message: StoredMessage) => void): void;
   replaceMessages(messages: StoredMessage[]): void;
   startNewThread(projectId?: string): string;
   startNewProject(): string;
@@ -164,19 +173,35 @@ function deriveThreadTitle(messages: StoredMessage[], fallback = "新线程"): s
 }
 
 function syncActiveThread(state: UiState, messages: StoredMessage[]): Pick<UiState, "messages" | "threads"> {
+  return syncThreadMessages(state, state.threadId, messages, state.projectId) as Pick<UiState, "messages" | "threads">;
+}
+
+function syncThreadMessages(
+  state: UiState,
+  threadId: string,
+  messages: StoredMessage[],
+  targetProjectId?: string,
+): Partial<Pick<UiState, "messages" | "threads">> {
   const trimmedMessages = trimMessages(messages);
   const updatedAt = nowIso();
-  const projectId = state.projectId || DEFAULT_PROJECT_ID;
-  const existing = state.threads.find((thread) => thread.id === state.threadId);
+  const existing = state.threads.find((thread) => thread.id === threadId);
+  const projectId = targetProjectId || existing?.projectId || (threadId === state.threadId ? state.projectId : "") || DEFAULT_PROJECT_ID;
   const nextThread: UiThread = {
-    id: state.threadId,
+    id: threadId,
     projectId,
     title: deriveThreadTitle(trimmedMessages, existing?.title || "新线程"),
     updatedAt,
     messages: trimmedMessages,
   };
-  const threads = [nextThread, ...state.threads.filter((thread) => thread.id !== state.threadId)];
-  return { messages: trimmedMessages, threads };
+  const threads = [nextThread, ...state.threads.filter((thread) => thread.id !== threadId)];
+  return threadId === state.threadId ? { messages: trimmedMessages, threads } : { threads };
+}
+
+function messagesForThread(state: UiState, threadId: string): StoredMessage[] {
+  if (threadId === state.threadId) {
+    return state.messages;
+  }
+  return state.threads.find((thread) => thread.id === threadId)?.messages ?? [];
 }
 
 function normalizeProjects(value: unknown): UiProject[] {
@@ -262,11 +287,51 @@ export const useUiStore = create<UiState>()(
         }));
         return id;
       },
+      appendMessageToThread(threadId, role, text, context, options) {
+        const id = createClientId("msg");
+        set((state) => ({
+          ...syncThreadMessages(state, threadId, [
+            ...messagesForThread(state, threadId),
+            {
+              id,
+              role,
+              text,
+              context: context || null,
+              parts: options?.parts || [],
+              pending: options?.pending === true,
+              runId: options?.runId || "",
+              startedAt: undefined,
+              finishedAt: undefined,
+            },
+          ]),
+        }));
+        return id;
+      },
       appendAssistantMessage() {
         const id = createClientId("msg");
         set((state) => ({
           ...syncActiveThread(state, [
             ...state.messages,
+            {
+              id,
+              role: "assistant",
+              text: "",
+              context: null,
+              parts: [],
+              pending: true,
+              runId: "",
+              startedAt: undefined,
+              finishedAt: undefined,
+            },
+          ]),
+        }));
+        return id;
+      },
+      appendAssistantMessageToThread(threadId) {
+        const id = createClientId("msg");
+        set((state) => ({
+          ...syncThreadMessages(state, threadId, [
+            ...messagesForThread(state, threadId),
             {
               id,
               role: "assistant",
@@ -300,6 +365,25 @@ export const useUiStore = create<UiState>()(
             }),
           ),
         }));
+      },
+      updateThreadMessage(threadId, messageId, updater) {
+        set((state) => {
+          let updated = false;
+          const messages = messagesForThread(state, threadId).map((message) => {
+            if (message.id !== messageId) {
+              return message;
+            }
+            updated = true;
+            const next = {
+              ...message,
+              context: message.context ? { ...message.context } : null,
+              parts: [...message.parts],
+            };
+            updater(next);
+            return next;
+          });
+          return updated ? syncThreadMessages(state, threadId, messages) : {};
+        });
       },
       replaceMessages(messages) {
         set((state) => syncActiveThread(state, messages));

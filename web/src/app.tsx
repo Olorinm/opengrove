@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ChangeEvent, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { Bot, ChevronDown, FilePlus2, FolderPlus, ListChevronsDownUp, ListChevronsUpDown, PanelRightClose, PanelRightOpen, Search, SquarePen, X } from "lucide-react";
+import { Bot, ChevronDown, FilePlus2, FolderPlus, ListChevronsDownUp, ListChevronsUpDown, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Search, SquarePen, X } from "lucide-react";
 import type {
   AttachmentPayload,
   ApprovalsResponse,
@@ -10,6 +10,7 @@ import type {
   BridgeSettings,
   ContextArtifactPayload,
   HealthResponse,
+  KernelInstallResponse,
   KernelPreference,
   KnowledgeDocumentRecord,
   KnowledgeFolderRecord,
@@ -48,10 +49,11 @@ import {
   collectMessageRunIds,
   fileNameFromAssetUri,
   formatKernelLabel,
+  getKernelSlashCommands,
   getMatchingSkills,
+  getMatchingSlashCommands,
   mergeFinalDataIntoCache,
   mimeTypeFromAssetUri,
-  parseComposerSkillInvocation,
   parseSlashSkillQuery,
   pickCodexSkills,
   readComposerAttachment,
@@ -60,6 +62,7 @@ import {
   resolveLatestRun,
   resolveLatestRuntimeBlocker,
   skillInvocationName,
+  type ComposerSkillInvocation,
 } from "./runtime/ui-model";
 import { useBridgeQueries } from "./runtime/use-bridge-queries";
 import { ChatComposer, modelOptionsForKernel, type ComposerMenuKind } from "./components/chat/chat-composer";
@@ -70,7 +73,7 @@ import {
   filterVaultDocuments,
   knowledgeVaultPath,
 } from "./components/knowledge/knowledge-model";
-import { SkillCommandMenu } from "./components/chat/skill-command-menu";
+import { SlashCommandMenu } from "./components/chat/skill-command-menu";
 import { ThreadShell } from "./components/chat/thread-shell";
 import {
   AppRail,
@@ -82,6 +85,7 @@ import { ConversationSidebar } from "./components/sidebar/conversation-sidebar";
 import { VaultSidebarPanel } from "./components/sidebar/knowledge-sidebar-panels";
 import { buildSidebarProjectTree, sortSidebarThreads, type ConversationSortKey } from "./components/sidebar/conversation-sidebar-model";
 import { SettingsDialog } from "./components/sidebar/settings-dialog";
+import { KernelIcon } from "./components/ui/entity-icons";
 import { WorkspaceInspector } from "./components/workspace/workspace-views";
 import { useUiStore, type UiProject, type UiThread } from "./store";
 
@@ -92,10 +96,19 @@ const DEFAULT_LIBRARY_AI_PANEL_WIDTH = 420;
 const MIN_LIBRARY_AI_PANEL_WIDTH = 340;
 const MAX_LIBRARY_AI_PANEL_WIDTH = 680;
 
+type RunningTurn = {
+  controller: AbortController;
+  assistantId: string;
+};
+
 function readStoredSidebarWidth(): number {
   const raw = window.localStorage.getItem(APP_STORAGE_KEYS.sidebarWidth);
   const value = raw ? Number(raw) : DEFAULT_SIDEBAR_WIDTH;
   return clamp(Number.isFinite(value) ? value : DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
+}
+
+function readStoredSidebarCollapsed(): boolean {
+  return window.localStorage.getItem(APP_STORAGE_KEYS.sidebarCollapsed) === "true";
 }
 
 function readStoredLibraryAiPanelWidth(): number {
@@ -106,6 +119,27 @@ function readStoredLibraryAiPanelWidth(): number {
     MIN_LIBRARY_AI_PANEL_WIDTH,
     MAX_LIBRARY_AI_PANEL_WIDTH,
   );
+}
+
+function modelBindingKey(kernel: string | undefined, source: string | undefined): string {
+  return `${kernel || "unknown"}:${source || "native"}`;
+}
+
+function readStoredModelBindings(): Record<string, string> {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(APP_STORAGE_KEYS.uiModelByBinding) || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, string>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredModelBinding(key: string, modelId: string): void {
+  const current = readStoredModelBindings();
+  current[key] = modelId;
+  window.localStorage.setItem(APP_STORAGE_KEYS.uiModelByBinding, JSON.stringify(current));
 }
 
 function readStoredReasoningEffort(): ReasoningEffort {
@@ -144,7 +178,8 @@ export function App() {
   const [projectCollapseSnapshotIds, setProjectCollapseSnapshotIds] = useState<string[]>([]);
   const [conversationSortMenuOpen, setConversationSortMenuOpen] = useState(false);
   const [conversationSortKey, setConversationSortKey] = useState<ConversationSortKey>("updatedAt");
-  const [activeSkillIndex, setActiveSkillIndex] = useState(0);
+  const [activeSlashIndex, setActiveSlashIndex] = useState(0);
+  const [composerSkillInvocation, setComposerSkillInvocation] = useState<ComposerSkillInvocation | null>(null);
   const [modelMenuKind, setModelMenuKind] = useState<ComposerMenuKind | null>(null);
   const [modelMenuPlacement, setModelMenuPlacement] = useState<"up" | "down">("up");
   const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(() => readStoredReasoningEffort());
@@ -155,7 +190,10 @@ export function App() {
   const [libraryAiThreadMenuOpen, setLibraryAiThreadMenuOpen] = useState(false);
   const [isComposingText, setIsComposingText] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
+  const [sidebarRevealArmed, setSidebarRevealArmed] = useState(true);
   const [libraryAiPanelWidth, setLibraryAiPanelWidth] = useState(readStoredLibraryAiPanelWidth);
+  const [runningThreadIds, setRunningThreadIds] = useState<string[]>([]);
   const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const libraryAiResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
@@ -163,8 +201,8 @@ export function App() {
   const threadScrollRef = useRef<HTMLElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const queuedChoicePromptRef = useRef<string | null>(null);
-  const activeTurnAbortRef = useRef<AbortController | null>(null);
+  const queuedChoicePromptsRef = useRef(new Map<string, string>());
+  const runningTurnsRef = useRef(new Map<string, RunningTurn>());
 
   function setAccessMode(value: RuntimeAccessMode) {
     setAccessModeState(value);
@@ -181,10 +219,18 @@ export function App() {
     window.localStorage.setItem(APP_STORAGE_KEYS.responseSpeed, value);
   }
 
+  function toggleSidebarCollapsed() {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      window.localStorage.setItem(APP_STORAGE_KEYS.sidebarCollapsed, String(next));
+      setSidebarRevealArmed(!next);
+      return next;
+    });
+  }
+
   const {
     model,
     messages,
-    sending,
     activeView,
     projectId,
     projects,
@@ -198,8 +244,9 @@ export function App() {
     setComposerHeight,
     clearContext,
     appendMessage,
-    appendAssistantMessage,
-    updateMessage,
+    appendMessageToThread,
+    appendAssistantMessageToThread,
+    updateThreadMessage,
     replaceMessages,
     startNewThread,
     startNewProject,
@@ -236,12 +283,18 @@ export function App() {
   const runs = inventory?.runs ?? [];
   const executions = inventory?.executions ?? [];
   const workingState = normalizeWorkingState(inventory?.workingState ?? createEmptyWorkingState());
+  const runningThreadSet = useMemo(() => new Set(runningThreadIds), [runningThreadIds]);
   const currentThreadRunIds = useMemo(() => collectMessageRunIds(messages), [messages]);
-  const hasThreadActivity = messages.length > 0 || sending;
+  const activeThreadIsRunning = runningThreadSet.has(threadId);
+  const hasThreadActivity = messages.length > 0 || activeThreadIsRunning;
   const latestRun = resolveLatestRun(runs, workingState.sessionId, currentThreadRunIds, hasThreadActivity);
   const currentSession = resolveCurrentSession(sessions, workingState, threadId, latestRun, hasThreadActivity);
   const runtimeBlocker = resolveLatestRuntimeBlocker(executions, latestRun?.sessionId || currentSession?.id || "");
   const activeKernel = healthQuery.data?.kernel;
+  const activeRuntimeControls = healthQuery.data?.runtimeControls?.kernel === activeKernel
+    ? healthQuery.data?.runtimeControls
+    : undefined;
+  const activeModelBindingKey = modelBindingKey(activeKernel, activeRuntimeControls?.source);
   const isCodexKernel = activeKernel === "codex";
   const sidebarProjects = useMemo(() => {
     const tree = buildSidebarProjectTree(projects, threads, projectId, threadId, messages);
@@ -281,6 +334,12 @@ export function App() {
     () => libraryAiThreadOptions.find((thread) => thread.id === threadId)?.title || t("conversation.newThreadFallback"),
     [libraryAiThreadOptions, t, threadId],
   );
+
+  function syncRunningTurns() {
+    const nextThreadIds = [...runningTurnsRef.current.keys()];
+    setRunningThreadIds(nextThreadIds);
+    setSending(nextThreadIds.length > 0);
+  }
   const currentVaultFileContext = useMemo(() => {
     if (activeView !== "library" || !libraryAiOpen || !focusedKnowledgeId) {
       return null;
@@ -294,22 +353,26 @@ export function App() {
         }
       : null;
   }, [activeView, focusedKnowledgeId, knowledge, libraryAiOpen]);
-  const skillQuery = parseSlashSkillQuery(question);
   const slashSkillCandidates = useMemo(
     () => (isCodexKernel ? pickCodexSkills(skills) : skills),
     [isCodexKernel, skills],
+  );
+  const skillQuery = parseSlashSkillQuery(composerSkillInvocation ? "" : question);
+  const kernelSlashCommands = useMemo(
+    () => getKernelSlashCommands(activeKernel, workingState),
+    [activeKernel, workingState],
+  );
+  const matchingSlashCommands = useMemo(
+    () => getMatchingSlashCommands(kernelSlashCommands, skillQuery.keyword),
+    [kernelSlashCommands, skillQuery.keyword],
   );
   const matchingSkills = useMemo(
     () => getMatchingSkills(slashSkillCandidates, skillQuery.keyword),
     [slashSkillCandidates, skillQuery.keyword],
   );
-
-  const showSkillPalette = skillQuery.active && matchingSkills.length > 0 && !modelMenuKind;
-  const composerSkillInvocation = useMemo(
-    () => parseComposerSkillInvocation(question, slashSkillCandidates),
-    [question, slashSkillCandidates],
-  );
-  const composerQuestionValue = composerSkillInvocation ? composerSkillInvocation.args : question;
+  const slashMenuItemCount = matchingSlashCommands.length + matchingSkills.length;
+  const showSlashPalette = skillQuery.active && slashMenuItemCount > 0 && !modelMenuKind;
+  const composerQuestionValue = question;
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -337,11 +400,20 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const availableModels = modelOptionsForKernel(activeKernel, healthQuery.data?.runtimeControls);
-    if (!availableModels.some((item) => item.id === model)) {
-      setModel(availableModels[0]?.id ?? "gpt-5.4");
+    const availableModels = modelOptionsForKernel(activeKernel, activeRuntimeControls);
+    const storedModel = readStoredModelBindings()[activeModelBindingKey];
+    if (storedModel && availableModels.some((item) => item.id === storedModel)) {
+      if (model !== storedModel) setModel(storedModel);
+      return;
     }
-  }, [activeKernel, healthQuery.data?.runtimeControls, model, setModel]);
+    if (!availableModels.some((item) => item.id === model)) {
+      const fallback = availableModels[0]?.id ?? "gpt-5.4";
+      setModel(fallback);
+      writeStoredModelBinding(activeModelBindingKey, fallback);
+      return;
+    }
+    writeStoredModelBinding(activeModelBindingKey, model);
+  }, [activeKernel, activeRuntimeControls, activeModelBindingKey, model, setModel]);
 
   useEffect(() => {
     if (composerHeight > 64) {
@@ -361,12 +433,14 @@ export function App() {
       scrollEl.scrollTop = scrollEl.scrollHeight;
     });
     return () => window.cancelAnimationFrame(frameId);
-  }, [activeView, messages, sending]);
+  }, [activeView, activeThreadIsRunning, messages]);
 
   const settingsMutation = useMutation({
     mutationFn: (payload: {
       kernel: KernelPreference;
       providerHttpCaptureEnabled: boolean;
+      kernelProxy?: BridgeSettings["kernelProxy"];
+      kernelPathOverrides?: BridgeSettings["kernelPathOverrides"];
       kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
       kernelProviderBindings?: Record<string, string>;
       customProviders?: BridgeSettings["customProviders"];
@@ -380,14 +454,42 @@ export function App() {
               ...previous,
               kernel: result.settings.activeKernel,
               settings: result.settings,
+              runtimeControls: undefined,
             }
           : previous,
       );
+      queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
       queryClient.invalidateQueries({ queryKey: ["events"] });
     },
     onError(error) {
       appendMessage("system", t("system.saveSettingsFailed", { message: error instanceof Error ? error.message : String(error) }));
+    },
+  });
+
+  const installKernelMutation = useMutation({
+    mutationFn: (payload: { kernelId: string; actionId: string }) =>
+      postJson<KernelInstallResponse>("/settings/install-kernel", payload),
+    onSuccess(result, variables) {
+      if (result.settings) {
+        queryClient.setQueryData(["settings"], { ok: true, settings: result.settings });
+        queryClient.setQueryData(["health"], (previous: HealthResponse | undefined) =>
+          previous
+            ? {
+                ...previous,
+                kernel: result.settings?.activeKernel,
+                settings: result.settings,
+              }
+            : previous,
+        );
+      }
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+      queryClient.invalidateQueries({ queryKey: ["health"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      appendMessage("system", `安装完成：${variables.kernelId}`);
+    },
+    onError(error, variables) {
+      appendMessage("system", `安装失败：${variables.kernelId} · ${error instanceof Error ? error.message : String(error)}`);
     },
   });
 
@@ -625,12 +727,11 @@ export function App() {
   }
 
   function openNewThread(targetProjectId?: string) {
-    if (sending) {
-      return;
-    }
     startNewThread(targetProjectId);
     setProjectMenuOpenId("");
     setQuestion("");
+    setComposerSkillInvocation(null);
+    setActiveSlashIndex(0);
     setAttachments([]);
     setContextArtifacts([]);
     setModelMenuKind(null);
@@ -639,13 +740,15 @@ export function App() {
 
   function clearComposerDraft() {
     setQuestion("");
+    setComposerSkillInvocation(null);
+    setActiveSlashIndex(0);
     setAttachments([]);
     setContextArtifacts([]);
     setModelMenuKind(null);
   }
 
   function openLibraryAiPanel() {
-    if (!libraryAiOpen && !sending && messages.length > 0) {
+    if (!libraryAiOpen && messages.length > 0) {
       startNewThread(projectId);
       setView("library");
       clearComposerDraft();
@@ -659,9 +762,6 @@ export function App() {
   }
 
   function createLibraryAiThread() {
-    if (sending) {
-      return;
-    }
     openNewThread(projectId);
     setView("library");
     setLibraryAiOpen(true);
@@ -680,11 +780,10 @@ export function App() {
   }
 
   function openNewProject() {
-    if (sending) {
-      return;
-    }
     startNewProject();
     setQuestion("");
+    setComposerSkillInvocation(null);
+    setActiveSlashIndex(0);
     setAttachments([]);
     setContextArtifacts([]);
     setModelMenuKind(null);
@@ -692,13 +791,11 @@ export function App() {
   }
 
   function openThread(nextThreadId: string) {
-    if (sending && nextThreadId !== threadId) {
-      appendMessage("system", t("system.replyInProgress"));
-      return;
-    }
     selectThread(nextThreadId);
     setProjectMenuOpenId("");
     setQuestion("");
+    setComposerSkillInvocation(null);
+    setActiveSlashIndex(0);
     setAttachments([]);
     setContextArtifacts([]);
     setModelMenuKind(null);
@@ -706,7 +803,7 @@ export function App() {
   }
 
   function deleteThreadWithConfirm(thread: UiThread) {
-    if (thread.id.startsWith("empty:") || sending) {
+    if (thread.id.startsWith("empty:") || runningThreadSet.has(thread.id)) {
       return;
     }
     const ok = window.confirm(t("conversation.deleteThreadConfirm", { title: thread.title || t("conversation.newThreadFallback") }));
@@ -717,7 +814,7 @@ export function App() {
   }
 
   function deleteProjectWithConfirm(project: UiProject & { threads: UiThread[] }) {
-    if (sending) {
+    if (project.threads.some((thread) => runningThreadSet.has(thread.id))) {
       return;
     }
     const realThreadCount = project.threads.filter((thread) => !thread.id.startsWith("empty:")).length;
@@ -867,14 +964,33 @@ export function App() {
     window.removeEventListener("pointermove", onLibraryAiResizePointerMove);
   }
 
+  function applySlashCommand(command: { name: string }) {
+    insertPrompt(`/${command.name} `);
+  }
+
   function applySkillSuggestion(skill: SkillRecord) {
-    insertPrompt(`/${skillInvocationName(skill)} `);
-    setActiveSkillIndex(0);
+    setComposerSkillInvocation({
+      name: skillInvocationName(skill),
+      skill,
+      args: "",
+    });
+    setQuestion("");
+    setView("chat");
+    setActiveSlashIndex(0);
     setModelMenuKind(null);
+    requestAnimationFrame(() => {
+      composerInputRef.current?.focus();
+      const scrollEl = threadScrollRef.current;
+      if (scrollEl) {
+        scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: "smooth" });
+      }
+    });
   }
 
   function insertPrompt(prompt: string) {
     setQuestion(prompt);
+    setComposerSkillInvocation(null);
+    setActiveSlashIndex(0);
     setView("chat");
     setModelMenuKind(null);
     requestAnimationFrame(() => {
@@ -886,73 +1002,92 @@ export function App() {
     });
   }
 
-  async function runAskTurn(userPrompt: string, userContext: MessageContext | null, turnAttachments: AttachmentPayload[]) {
-    appendMessage("user", userPrompt, userContext);
-    setSending(true);
-    const assistantId = appendAssistantMessage();
+  async function runAskTurn(
+    userPrompt: string,
+    userContext: MessageContext | null,
+    turnAttachments: AttachmentPayload[],
+    options: { requestedSkill?: { name: string; args?: string }; targetThreadId?: string } = {},
+  ) {
+    const turnThreadId = options.targetThreadId ?? threadId;
+    if (runningTurnsRef.current.has(turnThreadId)) {
+      if (!userContext && turnAttachments.length === 0 && !options.requestedSkill) {
+        queuedChoicePromptsRef.current.set(turnThreadId, userPrompt);
+      }
+      return;
+    }
+    const turnModel = model;
+    const turnEffort = reasoningEffort;
+    const turnResponseSpeed = responseSpeed;
+    const turnAccessMode = accessMode;
+    const turnVaultFileContext = currentVaultFileContext;
+    appendMessageToThread(turnThreadId, "user", userPrompt, userContext);
+    const assistantId = appendAssistantMessageToThread(turnThreadId);
     const abortController = new AbortController();
-    activeTurnAbortRef.current = abortController;
+    runningTurnsRef.current.set(turnThreadId, { controller: abortController, assistantId });
+    syncRunningTurns();
 
     try {
       const finalData = await runThreadTurn(
         {
           question: userPrompt,
-          model,
-          effort: reasoningEffort,
-          responseSpeed,
-          accessMode,
-          threadId,
-          snapshot: createSnapshot(userContext, turnAttachments, currentVaultFileContext),
+          model: turnModel,
+          effort: turnEffort,
+          responseSpeed: turnResponseSpeed,
+          accessMode: turnAccessMode,
+          threadId: turnThreadId,
+          snapshot: createSnapshot(userContext, turnAttachments, turnVaultFileContext),
           computerSnapshot: {},
           allowMemory: false,
           saveCandidateNote: false,
+          requestedSkill: options.requestedSkill,
         },
         {
           signal: abortController.signal,
           onAgentEvent(runtimeEvent) {
-          updateMessage(assistantId, (message) => {
-            const { approvalRequest } = applyStreamEventToMessage(message, runtimeEvent.event);
-            if (approvalRequest) {
-              queryClient.setQueryData(["approvals"], (previous: ApprovalsResponse | undefined) => ({
-                ok: true,
-                approvals: [
-                  ...(previous?.approvals || []).filter((item) => item.id !== approvalRequest.id),
-                  approvalRequest,
-                ],
-              }));
-            }
-          });
+            updateThreadMessage(turnThreadId, assistantId, (message) => {
+              const { approvalRequest } = applyStreamEventToMessage(message, runtimeEvent.event);
+              if (approvalRequest) {
+                queryClient.setQueryData(["approvals"], (previous: ApprovalsResponse | undefined) => ({
+                  ok: true,
+                  approvals: [
+                    ...(previous?.approvals || []).filter((item) => item.id !== approvalRequest.id),
+                    approvalRequest,
+                  ],
+                }));
+              }
+            });
           },
         },
       );
 
-      updateMessage(assistantId, (message) => {
+      updateThreadMessage(turnThreadId, assistantId, (message) => {
         finalizeAssistantMessage(message, { answer: finalData.answer, events: finalData.events });
       });
       mergeFinalDataIntoCache(queryClient, finalData);
       queryClient.invalidateQueries({ queryKey: ["events"] });
     } catch (error) {
-      updateMessage(assistantId, (message) => {
+      updateThreadMessage(turnThreadId, assistantId, (message) => {
         const messageText = error instanceof Error ? error.message : String(error);
         markAssistantMessageError(message, abortController.signal.aborted ? t("system.stopped") : messageText);
       });
     } finally {
-      if (activeTurnAbortRef.current === abortController) {
-        activeTurnAbortRef.current = null;
+      const runningTurn = runningTurnsRef.current.get(turnThreadId);
+      if (runningTurn?.controller === abortController) {
+        runningTurnsRef.current.delete(turnThreadId);
+        syncRunningTurns();
       }
-      setSending(false);
-      const queuedPrompt = queuedChoicePromptRef.current;
+      const queuedPrompt = queuedChoicePromptsRef.current.get(turnThreadId);
       if (queuedPrompt) {
-        queuedChoicePromptRef.current = null;
+        queuedChoicePromptsRef.current.delete(turnThreadId);
         window.setTimeout(() => {
-          void runAskTurn(queuedPrompt, null, []);
+          void runAskTurn(queuedPrompt, null, [], { targetThreadId: turnThreadId });
         }, 0);
       }
     }
   }
 
   function stopActiveTurn() {
-    activeTurnAbortRef.current?.abort();
+    runningTurnsRef.current.get(threadId)?.controller.abort();
   }
 
   async function submitPrompt(prompt: string) {
@@ -960,36 +1095,48 @@ export function App() {
     if (!trimmedPrompt) {
       return;
     }
-    if (sending) {
-      queuedChoicePromptRef.current = trimmedPrompt;
+    if (activeThreadIsRunning) {
+      queuedChoicePromptsRef.current.set(threadId, trimmedPrompt);
       return;
     }
     setQuestion("");
+    setComposerSkillInvocation(null);
+    setActiveSlashIndex(0);
     setModelMenuKind(null);
     await runAskTurn(trimmedPrompt, null, []);
   }
 
   async function sendAsk() {
-    if (sending) {
+    if (activeThreadIsRunning) {
       return;
     }
     const trimmedQuestion = question.trim();
+    const requestedSkill = composerSkillInvocation
+      ? {
+          name: composerSkillInvocation.name,
+          args: trimmedQuestion,
+        }
+      : undefined;
     const turnAttachments = attachments;
     const turnArtifacts = contextArtifacts;
     const contextPayload = buildContextPayload(contextText, turnAttachments, turnArtifacts);
-    if (!trimmedQuestion && !contextPayload.text.trim() && !turnAttachments.length && !turnArtifacts.length) {
+    if (!requestedSkill && !trimmedQuestion && !contextPayload.text.trim() && !turnAttachments.length && !turnArtifacts.length) {
       appendMessage("system", t("system.inputRequired"));
       return;
     }
 
     const userContext = contextPayload.text.trim() || turnAttachments.length || turnArtifacts.length ? contextPayload : null;
-    const userPrompt = trimmedQuestion || (turnAttachments.length || turnArtifacts.length ? t("system.defaultAttachmentPrompt") : t("system.defaultTextPrompt"));
+    const userPrompt = requestedSkill
+      ? composeSkillPrompt(requestedSkill.name, trimmedQuestion).trim()
+      : trimmedQuestion || (turnAttachments.length || turnArtifacts.length ? t("system.defaultAttachmentPrompt") : t("system.defaultTextPrompt"));
     clearContext();
     setAttachments([]);
     setContextArtifacts([]);
     setQuestion("");
+    setComposerSkillInvocation(null);
+    setActiveSlashIndex(0);
     setModelMenuKind(null);
-    await runAskTurn(userPrompt, userContext, turnAttachments);
+    await runAskTurn(userPrompt, userContext, turnAttachments, { requestedSkill });
   }
 
   function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -998,25 +1145,33 @@ export function App() {
     }
     if (composerSkillInvocation && event.key === "Backspace" && !composerQuestionValue) {
       event.preventDefault();
-      setQuestion("");
-      setActiveSkillIndex(0);
+      setComposerSkillInvocation(null);
+      setActiveSlashIndex(0);
       return;
     }
-    if (showSkillPalette && event.key === "ArrowDown") {
+    if (showSlashPalette && event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveSkillIndex((current) => (current + 1) % matchingSkills.length);
+      setActiveSlashIndex((current) => (current + 1) % slashMenuItemCount);
       return;
     }
-    if (showSkillPalette && event.key === "ArrowUp") {
+    if (showSlashPalette && event.key === "ArrowUp") {
       event.preventDefault();
-      setActiveSkillIndex((current) => (current - 1 + matchingSkills.length) % matchingSkills.length);
+      setActiveSlashIndex((current) => (current - 1 + slashMenuItemCount) % slashMenuItemCount);
       return;
     }
-    if (showSkillPalette && (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey))) {
+    if (showSlashPalette && (event.key === "Tab" || (event.key === "Enter" && !event.shiftKey))) {
       event.preventDefault();
-      const selected = matchingSkills[clamp(activeSkillIndex, 0, matchingSkills.length - 1)];
-      if (selected) {
-        applySkillSuggestion(selected);
+      const selectedIndex = clamp(activeSlashIndex, 0, slashMenuItemCount - 1);
+      if (selectedIndex < matchingSlashCommands.length) {
+        const selectedCommand = matchingSlashCommands[selectedIndex];
+        if (selectedCommand) {
+          applySlashCommand(selectedCommand);
+        }
+      } else {
+        const selectedSkill = matchingSkills[selectedIndex - matchingSlashCommands.length];
+        if (selectedSkill) {
+          applySkillSuggestion(selectedSkill);
+        }
       }
       return;
     }
@@ -1024,23 +1179,21 @@ export function App() {
       event.preventDefault();
       void sendAsk();
     }
-    if (event.key === "Escape" && showSkillPalette) {
+    if (event.key === "Escape" && showSlashPalette) {
+      event.preventDefault();
       setQuestion("");
+      setActiveSlashIndex(0);
     }
   }
 
   function handleQuestionChange(nextValue: string) {
-    const nextQuestion = composerSkillInvocation
-      ? composeSkillPrompt(composerSkillInvocation.name, nextValue)
-      : nextValue;
-    setQuestion(nextQuestion);
+    setQuestion(nextValue);
     setModelMenuKind(null);
-    const parsed = parseSlashSkillQuery(nextQuestion);
-    if (!parsed.active) {
-      setActiveSkillIndex(0);
+    if (composerSkillInvocation) {
+      setActiveSlashIndex(0);
       return;
     }
-    setActiveSkillIndex(0);
+    setActiveSlashIndex(0);
   }
 
   function toggleLibrarySearch() {
@@ -1087,7 +1240,7 @@ export function App() {
 
   const renderSharedComposer = (options: { messagesEmpty: boolean; showSuggestions?: boolean }) => (
     <ChatComposer
-      sending={sending}
+      sending={activeThreadIsRunning}
       messagesEmpty={options.messagesEmpty}
       showSuggestions={options.showSuggestions}
       contextText={contextText}
@@ -1098,7 +1251,7 @@ export function App() {
       composerHeight={composerHeight}
       model={model}
       activeKernel={activeKernel}
-      runtimeControls={healthQuery.data?.runtimeControls}
+      runtimeControls={activeRuntimeControls}
       effort={reasoningEffort}
       responseSpeed={responseSpeed}
       accessMode={accessMode}
@@ -1120,21 +1273,29 @@ export function App() {
       onToggleModelMenu={toggleModelMenu}
       onSetModel={(nextModel) => {
         setModel(nextModel);
+        writeStoredModelBinding(activeModelBindingKey, nextModel);
         setModelMenuKind(null);
       }}
       onSetEffort={setReasoningEffort}
       onSetResponseSpeed={setResponseSpeed}
       onSetAccessMode={setAccessMode}
-      onSubmitOrStop={() => (sending ? stopActiveTurn() : void sendAsk())}
+      onSubmitOrStop={() => (activeThreadIsRunning ? stopActiveTurn() : void sendAsk())}
       onRemoveSkillInvocation={() => {
-        setQuestion(composerSkillInvocation?.args ?? "");
+        setComposerSkillInvocation(null);
+        setActiveSlashIndex(0);
         requestAnimationFrame(() => composerInputRef.current?.focus());
       }}
-      onUseSuggestion={setQuestion}
-      skillMenu={showSkillPalette ? (
-        <SkillCommandMenu
+      onUseSuggestion={(suggestion) => {
+        setComposerSkillInvocation(null);
+        setActiveSlashIndex(0);
+        setQuestion(suggestion);
+      }}
+      skillMenu={showSlashPalette ? (
+        <SlashCommandMenu
+          commands={matchingSlashCommands}
           skills={matchingSkills}
-          activeIndex={activeSkillIndex}
+          activeIndex={activeSlashIndex}
+          onSelectCommand={applySlashCommand}
           onSelect={applySkillSuggestion}
         />
       ) : null}
@@ -1157,8 +1318,48 @@ export function App() {
     <div
       className="app-shell react-app"
       data-view={activeView}
+      data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
       style={{ "--opengrove-sidebar-width": `${sidebarWidth}px` } as CSSProperties}
     >
+      <div className="app-sidebar-header">
+        <span className="sidebar-brand-main" aria-label={APP_PRODUCT_NAME} title={APP_PRODUCT_NAME}>
+          <span className="sidebar-brand-mark" aria-hidden="true">
+            <OpenGroveSaplingMark />
+          </span>
+          <span className="sidebar-brand-word">
+            Open<span>Grove</span>
+          </span>
+        </span>
+        <button
+          className="sidebar-collapse-button"
+          data-hover-reveal={sidebarCollapsed && sidebarRevealArmed ? "true" : "false"}
+          type="button"
+          onClick={toggleSidebarCollapsed}
+          onMouseLeave={() => {
+            if (sidebarCollapsed) {
+              setSidebarRevealArmed(true);
+            }
+          }}
+          onBlur={() => {
+            if (sidebarCollapsed) {
+              setSidebarRevealArmed(true);
+            }
+          }}
+          aria-label={sidebarCollapsed ? t("layout.expandSidebar") : t("layout.collapseSidebar")}
+          title={sidebarCollapsed ? t("layout.expandSidebar") : t("layout.collapseSidebar")}
+        >
+          {sidebarCollapsed ? (
+            <>
+              <span className="sidebar-collapse-logo" aria-hidden="true">
+                <OpenGroveSaplingMark />
+              </span>
+              <PanelLeftOpen className="sidebar-collapse-icon" size={16} aria-hidden="true" />
+            </>
+          ) : (
+            <PanelLeftClose size={16} />
+          )}
+        </button>
+      </div>
       <AppRail
         activeSection={activeRailSection}
         onOpenSection={openRailSection}
@@ -1171,10 +1372,9 @@ export function App() {
             <section className="sidebar-panel-space" aria-label={t("app.library")}>
               <div className="sidebar-space-header">
                 <div>
-                  <div className="sidebar-space-kicker">Vault</div>
                   <div className="sidebar-space-title">{t("app.library")}</div>
                 </div>
-                <div className="sidebar-space-actions" aria-label={t("vault.actions")}>
+                <div className={clsx("sidebar-space-actions", showLibrarySearch && "active")} aria-label={t("vault.actions")}>
                   <button
                     className="sidebar-mini-action"
                     type="button"
@@ -1256,7 +1456,7 @@ export function App() {
               projects={sidebarProjects}
               activeThreadId={threadId}
               activeView={activeView}
-              sending={sending}
+              runningThreadIds={runningThreadIds}
               pendingApprovalCount={pendingApprovals.length}
               collapsedProjectIds={projectCollapsedSet}
               allProjectsCollapsed={allProjectsCollapsed}
@@ -1308,7 +1508,7 @@ export function App() {
             {activeView === "chat" ? (
               <>
                 <div className="topbar-status-pill kernel-button" title={formatKernelLabel(healthQuery.data?.kernel) || "Codex"}>
-                  <span className="codex-mark" aria-hidden="true"></span>
+                  <KernelIcon kernelId={healthQuery.data?.kernel} className="topbar-kernel-icon" size={13} />
                   <span>{formatKernelLabel(healthQuery.data?.kernel) || "Codex"}</span>
                 </div>
                 <button
@@ -1359,7 +1559,7 @@ export function App() {
                     runtimeBlocker={runtimeBlocker}
                     kernelLabel={formatKernelLabel(healthQuery.data?.kernel)}
                     threadId={threadId}
-                    sending={sending}
+                    sending={activeThreadIsRunning}
                     messages={messages}
                     artifacts={artifacts}
                     skills={skills}
@@ -1431,7 +1631,6 @@ export function App() {
                     <button
                       className="library-ai-thread-button"
                       type="button"
-                      disabled={sending}
                       onClick={() => setLibraryAiThreadMenuOpen((current) => !current)}
                       aria-expanded={libraryAiThreadMenuOpen}
                       aria-label={t("library.selectAiConversation")}
@@ -1460,7 +1659,6 @@ export function App() {
                     <button
                       className="library-ai-icon-button"
                       type="button"
-                      disabled={sending}
                       onClick={createLibraryAiThread}
                       aria-label={t("library.newAiConversation")}
                       title={t("library.newAiConversation")}
@@ -1488,8 +1686,10 @@ export function App() {
             contextRecords={contextRecords}
             loading={settingsQuery.isLoading}
             saving={settingsMutation.isPending}
+            installingKernelId={installKernelMutation.isPending ? installKernelMutation.variables?.kernelId : ""}
             error={settingsQuery.error instanceof Error ? settingsQuery.error.message : ""}
             onClose={() => setView("chat")}
+            onInstallKernel={(kernelId, actionId) => installKernelMutation.mutate({ kernelId, actionId })}
             onSave={(payload) => settingsMutation.mutate(payload)}
           />
         ) : null}
@@ -1523,5 +1723,22 @@ export function App() {
         </>
       ) : null}
     </div>
+  );
+}
+
+function OpenGroveSaplingMark() {
+  return (
+    <svg viewBox="0 0 128 128" aria-hidden="true" shapeRendering="crispEdges">
+      <g transform="translate(24 18) scale(0.72)">
+        <rect x="0" y="0" width="31" height="31" fill="#7BCB57" />
+        <rect x="16" y="16" width="31" height="31" fill="#5FB24A" />
+        <rect x="79" y="15" width="31" height="31" fill="#7BCB57" />
+        <rect x="63" y="31" width="31" height="31" fill="#5FB24A" />
+        <rect x="47" y="47" width="17" height="58" fill="#202424" />
+        <rect x="60" y="47" width="4" height="58" fill="#343A38" />
+        <rect x="32" y="105" width="47" height="15" fill="#202424" />
+        <rect x="32" y="105" width="47" height="3" fill="#343A38" />
+      </g>
+    </svg>
   );
 }

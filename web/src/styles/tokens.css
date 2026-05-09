@@ -1,24 +1,48 @@
 :root {
   /* ── Color ── */
-  --c-bg: #fafaf9;
-  --c-surface: #f5f5f4;
-  --c-surface-hover: #efefed;
-  --c-surface-active: #e8e8e6;
+  --og-white: #ffffff;
+  --og-canvas: #fbfbfa;
+  --og-app-bg: #f6f6f7;
+  --og-surface: #ffffff;
+  --og-surface-subtle: #f2f3f3;
 
-  --c-text: #1c1c1a;
-  --c-text-2: #2e2e2c;
-  --c-text-3: #52524e;
-  --c-muted: #8c8c8a;
-  --c-faint: #acacaa;
+  --og-text: #1f2023;
+  --og-text-strong: #111827;
+  --og-text-muted: #6f7278;
+  --og-text-soft: #9a9da3;
 
-  --c-border: #e8e8e6;
-  --c-border-strong: #d6d6d4;
+  --og-border: rgba(0, 0, 0, 0.08);
+  --og-border-strong: rgba(0, 0, 0, 0.12);
 
-  --c-accent: #c94f24;
-  --c-accent-hover: #b3441f;
-  --c-success: #0f6d49;
-  --c-warning: #b45309;
-  --c-error: #8d1f1f;
+  --og-accent: #2f95f3;
+  --og-accent-hover: #2684db;
+  --og-accent-soft: #e8f3ff;
+
+  --og-green: #168a53;
+  --og-sapling-green: #5fb24a;
+  --og-sapling-highlight: #7bcb57;
+  --og-sapling-shade: #43a343;
+  --og-sapling-trunk: #202424;
+
+  --c-bg: var(--og-app-bg);
+  --c-surface: var(--og-surface);
+  --c-surface-hover: var(--og-surface-subtle);
+  --c-surface-active: #e8e9ea;
+
+  --c-text: var(--og-text);
+  --c-text-2: #3f4248;
+  --c-text-3: var(--og-text-muted);
+  --c-muted: var(--og-text-muted);
+  --c-faint: var(--og-text-soft);
+
+  --c-border: var(--og-border);
+  --c-border-strong: var(--og-border-strong);
+
+  --c-accent: var(--og-accent);
+  --c-accent-hover: var(--og-accent-hover);
+  --c-success: #168a53;
+  --c-warning: #a15c16;
+  --c-error: #b42318;
 
   /* ── Typography ── */
   --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text",
@@ -26,9 +50,9 @@
   --font-mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
 
   --fw-normal: 400;
-  --fw-medium: 480;
+  --fw-medium: 500;
   --fw-semibold: 600;
-  --fw-bold: 660;
+  --fw-bold: 620;
 
   --fs-xs: 11px;
   --fs-sm: 12px;
@@ -54,16 +78,17 @@
   --sp-10: 40px;
 
   /* ── Radius ── */
-  --r-sm: 6px;
+  --r-sm: 8px;
   --r-md: 10px;
-  --r-lg: 14px;
-  --r-xl: 18px;
+  --r-lg: 12px;
+  --r-xl: 22px;
+  --r-2xl: 24px;
   --r-pill: 999px;
 
   /* ── Elevation ── */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 24px 80px rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 8px 22px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 24px 70px rgba(15, 23, 42, 0.08);
 
   /* ── Motion ── */
   --dur-fast: 120ms;

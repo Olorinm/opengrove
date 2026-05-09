@@ -209,7 +209,8 @@ export type ApprovalKind =
 export type ApprovalResume =
   | { type: "tool"; runId?: string }
   | { type: "routine.step"; routineId: string; stepId: string; runId: string }
-  | { type: "codex.native"; runId: string };
+  | { type: "codex.native"; runId: string }
+  | { type: "claude.native"; runId: string };
 
 export interface ApprovalRequest {
   id: string;

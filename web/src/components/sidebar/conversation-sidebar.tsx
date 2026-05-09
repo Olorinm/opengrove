@@ -15,7 +15,6 @@ import { useI18n } from "../../i18n";
 import {
   ConversationSortMenu,
   formatSidebarThreadMeta,
-  projectSidebarContextLabel,
   type ConversationSortKey,
   type SidebarProject,
 } from "./conversation-sidebar-model";
@@ -24,7 +23,7 @@ export interface ConversationSidebarProps {
   projects: SidebarProject[];
   activeThreadId: string;
   activeView: string;
-  sending: boolean;
+  runningThreadIds?: string[];
   pendingApprovalCount: number;
   collapsedProjectIds: Set<string>;
   allProjectsCollapsed: boolean;
@@ -45,11 +44,12 @@ export interface ConversationSidebarProps {
 
 export function ConversationSidebar(props: ConversationSidebarProps) {
   const { t } = useI18n();
+  const runningThreadSet = new Set(props.runningThreadIds ?? []);
   return (
     <div className="project-section" aria-label={t("app.chat")}>
       <div className="thread-heading-row">
         <span>{t("app.chat")}</span>
-        <span className="thread-heading-actions">
+        <span className={clsx("thread-heading-actions", props.conversationSortMenuOpen && "active")}>
           <button
             className="sidebar-mini-action"
             type="button"
@@ -69,7 +69,7 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
           >
             <ListChecks size={13} />
           </button>
-          <button className="sidebar-mini-action" type="button" onClick={props.onOpenNewProject} disabled={props.sending} aria-label={t("conversation.newProject")} title={t("conversation.newProject")}>
+          <button className="sidebar-mini-action" type="button" onClick={props.onOpenNewProject} aria-label={t("conversation.newProject")} title={t("conversation.newProject")}>
             <FolderPlus size={13} />
           </button>
           {props.conversationSortMenuOpen ? (
@@ -100,7 +100,6 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                   <Folder size={17} />
                   <span className="project-item-copy">
                     <span className="project-item-title">{project.title}</span>
-                    <span className="project-item-context">{projectSidebarContextLabel(project, t)}</span>
                   </span>
                 </span>
                 <span className="project-item-count">{project.threads.length}</span>
@@ -110,7 +109,6 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                   className="project-row-action"
                   type="button"
                   onClick={() => props.onOpenNewThread(project.id)}
-                  disabled={props.sending}
                   aria-label={`${project.title} · ${t("conversation.newThread")}`}
                   title={t("conversation.newThread")}
                 >
@@ -133,7 +131,12 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                     <Pencil size={14} />
                     {t("conversation.renameProject")}
                   </button>
-                  <button type="button" role="menuitem" onClick={() => props.onDeleteProject(project)} disabled={props.sending}>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => props.onDeleteProject(project)}
+                    disabled={project.threads.some((thread) => runningThreadSet.has(thread.id))}
+                  >
                     <Trash2 size={13} />
                     {t("common.remove")}
                   </button>
@@ -147,8 +150,8 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                     key={thread.id}
                     thread={thread}
                     active={thread.id === props.activeThreadId && props.activeView === "chat"}
+                    running={runningThreadSet.has(thread.id)}
                     pendingApprovalCount={props.pendingApprovalCount}
-                    sending={props.sending}
                     onOpenThread={props.onOpenThread}
                     onOpenNewThread={props.onOpenNewThread}
                     onDeleteThread={props.onDeleteThread}
@@ -166,8 +169,8 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
 function ThreadRow(props: {
   thread: UiThread;
   active: boolean;
+  running: boolean;
   pendingApprovalCount: number;
-  sending: boolean;
   onOpenThread(threadId: string): void;
   onOpenNewThread(projectId?: string): void;
   onDeleteThread(thread: UiThread): void;
@@ -178,15 +181,19 @@ function ThreadRow(props: {
   return (
     <div className="thread-row">
       <button
-        className={clsx("thread-item", props.active && "active")}
+        className={clsx("thread-item", props.active && "active", props.running && "running")}
         type="button"
         onClick={() => (empty ? props.onOpenNewThread(props.thread.projectId) : props.onOpenThread(props.thread.id))}
       >
         <span>{title}</span>
-        <span>
-          {props.active && props.pendingApprovalCount
-            ? `${props.pendingApprovalCount} ${t("conversation.pendingApproval")}`
-            : formatSidebarThreadMeta(props.thread, t)}
+        <span className="thread-item-meta">
+          {props.running ? (
+            <span className="thread-running-indicator" aria-label={t("settings.running")} />
+          ) : props.active && props.pendingApprovalCount ? (
+            `${props.pendingApprovalCount} ${t("conversation.pendingApproval")}`
+          ) : (
+            formatSidebarThreadMeta(props.thread, t)
+          )}
         </span>
       </button>
       {!empty ? (
@@ -194,7 +201,7 @@ function ThreadRow(props: {
           className="sidebar-delete-action"
           type="button"
           onClick={() => props.onDeleteThread(props.thread)}
-          disabled={props.sending}
+          disabled={props.running}
           aria-label={`${t("conversation.deleteThread")} ${title}`}
         >
           <Trash2 size={13} />

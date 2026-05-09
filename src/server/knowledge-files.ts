@@ -13,6 +13,7 @@ import {
 import type { BridgeState } from "./bridge-types.js";
 import { KNOWLEDGE_FILE_SIZE_LIMIT } from "./bridge-types.js";
 import type { KnowledgeDocument } from "../knowledge/types.js";
+import { kernelConfigHome } from "./kernel-paths.js";
 
 export interface KnowledgeFileDescriptor {
   path: string;
@@ -174,7 +175,7 @@ export function listKnowledgeVaultFolders(state: BridgeState): KnowledgeVaultFol
     });
   };
 
-  for (const root of knowledgeWritableRootSpecs()) {
+  for (const root of knowledgeWritableRootSpecs(state)) {
     scanKnowledgeFolderRoot(root, addFolder);
   }
 
@@ -203,7 +204,7 @@ export function createKnowledgeFileSystemEntry(
 ) {
   ensureKnowledgeVaultRoot();
   const parentPath = safeVaultPath(payload.parentPath) || APP_VAULT_ROOT_NAME;
-  const target = resolveKnowledgeDirectoryTarget(parentPath);
+  const target = resolveKnowledgeDirectoryTarget(state, parentPath);
   mkdirSync(target.path, { recursive: true });
 
   if (payload.kind === "folder") {
@@ -290,8 +291,8 @@ export function moveKnowledgeFileSystemEntry(
     throw new Error("knowledge_file_move_into_self_not_allowed");
   }
 
-  const source = resolveKnowledgeDirectoryTarget(sourcePath);
-  const target = resolveKnowledgeDirectoryTarget(targetParentPath);
+  const source = resolveKnowledgeDirectoryTarget(state, sourcePath);
+  const target = resolveKnowledgeDirectoryTarget(state, targetParentPath);
   if (!existsSync(source.path)) {
     throw new Error("knowledge_file_source_not_found");
   }
@@ -350,7 +351,7 @@ export function renameKnowledgeFileSystemEntry(
   if (sourcePath.split("/").length < 2) {
     throw new Error("knowledge_file_root_rename_not_allowed");
   }
-  const source = resolveKnowledgeDirectoryTarget(sourcePath);
+  const source = resolveKnowledgeDirectoryTarget(state, sourcePath);
   if (!existsSync(source.path)) {
     throw new Error("knowledge_file_source_not_found");
   }
@@ -402,7 +403,7 @@ export function deleteKnowledgeFileSystemEntry(
   if (sourcePath.split("/").length < 2) {
     throw new Error("knowledge_file_root_delete_not_allowed");
   }
-  const source = resolveKnowledgeDirectoryTarget(sourcePath);
+  const source = resolveKnowledgeDirectoryTarget(state, sourcePath);
   if (!existsSync(source.path)) {
     throw new Error("knowledge_file_source_not_found");
   }
@@ -486,10 +487,10 @@ export function resolveKnowledgeFileDescriptor(document: KnowledgeDocument): Kno
   };
 }
 
-export function resolveKnowledgeVaultFilePath(vaultPath: string): string | undefined {
+export function resolveKnowledgeVaultFilePath(vaultPath: string, state?: BridgeState): string | undefined {
   const safePath = safeVaultPath(vaultPath);
   if (!safePath) return undefined;
-  const specs = knowledgeWritableRootSpecs()
+  const specs = knowledgeWritableRootSpecs(state)
     .filter((spec) => vaultPathContains(safePath, spec.vaultPath))
     .sort((left, right) => right.vaultPath.length - left.vaultPath.length);
   const matched = specs[0];
@@ -526,23 +527,26 @@ export function ensureKnowledgeVaultRoot(): void {
   }
 }
 
-function knowledgeWritableRootSpecs(): KnowledgeWritableRootSpec[] {
+function knowledgeWritableRootSpecs(state?: BridgeState): KnowledgeWritableRootSpec[] {
   const home = homedir();
   const root = knowledgeVaultRoot();
+  const codexHome = state ? kernelConfigHome(state.settings, "codex") : join(home, ".codex");
+  const claudeHome = state ? kernelConfigHome(state.settings, "claude-code") : join(home, ".claude");
+  const hermesHome = state ? kernelConfigHome(state.settings, "hermes") : join(home, ".hermes");
   return [
     { vaultPath: APP_VAULT_ROOT_NAME, path: resolve(root, APP_VAULT_ROOT_NAME), backing: "vault" },
-    { vaultPath: "Codex", path: join(home, ".codex"), backing: "native", originPath: join(home, ".codex") },
-    { vaultPath: "Codex/skills", path: join(home, ".codex", "skills"), backing: "native", originPath: join(home, ".codex", "skills") },
+    { vaultPath: "Codex", path: codexHome, backing: "native", originPath: codexHome },
+    { vaultPath: "Codex/skills", path: join(codexHome, "skills"), backing: "native", originPath: join(codexHome, "skills") },
     { vaultPath: "Codex/skills", path: join(home, ".agents", "skills"), backing: "native", originPath: join(home, ".agents", "skills") },
-    { vaultPath: "Codex/memories", path: join(home, ".codex", "memories"), backing: "native", originPath: join(home, ".codex", "memories") },
-    { vaultPath: "Claude", path: join(home, ".claude"), backing: "native", originPath: join(home, ".claude") },
-    { vaultPath: "Claude/skills", path: join(home, ".claude", "skills"), backing: "native", originPath: join(home, ".claude", "skills") },
-    { vaultPath: "Claude/commands", path: join(home, ".claude", "commands"), backing: "native", originPath: join(home, ".claude", "commands") },
-    { vaultPath: "Claude/agents", path: join(home, ".claude", "agents"), backing: "native", originPath: join(home, ".claude", "agents") },
-    { vaultPath: "Claude/memory", path: join(home, ".claude", "agent-memory"), backing: "native", originPath: join(home, ".claude", "agent-memory") },
-    { vaultPath: "Hermes", path: join(home, ".hermes"), backing: "native", originPath: join(home, ".hermes") },
-    { vaultPath: "Hermes/skills", path: join(home, ".hermes", "skills"), backing: "native", originPath: join(home, ".hermes", "skills") },
-    { vaultPath: "Hermes/memory", path: join(home, ".hermes", "memories"), backing: "native", originPath: join(home, ".hermes", "memories") },
+    { vaultPath: "Codex/memories", path: join(codexHome, "memories"), backing: "native", originPath: join(codexHome, "memories") },
+    { vaultPath: "Claude", path: claudeHome, backing: "native", originPath: claudeHome },
+    { vaultPath: "Claude/skills", path: join(claudeHome, "skills"), backing: "native", originPath: join(claudeHome, "skills") },
+    { vaultPath: "Claude/commands", path: join(claudeHome, "commands"), backing: "native", originPath: join(claudeHome, "commands") },
+    { vaultPath: "Claude/agents", path: join(claudeHome, "agents"), backing: "native", originPath: join(claudeHome, "agents") },
+    { vaultPath: "Claude/memory", path: join(claudeHome, "agent-memory"), backing: "native", originPath: join(claudeHome, "agent-memory") },
+    { vaultPath: "Hermes", path: hermesHome, backing: "native", originPath: hermesHome },
+    { vaultPath: "Hermes/skills", path: join(hermesHome, "skills"), backing: "native", originPath: join(hermesHome, "skills") },
+    { vaultPath: "Hermes/memory", path: join(hermesHome, "memories"), backing: "native", originPath: join(hermesHome, "memories") },
   ];
 }
 
@@ -703,12 +707,15 @@ function knowledgeSourceId(document: KnowledgeDocument, kernelId: string): strin
 
 function syncGlobalKernelKnowledgeDocuments(state: BridgeState): void {
   const home = homedir();
+  const codexHome = kernelConfigHome(state.settings, "codex");
+  const claudeHome = kernelConfigHome(state.settings, "claude-code");
+  const hermesHome = kernelConfigHome(state.settings, "hermes");
   upsertNativeMarkdownFile(state, {
     id: "native.codex.agents-md",
     kernelId: "codex",
     sourceId: "codex.user-agents-md",
     title: "AGENTS.md",
-    path: join(home, ".codex", "AGENTS.md"),
+    path: join(codexHome, "AGENTS.md"),
     vaultPath: "Codex/AGENTS.md",
     tags: ["codex", "instructions"],
     type: "project_doc",
@@ -716,14 +723,14 @@ function syncGlobalKernelKnowledgeDocuments(state: BridgeState): void {
   upsertSkillDirectory(state, {
     kernelId: "codex",
     sourceId: "codex.user-skills",
-    dir: join(home, ".codex", "skills"),
+    dir: join(codexHome, "skills"),
     vaultRoot: "Codex/skills",
     tags: ["codex", "skill"],
   });
   upsertNativeKnowledgeDirectory(state, {
     kernelId: "codex",
     sourceId: "codex.user-memories",
-    dir: join(home, ".codex", "memories"),
+    dir: join(codexHome, "memories"),
     vaultRoot: "Codex/memories",
     tags: ["codex", "memory"],
     type: "memory",
@@ -741,7 +748,7 @@ function syncGlobalKernelKnowledgeDocuments(state: BridgeState): void {
     kernelId: "claude-code",
     sourceId: "claude.user-claude-md",
     title: "CLAUDE.md",
-    path: join(home, ".claude", "CLAUDE.md"),
+    path: join(claudeHome, "CLAUDE.md"),
     vaultPath: "Claude/CLAUDE.md",
     tags: ["claude", "instructions"],
     type: "project_doc",
@@ -749,26 +756,26 @@ function syncGlobalKernelKnowledgeDocuments(state: BridgeState): void {
   upsertSkillDirectory(state, {
     kernelId: "claude-code",
     sourceId: "claude.user-skills",
-    dir: join(home, ".claude", "skills"),
+    dir: join(claudeHome, "skills"),
     vaultRoot: "Claude/skills",
     tags: ["claude", "skill"],
   });
   upsertSkillDirectory(state, {
     kernelId: "claude-code",
     sourceId: "claude.user-commands",
-    dir: join(home, ".claude", "commands"),
+    dir: join(claudeHome, "commands"),
     vaultRoot: "Claude/commands",
     tags: ["claude", "command"],
   });
-  upsertClaudeAgents(state, join(home, ".claude", "agents"));
-  upsertClaudeAgentMemory(state, join(home, ".claude", "agent-memory"));
+  upsertClaudeAgents(state, join(claudeHome, "agents"));
+  upsertClaudeAgentMemory(state, join(claudeHome, "agent-memory"));
 
   upsertNativeMarkdownFile(state, {
     id: "native.hermes.soul-md",
     kernelId: "hermes",
     sourceId: "hermes.soul",
     title: "SOUL.md",
-    path: join(home, ".hermes", "SOUL.md"),
+    path: join(hermesHome, "SOUL.md"),
     vaultPath: "Hermes/SOUL.md",
     tags: ["hermes", "identity"],
     type: "profile",
@@ -776,7 +783,7 @@ function syncGlobalKernelKnowledgeDocuments(state: BridgeState): void {
   upsertSkillDirectory(state, {
     kernelId: "hermes",
     sourceId: "hermes.local-skills",
-    dir: join(home, ".hermes", "skills"),
+    dir: join(hermesHome, "skills"),
     vaultRoot: "Hermes/skills",
     tags: ["hermes", "skill"],
   });
@@ -792,7 +799,7 @@ function syncGlobalKernelKnowledgeDocuments(state: BridgeState): void {
     kernelId: "hermes",
     sourceId: "hermes.memories",
     title: "MEMORY.md",
-    path: join(home, ".hermes", "memories", "MEMORY.md"),
+    path: join(hermesHome, "memories", "MEMORY.md"),
     vaultPath: "Hermes/memory/MEMORY.md",
     tags: ["hermes", "memory"],
     type: "memory",
@@ -802,7 +809,7 @@ function syncGlobalKernelKnowledgeDocuments(state: BridgeState): void {
     kernelId: "hermes",
     sourceId: "hermes.memories",
     title: "USER.md",
-    path: join(home, ".hermes", "memories", "USER.md"),
+    path: join(hermesHome, "memories", "USER.md"),
     vaultPath: "Hermes/memory/USER.md",
     tags: ["hermes", "memory", "user"],
     type: "memory",
@@ -1052,9 +1059,9 @@ function safeVaultPath(value: unknown): string | undefined {
   return normalized;
 }
 
-function resolveKnowledgeDirectoryTarget(parentPath: string): KnowledgeDirectoryTarget {
+function resolveKnowledgeDirectoryTarget(state: BridgeState, parentPath: string): KnowledgeDirectoryTarget {
   const safeParent = safeVaultPath(parentPath) || APP_VAULT_ROOT_NAME;
-  const specs = knowledgeWritableRootSpecs()
+  const specs = knowledgeWritableRootSpecs(state)
     .filter((spec) => vaultPathContains(safeParent, spec.vaultPath))
     .sort((left, right) => right.vaultPath.length - left.vaultPath.length);
   const matched = specs[0];

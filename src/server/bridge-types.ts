@@ -61,16 +61,35 @@ export type BridgeProviderProtocol =
   | "gemini-compatible"
   | "custom-gateway";
 
+export type BridgeProviderCredentialKind =
+  | "none"
+  | "native-login"
+  | "api-key"
+  | "env-key"
+  | "aws"
+  | "google-adc"
+  | "kernel-native";
+
 export interface BridgeProviderProfile {
   id: string;
   name: string;
   protocol: BridgeProviderProtocol;
   custom?: boolean;
+  deleted?: boolean;
+  enabled?: boolean;
+  origin?: "builtin" | "discovered" | "user";
+  sourceKernel?: BridgeKernelId;
+  source?: string;
+  sourcePaths?: string[];
+  authConfigured?: boolean;
   description?: string;
   openaiBaseUrl?: string;
   anthropicBaseUrl?: string;
   geminiBaseUrl?: string;
+  apiKey?: string;
   apiKeyEnv?: string;
+  credentialKind?: BridgeProviderCredentialKind;
+  codexWireApi?: "chat" | "responses";
   models: BridgeRuntimeControlOption[];
   recommendedFor?: BridgeKernelId[];
   websiteUrl?: string;
@@ -131,6 +150,10 @@ export interface BridgeAskPayload {
   computerSnapshot: ComputerStateSnapshot;
   allowMemory: boolean;
   saveCandidateNote: boolean;
+  requestedSkill?: {
+    name: string;
+    args?: string;
+  };
 }
 
 export interface BridgeContextRecord {
@@ -210,10 +233,25 @@ export interface BridgeProviderHttpCaptureFlow {
 
 export interface BridgeSettings {
   kernel: BridgeKernelPreference;
+  providerSetupVersion?: number;
   providerHttpCaptureEnabled: boolean;
+  kernelProxy: BridgeKernelProxySettings;
+  kernelPathOverrides: Record<string, BridgeKernelPathOverride>;
   kernelKnowledgeSourceEnabled: Record<string, Record<string, boolean>>;
   kernelProviderBindings: Record<string, string>;
   customProviders: BridgeProviderProfile[];
+}
+
+export interface BridgeKernelPathOverride {
+  binaryPath?: string;
+  configHome?: string;
+}
+
+export interface BridgeKernelProxySettings {
+  enabled: boolean;
+  proxyUrl: string;
+  noProxy: string;
+  nodeUseEnvProxy: boolean;
 }
 
 export interface BridgeState {

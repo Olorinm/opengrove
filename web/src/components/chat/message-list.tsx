@@ -195,6 +195,8 @@ function UserMessageBody(props: { message: StoredMessage }) {
 }
 
 const CHOICE_CONTINUATION_MARKER = "请基于这些选择继续完成原始任务。";
+const TURN_STATUS_DELAY_SECONDS = 15;
+const THINKING_IDLE_DELAY_MS = 1200;
 
 function visibleUserMessageText(text: string): string {
   if (!text.includes(CHOICE_CONTINUATION_MARKER)) {
@@ -376,6 +378,7 @@ function AssistantMessageBody(props: {
         }
         return null;
       })}
+      <AssistantTailThinking message={props.message} groups={groups} />
     </div>
   );
 }
@@ -407,6 +410,7 @@ function AssistantPendingBody(props: {
         runs={props.runs}
         inputHint={props.precedingUserText}
       />
+      <AssistantTailThinking message={props.message} groups={[]} />
     </div>
   );
 }
@@ -467,22 +471,78 @@ function AssistantTurnStatus(props: {
   }, [isActive]);
 
   const durationSeconds = messageDurationSeconds(props.message, props.runtimeEvents, props.runs, props.inputHint, nowMs);
-  const shouldShow = isActive || hasPendingApproval || items.length > 0 || durationSeconds >= 15;
+  const shouldShow = hasPendingApproval || (Number.isFinite(durationSeconds) && durationSeconds >= TURN_STATUS_DELAY_SECONDS);
   if (!shouldShow) {
     return null;
   }
-  const isShortThinking = isActive && !hasPendingApproval && (!Number.isFinite(durationSeconds) || durationSeconds < 10);
-  const statusLabel = hasPendingApproval ? "等待确认" : isActive ? (isShortThinking ? "正在思考" : "正在处理") : "已处理";
-  const duration = isShortThinking ? "" : formatDurationSeconds(durationSeconds);
+  const statusLabel = hasPendingApproval ? "等待确认" : isActive ? "正在处理" : "已处理";
+  const duration = formatDurationSeconds(durationSeconds);
 
   return (
     <div className="thread-turn-status" data-active={isActive ? "true" : "false"}>
-      <span className={clsx("thread-turn-status-label", isShortThinking && "thinking-shimmer")}>
-        {isActive && !isShortThinking ? <LoaderCircle size={14} className="spin" /> : null}
+      <span className="thread-turn-status-label">
+        {isActive ? <LoaderCircle size={14} className="spin" /> : null}
         {[statusLabel, duration].filter(Boolean).join(" ")}
       </span>
     </div>
   );
+}
+
+function AssistantTailThinking(props: {
+  message: StoredMessage;
+  groups: AssistantPartGroup[];
+}) {
+  const hasRecentTextOutput = useHasRecentAssistantTextOutput(props.message, props.groups);
+  const items = props.groups.flatMap((group) => (group.type === "activity" ? buildActivityItems(group.parts) : []));
+  const hasRunningItem = items.some((item) => activityItemStatus(item) === "running");
+  const hasPendingApproval = items.some(
+    (item) => item.type === "approval" && item.part.approvalStatus === "pending" && item.part.approvalId,
+  );
+
+  if (!props.message.pending || hasRunningItem || hasPendingApproval || hasRecentTextOutput) {
+    return null;
+  }
+
+  return (
+    <div className="thread-tail-thinking">
+      <span className="thinking-shimmer">正在思考</span>
+    </div>
+  );
+}
+
+function useHasRecentAssistantTextOutput(message: StoredMessage, groups: AssistantPartGroup[]): boolean {
+  const text = assistantTextSnapshot(message, groups);
+  const [textState, setTextState] = useState(() => ({ text, changedAt: Date.now() }));
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    setTextState((current) => {
+      if (current.text === text) {
+        return current;
+      }
+      return { text, changedAt: Date.now() };
+    });
+  }, [text]);
+
+  useEffect(() => {
+    if (!message.pending) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => setNowMs(Date.now()), 300);
+    return () => window.clearInterval(timer);
+  }, [message.pending]);
+
+  const changedThisRender = text !== textState.text;
+  const changedAt = changedThisRender ? nowMs : textState.changedAt;
+  return Boolean(text) && (changedThisRender || nowMs - changedAt < THINKING_IDLE_DELAY_MS);
+}
+
+function assistantTextSnapshot(message: StoredMessage, groups: AssistantPartGroup[]): string {
+  const textFromGroups = groups
+    .filter((group): group is Extract<AssistantPartGroup, { type: "text" }> => group.type === "text")
+    .map((group) => group.part.text || "")
+    .join("");
+  return textFromGroups || message.text || "";
 }
 
 type AssistantPartGroup =

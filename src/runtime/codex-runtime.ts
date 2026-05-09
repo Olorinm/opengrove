@@ -6,6 +6,7 @@ import type {
   AgentSessionTrace,
   AgentTurnRequest,
   ApprovalRequest,
+  JsonObject,
   JsonValue,
 } from "../core.js";
 import {
@@ -49,6 +50,7 @@ import {
   type CodexApprovalPolicy,
   type CodexApprovalsReviewer,
   type CodexDynamicToolSpec,
+  type CodexModelProviderRuntimeConfig,
   type CodexRuntimeOptions,
   type CodexSandboxMode,
   type CodexThreadBinding,
@@ -80,10 +82,14 @@ export class CodexRuntime implements AgentRuntime {
       request.requestedModelId,
       this.options.configuredModel,
     );
+    const modelProvider = this.options.configuredModelProvider?.trim() || undefined;
     const sandbox = resolveCodexSandboxMode(request, this.options.sandbox);
     const approvalPolicy = resolveCodexApprovalPolicy(request.accessMode, this.options.approvalPolicy);
     const approvalsReviewer = resolveCodexApprovalsReviewer(this.options.approvalsReviewer);
-    const serviceTier = resolveCodexServiceTier(request.responseSpeed, this.options.serviceTier);
+    const serviceTier = this.options.allowServiceTier === false
+      ? undefined
+      : resolveCodexServiceTier(request.responseSpeed, this.options.serviceTier);
+    const threadConfig = codexThreadConfig(this.options.providerConfig);
     const developerInstructions = buildCodexDeveloperInstructions();
     const turnInput = buildCodexTurnInput(request);
     const turnInputItems = buildCodexTurnInputItems(request, turnInput);
@@ -110,6 +116,14 @@ export class CodexRuntime implements AgentRuntime {
     const thread = await this.startOrResumeThread(client, request, {
       cwd,
       model,
+      modelProvider,
+      runtimeBindingFingerprint: codexRuntimeBindingFingerprint({
+        base: this.options.runtimeBindingFingerprint,
+        model,
+        modelProvider,
+        dynamicToolsFingerprint: toolBridge.fingerprint,
+        cwd,
+      }),
       sandbox,
       developerInstructions,
       dynamicTools: toolBridge.specs,
@@ -117,6 +131,7 @@ export class CodexRuntime implements AgentRuntime {
       approvalPolicy,
       approvalsReviewer,
       serviceTier,
+      config: threadConfig,
     });
     const sessionTrace: AgentSessionTrace = {
       provider: "codex",
@@ -338,6 +353,8 @@ export class CodexRuntime implements AgentRuntime {
     options: {
       cwd: string;
       model: string;
+      modelProvider?: string;
+      runtimeBindingFingerprint: string;
       developerInstructions: string;
       dynamicTools: CodexDynamicToolSpec[];
       dynamicToolsFingerprint: string;
@@ -345,21 +362,32 @@ export class CodexRuntime implements AgentRuntime {
       approvalPolicy: CodexApprovalPolicy;
       approvalsReviewer: CodexApprovalsReviewer;
       serviceTier?: string;
+      config: JsonObject;
     },
   ): Promise<CodexThreadBinding> {
     this.loadBindings();
     const sessionId = request.context.sessionId || "local";
-    const existing = this.bindings.get(sessionId);
-    if (existing?.threadId && existing.dynamicToolsFingerprint === options.dynamicToolsFingerprint) {
+    const bindingKey = `${sessionId}:${options.runtimeBindingFingerprint}`;
+    const existing =
+      this.bindings.get(bindingKey) ??
+      this.findCompatibleLegacyBinding(sessionId, bindingKey, options);
+    const modelProviderKey = options.modelProvider ?? "";
+    const existingModelProviderKey = existing?.modelProvider ?? "";
+    if (
+      existing?.threadId &&
+      existing.dynamicToolsFingerprint === options.dynamicToolsFingerprint &&
+      existingModelProviderKey === modelProviderKey &&
+      existing.runtimeBindingFingerprint === options.runtimeBindingFingerprint
+    ) {
       try {
         const response = await client.request<CodexThreadStartResponse>("thread/resume", {
           threadId: existing.threadId,
           model: options.model,
-          modelProvider: "openai",
+          ...(options.modelProvider ? { modelProvider: options.modelProvider } : {}),
           approvalPolicy: options.approvalPolicy,
           approvalsReviewer: options.approvalsReviewer,
           sandbox: options.sandbox,
-          config: CODEX_THREAD_CONFIG_OVERRIDES,
+          config: options.config,
           persistExtendedHistory: true,
           ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
         });
@@ -368,20 +396,23 @@ export class CodexRuntime implements AgentRuntime {
           ...existing,
           threadId,
           model: response.model ?? options.model,
+          modelProvider: response.modelProvider ?? options.modelProvider,
+          runtimeBindingFingerprint: options.runtimeBindingFingerprint,
+          cwd: options.cwd,
           updatedAt: new Date().toISOString(),
         };
-        this.bindings.set(sessionId, binding);
+        this.bindings.set(bindingKey, binding);
         this.saveBindings();
         return binding;
       } catch {
-        this.bindings.delete(sessionId);
+        this.bindings.delete(bindingKey);
         this.saveBindings();
       }
     }
 
     const response = await client.request<CodexThreadStartResponse>("thread/start", {
       model: options.model,
-      modelProvider: "openai",
+      ...(options.modelProvider ? { modelProvider: options.modelProvider } : {}),
       cwd: options.cwd,
       approvalPolicy: options.approvalPolicy,
       approvalsReviewer: options.approvalsReviewer,
@@ -389,7 +420,7 @@ export class CodexRuntime implements AgentRuntime {
       serviceName: "OpenGrove",
       developerInstructions: options.developerInstructions,
       dynamicTools: options.dynamicTools,
-      config: CODEX_THREAD_CONFIG_OVERRIDES,
+      config: options.config,
       experimentalRawEvents: true,
       persistExtendedHistory: true,
       ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
@@ -402,11 +433,14 @@ export class CodexRuntime implements AgentRuntime {
     const binding: CodexThreadBinding = {
       threadId,
       dynamicToolsFingerprint: options.dynamicToolsFingerprint,
+      runtimeBindingFingerprint: options.runtimeBindingFingerprint,
       model: response.model ?? options.model,
+      modelProvider: response.modelProvider ?? options.modelProvider,
+      cwd: options.cwd,
       createdAt,
       updatedAt: createdAt,
     };
-    this.bindings.set(sessionId, binding);
+    this.bindings.set(bindingKey, binding);
     this.saveBindings();
     return binding;
   }
@@ -440,6 +474,9 @@ export class CodexRuntime implements AgentRuntime {
               ? object.dynamicToolsFingerprint
               : "",
           model: typeof object.model === "string" ? object.model : undefined,
+          modelProvider: typeof object.modelProvider === "string" ? object.modelProvider : undefined,
+          runtimeBindingFingerprint: typeof object.runtimeBindingFingerprint === "string" ? object.runtimeBindingFingerprint : undefined,
+          cwd: typeof object.cwd === "string" ? object.cwd : undefined,
           createdAt: typeof object.createdAt === "string" ? object.createdAt : new Date().toISOString(),
           updatedAt: typeof object.updatedAt === "string" ? object.updatedAt : new Date().toISOString(),
         });
@@ -447,6 +484,34 @@ export class CodexRuntime implements AgentRuntime {
     } catch {
       // A corrupt binding file should not prevent the host from starting a fresh Codex thread.
     }
+  }
+
+  private findCompatibleLegacyBinding(
+    sessionId: string,
+    currentBindingKey: string,
+    options: {
+      cwd: string;
+      model: string;
+      modelProvider?: string;
+      dynamicToolsFingerprint: string;
+    },
+  ): CodexThreadBinding | undefined {
+    const prefix = `${sessionId}:`;
+    const candidates = Array.from(this.bindings.entries())
+      .filter(([key, binding]) =>
+        key !== currentBindingKey &&
+        key.startsWith(prefix) &&
+        binding.threadId &&
+        binding.dynamicToolsFingerprint === options.dynamicToolsFingerprint &&
+        (binding.modelProvider ?? "") === (options.modelProvider ?? "") &&
+        (!binding.cwd || binding.cwd === options.cwd)
+      )
+      .map(([, binding]) => binding)
+      .sort((left, right) => {
+        const modelScore = Number(right.model === options.model) - Number(left.model === options.model);
+        return modelScore || right.updatedAt.localeCompare(left.updatedAt);
+      });
+    return candidates[0];
   }
 
   private saveBindings(): void {
@@ -461,4 +526,31 @@ export class CodexRuntime implements AgentRuntime {
       "utf8",
     );
   }
+}
+
+function codexThreadConfig(provider: CodexModelProviderRuntimeConfig | undefined): JsonObject {
+  if (!provider) return CODEX_THREAD_CONFIG_OVERRIDES;
+  return {
+    ...CODEX_THREAD_CONFIG_OVERRIDES,
+    model_provider: provider.providerKey,
+    [`model_providers.${provider.providerKey}.name`]: provider.name,
+    [`model_providers.${provider.providerKey}.base_url`]: provider.baseUrl,
+    [`model_providers.${provider.providerKey}.env_key`]: provider.envKey,
+    [`model_providers.${provider.providerKey}.wire_api`]: provider.wireApi,
+  };
+}
+
+function codexRuntimeBindingFingerprint(input: {
+  base?: string;
+  model: string;
+  modelProvider?: string;
+  dynamicToolsFingerprint: string;
+  cwd: string;
+}): string {
+  return [
+    input.base || "native",
+    input.modelProvider || "native",
+    input.dynamicToolsFingerprint,
+    input.cwd,
+  ].join(":");
 }

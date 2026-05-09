@@ -26,6 +26,7 @@ import type {
 } from "../types.js";
 
 export type ExternalCliKernelId =
+  | "pi"
   | "openclaw"
   | "deepseek-tui"
   | "gemini-cli"
@@ -145,6 +146,23 @@ export class ExternalCliKernelAdapter implements KernelAdapter {
 
 export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
   {
+    id: "pi",
+    title: "Pi",
+    envName: "PI_BIN",
+    commands: ["pi"],
+    runArgs: ["-p"],
+    promptMode: "arg",
+    configHome: resolveHomePath(".pi"),
+    knowledgeSources: [
+      fileSource({ id: "pi.agents", title: "AGENTS.md", kind: "project_instructions", scope: "user", path: "~/.pi/agent/AGENTS.md" }),
+      directorySource({ id: "pi.agent", title: "Pi agent config", kind: "config", scope: "user", path: "~/.pi/agent", knowledgeLike: false }),
+      directorySource({ id: "pi.skills", title: "skills", kind: "skills", scope: "user", path: "~/.pi/agent/skills" }),
+      directorySource({ id: "pi.packages", title: "packages", kind: "plugins", scope: "user", path: "~/.pi/agent/packages" }),
+    ],
+    installActions: [plannedInstallAction({ id: "pi.install", title: "安装 Pi", command: ["npm", "install", "-g", "@earendil-works/pi-coding-agent"] })],
+    notes: ["Pi uses the upstream pi-mono coding agent CLI. OpenGrove launches it in one-shot mode with `pi -p`."],
+  },
+  {
     id: "openclaw",
     title: "OpenClaw",
     envName: "OPENCLAW_BIN",
@@ -157,7 +175,7 @@ export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
       directorySource({ id: "openclaw.memory", title: "memory", kind: "memory", scope: "user", path: "~/.openclaw/memory" }),
       directorySource({ id: "openclaw.providers", title: "providers", kind: "settings", scope: "user", path: "~/.openclaw/providers", knowledgeLike: false }),
     ],
-    installActions: [plannedInstallAction({ id: "openclaw.install", title: "Install OpenClaw", status: "manual" })],
+    installActions: [plannedInstallAction({ id: "openclaw.install", title: "安装 OpenClaw", command: ["npm", "install", "-g", "openclaw"] })],
     notes: ["OpenClaw has its own gateway/provider layer; OpenGrove treats it as a high-level kernel instead of flattening it into a simple CLI."],
   },
   {
@@ -174,7 +192,7 @@ export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
       directorySource({ id: "deepseek.memory", title: "memory", kind: "memory", scope: "user", path: "~/.deepseek/memory" }),
       fileSource({ id: "deepseek.project-config", title: "Project config.toml", kind: "config", scope: "project", path: `${process.cwd()}/.deepseek/config.toml`, knowledgeLike: false }),
     ],
-    installActions: [plannedInstallAction({ id: "deepseek.install", title: "Install DeepSeek TUI", status: "manual" })],
+    installActions: [plannedInstallAction({ id: "deepseek.install", title: "安装 DeepSeek TUI", command: ["npm", "install", "-g", "deepseek-tui"] })],
   },
   {
     id: "gemini-cli",
@@ -188,7 +206,7 @@ export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
       fileSource({ id: "gemini.instructions", title: "GEMINI.md", kind: "project_instructions", scope: "user", path: "~/.gemini/GEMINI.md" }),
       directorySource({ id: "gemini.config", title: "Gemini config", kind: "config", scope: "user", path: "~/.gemini", knowledgeLike: false }),
     ],
-    installActions: [plannedInstallAction({ id: "gemini.install", title: "Install Gemini CLI", command: ["npm", "install", "-g", "@google/gemini-cli"] })],
+    installActions: [plannedInstallAction({ id: "gemini.install", title: "安装 Gemini CLI", command: ["npm", "install", "-g", "@google/gemini-cli"] })],
   },
   {
     id: "qwen-code",
@@ -202,7 +220,7 @@ export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
       fileSource({ id: "qwen.instructions", title: "QWEN.md", kind: "project_instructions", scope: "user", path: "~/.qwen/QWEN.md" }),
       directorySource({ id: "qwen.config", title: "Qwen config", kind: "config", scope: "user", path: "~/.qwen", knowledgeLike: false }),
     ],
-    installActions: [plannedInstallAction({ id: "qwen.install", title: "Install Qwen Code", status: "manual" })],
+    installActions: [plannedInstallAction({ id: "qwen.install", title: "安装 Qwen Code", command: ["npm", "install", "-g", "@qwen-code/qwen-code"] })],
   },
   {
     id: "opencode",
@@ -216,7 +234,7 @@ export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
       directorySource({ id: "opencode.config", title: "OpenCode config", kind: "config", scope: "user", path: "~/.config/opencode", knowledgeLike: false }),
       fileSource({ id: "opencode.project-config", title: "opencode.json", kind: "config", scope: "project", path: `${process.cwd()}/opencode.json`, knowledgeLike: false }),
     ],
-    installActions: [plannedInstallAction({ id: "opencode.install", title: "Install OpenCode", status: "manual" })],
+    installActions: [plannedInstallAction({ id: "opencode.install", title: "安装 OpenCode", command: ["npm", "install", "-g", "opencode-ai"] })],
   },
 ];
 

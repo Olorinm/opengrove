@@ -38,7 +38,7 @@ export function AssistantProcessBlock(props: {
   const items = props.entries.map(({ item }) => item);
   const hasRunningItem = props.entries.some(({ item }) => activityItemStatus(item) === "running");
   const hasProblem = props.entries.some(({ item }) => ["blocked", "incomplete", "rejected"].includes(activityItemStatus(item)));
-  const forceOpen = hasPendingApproval || hasActiveChoiceForm;
+  const forceOpen = hasRunningItem || hasPendingApproval || hasActiveChoiceForm;
   const summary = summarizeActivityItems(items, {
     active: hasRunningItem,
     pendingApproval: hasPendingApproval,
@@ -89,6 +89,12 @@ function ActivityItemRow(props: {
   const detail = activityItemDetail(props.item);
   const choiceForm = choiceFormFromItem(props.item);
   const editInfo = activityItemKind(props.item) === "edit" ? editActivityInfo(props.item) : null;
+  const editStatusLabel =
+    status === "running"
+      ? "正在编辑"
+      : ["blocked", "incomplete", "rejected", "failed", "error"].includes(status)
+        ? "未完成编辑"
+        : "已编辑";
   const pendingApprovalPart =
     props.item.type === "approval" && props.item.part.approvalStatus === "pending" && props.item.part.approvalId
       ? props.item.part
@@ -102,7 +108,7 @@ function ActivityItemRow(props: {
       <div className="thread-activity-row-body">
         {editInfo ? (
           <div className="thread-activity-edit" title={editInfo.fullPaths.join("\n") || editInfo.label}>
-            <span className="thread-activity-edit-prefix">已编辑</span>
+            <span className="thread-activity-edit-prefix">{editStatusLabel}</span>
             <span className="thread-activity-edit-file">{editInfo.label}</span>
             {editInfo.added !== undefined ? <span className="thread-activity-edit-added">+{editInfo.added}</span> : null}
             {editInfo.removed !== undefined ? <span className="thread-activity-edit-removed">-{editInfo.removed}</span> : null}

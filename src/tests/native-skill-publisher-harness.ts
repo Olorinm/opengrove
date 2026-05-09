@@ -58,7 +58,11 @@ async function main() {
     });
 
     assert.ok(existsSync(target), `${kernel.id} should receive a native skill copy`);
-    assert.ok(!app.tools.get("skill.invoke"), `${kernel.id} should not receive a duplicate OpenGrove skill.invoke tool`);
+    if (kernel.capabilities.knowledge?.toolMediatedSkills) {
+      assert.ok(app.tools.get("skill.invoke"), `${kernel.id} should expose OpenGrove skill.invoke when the kernel declares tool-mediated skills`);
+    } else {
+      assert.ok(!app.tools.get("skill.invoke"), `${kernel.id} should not receive a duplicate OpenGrove skill.invoke tool`);
+    }
   }
 
   const app = createOpenGrove({
@@ -73,7 +77,7 @@ async function main() {
   });
 
   const events = [];
-  for await (const event of app.runTurn("/native-demo")) {
+  for await (const event of app.runTurn("Run native demo", { requestedSkillName: "native-demo" })) {
     events.push(event);
   }
 

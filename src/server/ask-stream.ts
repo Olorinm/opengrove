@@ -1,7 +1,7 @@
 import type { ServerResponse } from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import type { AgentEvent } from "../core.js";
+import type { AgentEvent, PolicyRule } from "../core.js";
 import { hasComputerState } from "../environment/computer-adapter.js";
 import type { BrowserPageAttachmentSnapshot, BrowserPageSnapshot } from "../tools/browser.js";
 import type {
@@ -20,6 +20,7 @@ import {
   writeTrajectoryRecord,
 } from "./trajectory.js";
 import { syncBridgeWorkingState } from "./bridge-working-state.js";
+import { runWithBridgeTurnContext, type BridgeTurnContext } from "./bridge-turn-context.js";
 
 export async function streamAskResponse(
   state: BridgeState,
@@ -36,32 +37,38 @@ export async function streamAskResponse(
 
   const sendChunk = (chunk: unknown) => {
     response.write(`${JSON.stringify(chunk)}\n`);
+    (response as ServerResponse & { flush?: () => void }).flush?.();
   };
   const abortController = new AbortController();
   const abortRun = () => abortController.abort();
   response.once("close", abortRun);
 
   try {
-    prepareAskState(state, payload);
+    const turnContext = prepareAskState(state, payload);
     sendChunk({ type: "start", ok: true, threadId: payload.threadId });
 
     const events: AgentEvent[] = [];
-    for await (const event of state.app.runTurn(payload.question, {
-      sessionId: payload.threadId,
-      requestedModelId: payload.model,
-      requestedEffort: payload.effort,
-      responseSpeed: payload.responseSpeed,
-      accessMode: payload.accessMode,
-      signal: abortController.signal,
-    })) {
-      attachModelId([event], payload.model);
-      events.push(event);
-      sendChunk({ type: "event", event });
-    }
+    await runWithBridgeTurnContext(turnContext, async () => {
+      for await (const event of state.app.runTurn(payload.question, {
+        sessionId: payload.threadId,
+        requestedModelId: payload.model,
+        requestedEffort: payload.effort,
+        responseSpeed: payload.responseSpeed,
+        accessMode: payload.accessMode,
+        requestedSkillName: payload.requestedSkill?.name,
+        requestedSkillArgs: payload.requestedSkill?.args,
+        policy: turnContext.policyOverrides,
+        signal: abortController.signal,
+      })) {
+        attachModelId([event], payload.model);
+        events.push(event);
+        sendChunk({ type: "event", event });
+      }
+    });
 
     sendChunk({
       type: "final",
-      data: finalizeAskResponse(state, payload, events),
+      data: finalizeAskResponse(state, payload, events, turnContext),
     });
   } catch (error) {
     sendChunk({
@@ -107,33 +114,46 @@ export function persistSnapshotAttachments(snapshot: BrowserPageSnapshot, state:
   });
 }
 
-function prepareAskState(state: BridgeState, payload: BridgeAskPayload): void {
+function prepareAskState(state: BridgeState, payload: BridgeAskPayload): BridgeTurnContext {
+  const turnComputerSnapshot = hasComputerState(payload.computerSnapshot)
+    ? payload.computerSnapshot
+    : {};
   state.snapshot = payload.snapshot;
-  if (hasComputerState(payload.computerSnapshot)) {
-    state.computerSnapshot = payload.computerSnapshot;
-  }
+  state.computerSnapshot = turnComputerSnapshot;
   state.model = payload.model;
   state.saveCandidateNote = payload.saveCandidateNote;
-  state.policyOverrides.length = 0;
   syncBridgeWorkingState(state.app, {
     sessionId: payload.threadId,
     selectedModel: payload.model,
   });
 
+  return {
+    threadId: payload.threadId,
+    model: payload.model,
+    snapshot: payload.snapshot,
+    computerSnapshot: turnComputerSnapshot,
+    policyOverrides: buildAskPolicyOverrides(payload),
+  };
+}
+
+function buildAskPolicyOverrides(payload: BridgeAskPayload): PolicyRule[] {
+  const policyOverrides: PolicyRule[] = [];
   if (payload.allowMemory) {
-    state.policyOverrides.push({
+    policyOverrides.push({
       id: "bridge.allow-reading-note",
       toolId: "memory.proposeReadingNote",
       mode: "allow",
       reason: "Local bridge request explicitly allowed memory writes.",
     });
   }
+  return policyOverrides;
 }
 
 function finalizeAskResponse(
   state: BridgeState,
   payload: BridgeAskPayload,
   events: AgentEvent[],
+  turnContext: BridgeTurnContext,
 ): BridgeAskResult {
   attachModelId(events, payload.model);
   syncBridgeWorkingState(state.app, {
@@ -160,7 +180,7 @@ function finalizeAskResponse(
     knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     artifacts: state.app.artifacts.list(),
     workingState: state.app.workingState.get(),
-    computerState: state.computerSnapshot,
+    computerState: turnContext.computerSnapshot,
     sessions: state.app.sessions.list({ limit: 12 }),
     runs: state.app.sessions.listRuns({ limit: 24 }),
     executions: state.app.executions.list({ limit: 40 }),

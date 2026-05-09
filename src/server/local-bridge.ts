@@ -19,7 +19,7 @@ import {
 import { getBridgeRuntimeControls } from "./kernel-selection.js";
 import { buildContextRecords } from "./trajectory.js";
 import { buildProviderHttpCaptureDiagnostics } from "./provider-http-captures.js";
-import { filterEnabledKnowledgeDocuments, listKnowledgeVaultFolders, syncKnowledgeVaultFiles } from "./knowledge-files.js";
+import { filterEnabledKnowledgeDocuments, listKnowledgeVaultFolders, resolveKnowledgeVaultFilePath, syncKnowledgeVaultFiles } from "./knowledge-files.js";
 import { serveStaticRoute } from "./routes/static.js";
 import { handleKnowledgeRoute } from "./routes/knowledge.js";
 import { handleSettingsRoute } from "./routes/settings.js";
@@ -361,6 +361,9 @@ export function startLocalBridgeServer(options: LocalBridgeServerOptions = {}) {
 
       if (request.method === "POST" && url.pathname === "/ask/stream") {
         const payload = normalizeAskPayload(await readJsonBody(request));
+        if (payload.snapshot.vaultFile?.vaultPath) {
+          payload.snapshot.vaultFile.filePath = resolveKnowledgeVaultFilePath(payload.snapshot.vaultFile.vaultPath, state);
+        }
         persistSnapshotAttachments(payload.snapshot, state);
         await streamAskResponse(state, payload, response);
         return;

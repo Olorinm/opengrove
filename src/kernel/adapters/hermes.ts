@@ -126,7 +126,7 @@ export function discoverHermesKernel(
   cwd = process.cwd(),
   diagnostics = HERMES_KERNEL_CONTRACT.diagnostics,
 ): KernelDiscovery {
-  const hermesHome = process.env.HERMES_HOME || resolveHomePath(".hermes");
+  const hermesHome = options.env?.HERMES_HOME || process.env.HERMES_HOME || resolveHomePath(".hermes");
   const command = options.command || readAppEnv("HERMES_BIN") || "hermes";
   const version = commandVersion(command);
   const installed = Boolean(options.command || version);
@@ -250,9 +250,8 @@ export function discoverHermesKernel(
     installActions: [
       plannedInstallAction({
         id: "hermes.install",
-        title: "配置 Hermes CLI",
-        command: ["bash", "-lc", `echo 'Set ${appEnvName("HERMES_BIN")} to your hermes executable'`],
-        description: `Hermes 安装方式依赖本地仓库/包管理器；${APP_PRODUCT_NAME} 先提供检测和路径配置入口。`,
+        title: "安装 Hermes CLI",
+        command: ["npm", "install", "-g", "hermes-cli"],
       }),
     ],
     notes: [

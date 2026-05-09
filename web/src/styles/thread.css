@@ -755,6 +755,11 @@
   line-height: 1.35;
 }
 
+.thread-turn-status.is-thinking {
+  border-bottom: 0;
+  padding: 0;
+}
+
 .thread-turn-status[data-active="true"] {
   color: var(--c-muted);
   font-weight: var(--fw-medium);
@@ -768,6 +773,26 @@
 }
 
 .thread-turn-status-label.thinking-shimmer {
+  width: fit-content;
+  color: transparent;
+  background: linear-gradient(90deg, #85837c 0%, #85837c 34%, #b9bab4 50%, #85837c 66%, #85837c 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: thinking-text-sheen 1.55s ease-in-out infinite;
+}
+
+.thread-tail-thinking {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  color: #85837c;
+  font-size: 15px;
+  font-weight: var(--fw-normal);
+  line-height: 1.35;
+}
+
+.thread-tail-thinking .thinking-shimmer {
   width: fit-content;
   color: transparent;
   background: linear-gradient(90deg, #85837c 0%, #85837c 34%, #b9bab4 50%, #85837c 66%, #85837c 100%);

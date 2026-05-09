@@ -41,11 +41,21 @@ async function main() {
     command: fakeHermes,
     cwd,
     configuredModel: "test-model",
-    configuredProvider: "test-provider",
+    configuredProvider: "opengrove-test-provider",
+    providerConfig: {
+      providerKey: "opengrove-test-provider",
+      name: "Test Provider",
+      baseUrl: "https://example.test/anthropic",
+      apiKeyEnv: appEnvName("TEST_API_KEY"),
+      apiMode: "anthropic_messages",
+      model: "test-model",
+      models: ["test-model", "other-model"],
+    },
     toolsets: ["skills"],
     nativeSkillDir,
     env: {
       [appEnvName("HERMES_ISOLATED_HOME")]: "1",
+      [appEnvName("TEST_API_KEY")]: "test-key",
     },
   });
 
@@ -79,9 +89,15 @@ async function main() {
   assert.ok(response && response.type === "model.response", "Hermes runtime should emit model.response");
   assert.match(response.response.text, /FAKE_HERMES_OK/);
   assert.match(response.response.text, /--model test-model/);
-  assert.match(response.response.text, /--provider test-provider/);
+  assert.match(response.response.text, /--provider opengrove-test-provider/);
   assert.match(response.response.text, /--toolsets skills/);
   assert.match(response.response.text, /APP_CONTEXT_VISIBLE/);
+  assert.match(response.response.text, /provider: "opengrove-test-provider"/);
+  assert.match(response.response.text, /base_url: "https:\/\/example\.test\/anthropic"/);
+  assert.match(response.response.text, /api_mode: "anthropic_messages"/);
+  assert.match(response.response.text, new RegExp(`key_env: "${escapeRegExp(appEnvName("TEST_API_KEY"))}"`));
+  assert.match(response.response.text, /providers:/);
+  assert.match(response.response.text, /"test-model": \{\}/);
   assert.match(response.response.text, /external_dirs/);
   assert.match(response.response.text, new RegExp(`${escapeRegExp(APP_CONFIG_DIR)}/native-skills/hermes`));
   assert.ok(events.some((event) => event.type === "turn.finished"), "turn should finish");

@@ -150,7 +150,6 @@ export function discoverCodexKernel(
         id: "codex.install",
         title: "安装 Codex CLI",
         command: ["npm", "install", "-g", "@openai/codex"],
-        description: "如果本机没有 codex 命令，可以用官方 npm 包安装；实际执行前需要用户确认。",
       }),
     ],
     notes: [

@@ -40,8 +40,15 @@ async function main() {
     cliPath: fakeClaude,
     cliKind: "node-script",
     cwd,
-    configuredModel: "claude-test-model",
+    configuredModel: "opus",
+    modelAliases: { "glm-5.1": "opus" },
     permissionMode: "bypassPermissions",
+    env: {
+      ANTHROPIC_MODEL: "glm-5.1",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "glm-5.1",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "glm-5.1",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "glm-5.1",
+    },
     streamCapture: {
       enabled: true,
       dir: captureDir,
@@ -54,6 +61,7 @@ async function main() {
     input: "hello claude",
     context: { sessionId: "claude-runtime-harness" } as AgentContext,
     tools: [],
+    requestedModelId: "glm-5.1",
     skills: [],
     packs: [],
     capabilities: [],
@@ -81,7 +89,8 @@ async function main() {
   assert.ok(argv.includes("--permission-mode"));
   assert.ok(argv.includes("bypassPermissions"));
   assert.ok(argv.includes("--model"));
-  assert.ok(argv.includes("claude-test-model"));
+  assert.ok(argv.includes("opus"));
+  assert.ok(!argv.includes("glm-5.1"), "provider model should not be passed as Claude Code --model");
   assert.ok(argv.includes("--append-system-prompt"));
   assert.match(argv.join("\n"), /CLAUDE_CONTEXT_VISIBLE/);
 

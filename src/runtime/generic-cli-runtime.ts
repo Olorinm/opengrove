@@ -11,6 +11,10 @@ import {
   resolveProviderHttpCaptureOptions,
   type ProviderHttpCaptureOptions,
 } from "./provider-http-capture.js";
+import {
+  recentSessionMessages,
+  recentSessionPromptBlock,
+} from "./session-history.js";
 
 export interface GenericCliRuntimeOptions {
   kernelId: string;
@@ -30,6 +34,7 @@ export class GenericCliRuntime implements AgentRuntime {
     const runId = request.runId ?? `run_${Date.now()}`;
     const capture = resolveProviderHttpCaptureOptions(this.options.providerHttpCapture, this.options.env);
     const prompt = buildPrompt(request);
+    const priorMessages = recentSessionMessages(request);
     const args = this.options.promptMode === "arg"
       ? [...(this.options.args ?? []), prompt]
       : [...(this.options.args ?? [])];
@@ -38,8 +43,8 @@ export class GenericCliRuntime implements AgentRuntime {
       provider: this.options.kernelId,
       sessionId: request.context.sessionId,
       persistent: false,
-      priorMessageCount: 0,
-      priorMessages: [],
+      priorMessageCount: priorMessages.length,
+      priorMessages,
     };
 
     yield { type: "turn.started", runId, at: new Date().toISOString() };
@@ -131,6 +136,7 @@ function buildPrompt(request: AgentTurnRequest): string {
     request.assembledContext
       ? `OpenGrove ambient context:\n${JSON.stringify(request.assembledContext, null, 2)}`
       : "",
+    recentSessionPromptBlock(request),
     request.input,
   ].filter(Boolean);
   return `${sections.join("\n\n")}\n`;

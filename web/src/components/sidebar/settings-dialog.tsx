@@ -1,18 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Bug, Check, ChevronDown, Cpu, Globe2, KeyRound, Palette, PlugZap, Plus, Trash2 } from "lucide-react";
-import type { BridgeSettings, KernelKnowledgeSource, KernelPreference, ProviderProfile } from "../../bridge";
-import { APP_PRODUCT_NAME } from "../../identity";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Bug, Check, ChevronDown, Cpu, Globe2, Palette, PlugZap, Plus, Trash2 } from "lucide-react";
+import type { BridgeSettings, KernelOption, KernelPathOverride, KernelPreference, KernelProxySettings, ProviderProfile } from "../../bridge";
 import { useI18n, type LanguagePreference, type TranslationFn } from "../../i18n";
 import { renderContextRecordCard } from "../system/system-views";
+import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
+import { KernelIcon, ProviderIcon } from "../ui/entity-icons";
 
-type SettingsSectionId = "kernels" | "providers" | "diagnostics" | "appearance" | "developer";
+type SettingsSectionId = "kernels" | "providers" | "network" | "diagnostics" | "appearance";
 
-const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; labelKey: "settings.kernels" | "settings.providers" | "settings.diagnostics" | "settings.appearance" | "settings.developer"; icon: typeof Cpu }> = [
+const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; labelKey: "settings.kernels" | "settings.providers" | "settings.network" | "settings.diagnostics" | "settings.appearance"; icon: typeof Cpu }> = [
   { id: "kernels", labelKey: "settings.kernels", icon: Cpu },
   { id: "providers", labelKey: "settings.providers", icon: PlugZap },
+  { id: "network", labelKey: "settings.network", icon: Globe2 },
   { id: "diagnostics", labelKey: "settings.diagnostics", icon: Bug },
   { id: "appearance", labelKey: "settings.appearance", icon: Palette },
-  { id: "developer", labelKey: "settings.developer", icon: KeyRound },
 ];
 
 const LANGUAGE_OPTIONS: Array<{
@@ -29,12 +30,16 @@ export function SettingsDialog(props: {
   contextRecords?: Record<string, unknown>[];
   loading: boolean;
   saving: boolean;
+  installingKernelId?: string;
   error: string;
   embedded?: boolean;
   onClose(): void;
+  onInstallKernel?(kernelId: string, actionId: string): void;
   onSave(payload: {
     kernel: KernelPreference;
     providerHttpCaptureEnabled: boolean;
+    kernelProxy: KernelProxySettings;
+    kernelPathOverrides: Record<string, KernelPathOverride>;
     kernelKnowledgeSourceEnabled: Record<string, Record<string, boolean>>;
     kernelProviderBindings: Record<string, string>;
     customProviders: ProviderProfile[];
@@ -44,11 +49,18 @@ export function SettingsDialog(props: {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("kernels");
   const [kernel, setKernel] = useState<KernelPreference>("auto");
   const [providerHttpCaptureEnabled, setProviderHttpCaptureEnabled] = useState(false);
+  const [kernelProxy, setKernelProxy] = useState<KernelProxySettings>(emptyKernelProxySettings());
+  const [kernelPathOverrides, setKernelPathOverrides] = useState<Record<string, KernelPathOverride>>({});
   const [sourceEnabled, setSourceEnabled] = useState<Record<string, Record<string, boolean>>>({});
   const [providerBindings, setProviderBindings] = useState<Record<string, string>>({});
   const [customProviders, setCustomProviders] = useState<ProviderProfile[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState("");
+  const [providerDetailOpen, setProviderDetailOpen] = useState(false);
   const [providerForm, setProviderForm] = useState<ProviderFormState>(emptyProviderForm());
   const [providerFormError, setProviderFormError] = useState("");
+  const [providerDeleteTargetId, setProviderDeleteTargetId] = useState("");
+  const [providerSaveState, setProviderSaveState] = useState<"idle" | "saved">("idle");
+  const [expandedKernelId, setExpandedKernelId] = useState("");
 
   useEffect(() => {
     if (!props.settings) {
@@ -56,13 +68,26 @@ export function SettingsDialog(props: {
     }
     setKernel(props.settings.kernel);
     setProviderHttpCaptureEnabled(Boolean(props.settings.providerHttpCapture?.enabled));
+    setKernelProxy(normalizeKernelProxySettings(props.settings.kernelProxy));
+    setKernelPathOverrides(props.settings.kernelPathOverrides ?? {});
     setSourceEnabled(buildSourceEnabledState(props.settings));
-    setProviderBindings(props.settings.kernelProviderBindings ?? {});
+    setProviderBindings(sanitizeProviderBindings(props.settings.kernelProviderBindings ?? {}, props.settings.providers ?? []));
     setCustomProviders(props.settings.customProviders ?? []);
+    setSelectedProviderId((current) => {
+      const providers = props.settings?.providers ?? [];
+      if (current && providers.some((provider) => provider.id === current)) return current;
+      return "";
+    });
   }, [props.settings]);
 
+  useEffect(() => {
+    if (providerSaveState !== "saved") return undefined;
+    const timeout = window.setTimeout(() => setProviderSaveState("idle"), 1800);
+    return () => window.clearTimeout(timeout);
+  }, [providerSaveState]);
+
   const kernels = useMemo(() => {
-    return props.settings?.kernels?.length
+    const options = props.settings?.kernels?.length
       ? props.settings.kernels
       : [
           { id: "auto" as KernelPreference, label: t("settings.autoMode"), available: true },
@@ -71,14 +96,32 @@ export function SettingsDialog(props: {
           { id: "hermes" as KernelPreference, label: "Hermes", available: true },
           { id: "pi" as KernelPreference, label: "Pi", available: true },
         ];
+    return sortAvailableKernelsFirst(options);
   }, [props.settings, t]);
 
   const capture = props.settings?.providerHttpCapture;
-  const sourceCount = kernels.reduce((count, item) => count + (item.sources?.length ?? 0), 0);
+  const providers = props.settings?.providers ?? [];
+  const selectedProvider = providers.find((provider) => provider.id === selectedProviderId);
+  const providerDeleteTarget = providers.find((provider) => provider.id === providerDeleteTargetId);
+  const detailForm = providerForm;
+  const providerDetailTitle = selectedProvider?.name || t("settings.newProvider");
+  const providerDetailEditable = true;
+  const editableProviderModels = detailForm.models.length
+    ? detailForm.models.split(",").map((item) => item.trim())
+    : [];
+  const providerModels = editableProviderModels
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const sortedProviders = useMemo(
+    () => sortEnabledProvidersFirst(providers, providerBindings),
+    [providerBindings, providers],
+  );
 
   const saveSettings = (next: {
     kernel?: KernelPreference;
     providerHttpCaptureEnabled?: boolean;
+    kernelProxy?: KernelProxySettings;
+    kernelPathOverrides?: Record<string, KernelPathOverride>;
     kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
     kernelProviderBindings?: Record<string, string>;
     customProviders?: ProviderProfile[];
@@ -86,6 +129,8 @@ export function SettingsDialog(props: {
     props.onSave({
       kernel: next.kernel ?? kernel,
       providerHttpCaptureEnabled: next.providerHttpCaptureEnabled ?? providerHttpCaptureEnabled,
+      kernelProxy: next.kernelProxy ?? kernelProxy,
+      kernelPathOverrides: next.kernelPathOverrides ?? kernelPathOverrides,
       kernelKnowledgeSourceEnabled: next.kernelKnowledgeSourceEnabled ?? sourceEnabled,
       kernelProviderBindings: next.kernelProviderBindings ?? providerBindings,
       customProviders: next.customProviders ?? customProviders,
@@ -102,19 +147,50 @@ export function SettingsDialog(props: {
     saveSettings({ providerHttpCaptureEnabled: enabled });
   };
 
-  const toggleSource = (kernelId: string, source: KernelKnowledgeSource, enabled: boolean) => {
-    const next = {
-      ...sourceEnabled,
+  const setKernelProxyDraft = (patch: Partial<KernelProxySettings>) => {
+    setKernelProxy((current) => ({ ...current, ...patch }));
+  };
+
+  const saveKernelProxy = (patch: Partial<KernelProxySettings> = {}) => {
+    const next = normalizeKernelProxySettings({ ...kernelProxy, ...patch });
+    setKernelProxy(next);
+    saveSettings({ kernelProxy: next });
+  };
+
+  const setKernelPathDraft = (kernelId: string, key: keyof KernelPathOverride, value: string) => {
+    setKernelPathOverrides((current) => ({
+      ...current,
       [kernelId]: {
-        ...(sourceEnabled[kernelId] ?? {}),
-        [source.id]: enabled,
+        ...(current[kernelId] ?? {}),
+        [key]: value,
       },
+    }));
+  };
+
+  const saveKernelPathOverride = (kernelId: string, patch: Partial<KernelPathOverride> = {}) => {
+    const current = { ...(kernelPathOverrides[kernelId] ?? {}), ...patch };
+    const normalized = {
+      binaryPath: current.binaryPath?.trim(),
+      configHome: current.configHome?.trim(),
     };
-    setSourceEnabled(next);
-    saveSettings({ kernelKnowledgeSourceEnabled: next });
+    const next = { ...kernelPathOverrides };
+    const compact = Object.fromEntries(
+      Object.entries(normalized).filter(([, value]) => Boolean(value)),
+    ) as KernelPathOverride;
+    if (Object.keys(compact).length) {
+      next[kernelId] = compact;
+    } else {
+      delete next[kernelId];
+    }
+    setKernelPathOverrides(next);
+    saveSettings({ kernelPathOverrides: next });
   };
 
   const bindProvider = (kernelId: string, providerId: string) => {
+    const provider = providers.find((item) => item.id === providerId);
+    if (providerId && (!provider || !providerSupportsKernel(provider, kernelId))) {
+      return;
+    }
     const next = { ...providerBindings };
     if (providerId) {
       next[kernelId] = providerId;
@@ -131,39 +207,293 @@ export function SettingsDialog(props: {
       setProviderFormError(t("settings.providerFormRequired"));
       return;
     }
+    const existing = providers.find((item) => item.id === profile.id);
+    const nextProfile = {
+      ...profile,
+      enabled: existing?.enabled ?? profile.enabled,
+    };
     setProviderFormError("");
     const next = [
-      ...customProviders.filter((item) => item.id !== profile.id),
-      profile,
+      ...customProviders.filter((item) => item.id !== nextProfile.id),
+      nextProfile,
     ];
     setCustomProviders(next);
-    setProviderForm(emptyProviderForm());
+    setSelectedProviderId(nextProfile.id);
+    setProviderDetailOpen(true);
+    setProviderForm(providerFormFromProfile(nextProfile));
+    setProviderSaveState("saved");
     saveSettings({ customProviders: next });
   };
 
-  const editProviderProfile = (provider: ProviderProfile) => {
-    setProviderForm({
-      id: provider.id,
-      name: provider.name,
-      protocol: provider.protocol || "openai-compatible",
-      description: provider.description || "",
-      openaiBaseUrl: provider.openaiBaseUrl || "",
-      anthropicBaseUrl: provider.anthropicBaseUrl || "",
-      geminiBaseUrl: provider.geminiBaseUrl || "",
-      apiKeyEnv: provider.apiKeyEnv || "",
-      models: (provider.models ?? []).map((model) => model.id).join(", "),
-    });
-    setProviderFormError("");
+  const setProviderEnabled = (providerId: string, enabled: boolean) => {
+    const provider = providers.find((item) => item.id === providerId);
+    if (!provider) return;
+    const nextProvider: ProviderProfile = {
+      ...provider,
+      custom: true,
+      deleted: false,
+      enabled,
+    };
+    const next = [
+      ...customProviders.filter((item) => item.id !== providerId),
+      nextProvider,
+    ];
+    setCustomProviders(next);
+    saveSettings({ customProviders: next });
   };
 
   const deleteProviderProfile = (providerId: string) => {
+    const provider = providers.find((item) => item.id === providerId);
     const nextProviders = customProviders.filter((item) => item.id !== providerId);
+    if (provider && !provider.custom) {
+      nextProviders.push({
+        ...provider,
+        custom: true,
+        deleted: true,
+      });
+    }
     const nextBindings = Object.fromEntries(
       Object.entries(providerBindings).filter(([, value]) => value !== providerId),
     );
     setCustomProviders(nextProviders);
     setProviderBindings(nextBindings);
+    setSelectedProviderId((current) => current === providerId ? "" : current);
+    setProviderDetailOpen((open) => selectedProviderId === providerId ? false : open);
     saveSettings({ customProviders: nextProviders, kernelProviderBindings: nextBindings });
+  };
+
+  const confirmDeleteProvider = () => {
+    if (!providerDeleteTargetId) return;
+    deleteProviderProfile(providerDeleteTargetId);
+    setProviderDeleteTargetId("");
+  };
+
+  const selectProvider = (provider: ProviderProfile) => {
+    if (providerDetailOpen && selectedProviderId === provider.id) {
+      closeProviderDetail();
+      return;
+    }
+    setSelectedProviderId(provider.id);
+    setProviderDetailOpen(true);
+    setProviderForm(providerFormFromProfile(provider));
+    setProviderFormError("");
+    setProviderSaveState("idle");
+  };
+
+  const startAddProvider = () => {
+    setSelectedProviderId("");
+    setProviderDetailOpen(true);
+    setProviderForm(emptyProviderForm());
+    setProviderFormError("");
+    setProviderSaveState("idle");
+  };
+
+  const closeProviderDetail = () => {
+    setProviderDetailOpen(false);
+    setSelectedProviderId("");
+    setProviderForm(emptyProviderForm());
+    setProviderFormError("");
+    setProviderSaveState("idle");
+  };
+
+  const updateProviderDraft = (next: ProviderFormState) => {
+    setProviderSaveState("idle");
+    setProviderForm(next);
+  };
+
+  const updateProviderField = <K extends keyof ProviderFormState>(key: K, value: ProviderFormState[K]) => {
+    updateProviderDraft(updateProviderForm(providerForm, key, value));
+  };
+
+  const updatePrimaryBaseUrl = (value: string) => {
+    const protocol = detailForm.protocol;
+    const next = updateProviderForm(providerForm, protocol === "anthropic-compatible" ? "anthropicBaseUrl" : protocol === "gemini-compatible" ? "geminiBaseUrl" : "openaiBaseUrl", value);
+    updateProviderDraft(next);
+  };
+
+  const setProviderModels = (models: string[]) => {
+    const seen = new Set<string>();
+    const normalized = models
+      .map((model) => model.trim())
+      .filter((model) => {
+        if (!model || seen.has(model)) return false;
+        seen.add(model);
+        return true;
+      });
+    updateProviderDraft(updateProviderForm(providerForm, "models", normalized.join(", ")));
+  };
+
+  const addProviderModel = () => {
+    const base = "new-model";
+    let candidate = base;
+    let index = 2;
+    while (providerModels.includes(candidate)) {
+      candidate = `${base}-${index}`;
+      index += 1;
+    }
+    setProviderModels([...providerModels, candidate]);
+  };
+
+  const updateProviderModel = (modelIndex: number, value: string) => {
+    const next = editableProviderModels.map((model, index) => index === modelIndex ? value.replace(/,/g, "") : model);
+    const serialized = next.join(", ");
+    updateProviderDraft(updateProviderForm(providerForm, "models", serialized || (next.length ? " " : "")));
+  };
+
+  const renderProviderSaveButton = () => {
+    const saved = providerSaveState === "saved" && !props.saving;
+    return (
+      <button className={saved ? "primary saved" : "primary"} type="button" disabled={props.saving} onClick={saveProviderProfile}>
+        {saved ? <Check size={15} /> : <Plus size={15} />}
+        {props.saving ? t("settings.providerSaving") : saved ? t("settings.providerSaved") : t("settings.saveProvider")}
+      </button>
+    );
+  };
+
+  const removeProviderModelAt = (modelIndex: number) => {
+    setProviderModels(editableProviderModels.filter((_, index) => index !== modelIndex));
+  };
+
+  const toggleKernelExpanded = (kernelId: string) => {
+    setExpandedKernelId((current) => current === kernelId ? "" : kernelId);
+  };
+
+  const renderKernelChoice = (option: KernelOption) => {
+    const isActive = kernel === option.id;
+    const canExpand = option.id !== "auto";
+    const expanded = canExpand && expandedKernelId === option.id;
+    const installAction = (option.installActions ?? []).find((action) => action.command?.length);
+    const canInstall = !option.available && installAction && props.onInstallKernel;
+    const installing = props.installingKernelId === option.id;
+    const installInFlight = Boolean(props.installingKernelId);
+    const description = option.id === "auto" && option.resolved
+      ? t("settings.resolvedAs", { kernel: formatKernelLabel(option.resolved) })
+      : option.available
+        ? [option.description || t("common.available"), option.providerLabel].filter(Boolean).join(" · ")
+        : option.reason || t("common.unavailable");
+    const className = [
+      "settings-choice-card",
+      isActive ? "active" : "",
+      option.available ? "" : "unavailable",
+      expanded ? "expanded" : "",
+    ].filter(Boolean).join(" ");
+    const nativeProvider = providers.find((provider) => provider.sourceKernel === option.id && provider.authConfigured);
+    const providerOptions: InlineSelectOption[] = [
+      ...(nativeProvider ? [{
+        id: "",
+        label: nativeProvider.name
+          ? `${t("settings.nativeProvider")} · ${nativeProvider.name}`
+          : t("settings.nativeProvider"),
+        icon: <ProviderIcon provider={nativeProvider} providerId={nativeProvider.id || "native"} providerName={nativeProvider.name || option.label} size={13} />,
+      }] : []),
+      ...providers
+        .filter((provider) =>
+          isProviderEnabled(provider, providerBindings) &&
+          providerSupportsKernel(provider, option.id) &&
+          !(provider.sourceKernel === option.id && provider.authConfigured)
+        )
+        .map((provider) => ({
+          id: provider.id,
+          label: providerBindingLabel(provider, option.id, t),
+          icon: <ProviderIcon provider={provider} size={13} />,
+        })),
+    ];
+    const mainContent = (
+      <span className="settings-choice-card-main-content">
+        <KernelIcon kernelId={option.id} className="settings-choice-card-icon" size={17} />
+        <span className="settings-choice-card-copy">
+          <span className="settings-choice-card-head">
+            <strong>{option.label}</strong>
+          </span>
+          <span className="settings-choice-card-description">{description}</span>
+        </span>
+        <span className="settings-choice-card-action">
+          {canInstall ? (
+            <button
+              className="settings-kernel-install-button"
+              type="button"
+              disabled={installInFlight || props.saving || props.loading}
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onInstallKernel?.(option.id, installAction.id);
+              }}
+            >
+              {installing ? t("common.installing") : t("common.install")}
+            </button>
+          ) : null}
+          {canExpand ? (
+            <button
+              className={expanded ? "settings-kernel-expand-button expanded" : "settings-kernel-expand-button"}
+              type="button"
+              aria-label={expanded ? t("settings.collapseKernel") : t("settings.expandKernel")}
+              aria-expanded={expanded}
+              disabled={props.saving || props.loading}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleKernelExpanded(option.id);
+              }}
+            >
+              <ChevronDown size={15} />
+            </button>
+          ) : null}
+        </span>
+      </span>
+    );
+    const details = expanded ? (
+      <div className="settings-kernel-expanded-panel">
+        {option.available ? (
+          <label className="settings-kernel-detail-row">
+            <span>{t("settings.providers")}</span>
+            <InlineSelect
+              value={providerBindings[option.id] ?? ""}
+              disabled={props.loading || props.saving}
+              options={providerOptions}
+              onChange={(value) => bindProvider(option.id, value)}
+            />
+          </label>
+        ) : null}
+        <label className="settings-kernel-detail-row">
+          <span>{t("settings.rootPath")}</span>
+          <input
+            value={kernelPathOverrides[option.id]?.configHome ?? option.configHome ?? ""}
+            disabled={props.loading || props.saving}
+            placeholder={option.configHome || "~/.config"}
+            onBlur={(event) => saveKernelPathOverride(option.id, { configHome: event.currentTarget.value })}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.currentTarget.blur();
+              }
+            }}
+            onChange={(event) => setKernelPathDraft(option.id, "configHome", event.target.value)}
+          />
+        </label>
+      </div>
+    ) : null;
+
+    if (!option.available) {
+      return (
+        <div key={option.id} className={className} aria-disabled="true">
+          <div className="settings-choice-card-main as-static">
+            {mainContent}
+          </div>
+          {details}
+        </div>
+      );
+    }
+
+    return (
+      <div key={option.id} className={className}>
+        <button
+          className="settings-choice-card-main"
+          type="button"
+          disabled={props.saving || props.loading}
+          onClick={() => selectKernel(option.id)}
+        >
+          {mainContent}
+        </button>
+        {details}
+      </div>
+    );
   };
 
   return (
@@ -208,246 +538,406 @@ export function SettingsDialog(props: {
 
           {activeSection === "kernels" ? (
             <div className="settings-page-stack">
-              <section className="settings-panel">
-                <div className="settings-panel-heading">
-                  <div>
-                    <h2>{t("settings.workMode")}</h2>
-                    <p>{t("settings.workModeCopy")}</p>
-                  </div>
-                  <span className="settings-status-pill">{t("common.current")} {formatKernelLabel(props.settings?.activeKernel) || t("common.unknown")}</span>
+              <section className="settings-list-section">
+                <div className="settings-list-section-heading">
+                  <h2>{t("settings.workMode")}</h2>
+                  <span className="settings-status-pill with-icon">
+                    <KernelIcon kernelId={props.settings?.activeKernel} size={12} />
+                    {t("common.current")} {formatKernelLabel(props.settings?.activeKernel) || t("common.unknown")}
+                  </span>
                 </div>
-                <div className="settings-choice-grid">
-                  {kernels.map((option) => (
-                    <button
-                      key={option.id}
-                      className={kernel === option.id ? "settings-choice-card active" : "settings-choice-card"}
-                      type="button"
-                      disabled={!option.available || props.saving || props.loading}
-                      onClick={() => selectKernel(option.id)}
-                    >
-                      <strong>{option.label}</strong>
-                      <span>
-                        {option.id === "auto" && option.resolved
-                          ? t("settings.resolvedAs", { kernel: formatKernelLabel(option.resolved) })
-                          : option.available
-                            ? option.description || t("common.available")
-                            : option.reason || t("common.unavailable")}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section className="settings-panel">
-                <div className="settings-panel-heading">
-                  <div>
-                    <h2>{t("settings.knowledgeSources")}</h2>
-                    <p>{t("settings.knowledgeSourcesCopy", { count: sourceCount })}</p>
-                  </div>
-                </div>
-                <div className="settings-kernel-list">
-                  {kernels.filter((option) => option.id !== "auto").map((option) => (
-                    <section className={kernel === option.id ? "settings-kernel-card active" : "settings-kernel-card"} key={option.id}>
-                      <div className="settings-panel-heading">
-                        <div>
-                          <h2>{option.label}</h2>
-                          <p>{option.description || t("settings.adapter")}</p>
-                        </div>
-                        <span className={option.available ? "settings-status-pill" : "settings-status-pill muted"}>
-                          {option.available ? t("settings.detected") : t("settings.notInstalled")}
-                        </span>
-                      </div>
-                      <div className="settings-info-list compact">
-                        <InfoRow title={t("settings.version")} value={option.version || t("common.unknown")} />
-                        <InfoRow title={t("settings.configDir")} value={option.configHome || t("common.unknown")} mono />
-                      </div>
-                      {option.notes?.length ? <p className="settings-help">{option.notes[0]}</p> : null}
-                      {option.sources?.length ? (
-                        <div className="settings-source-list">
-                          {option.sources.map((source) => (
-                            <label key={source.id} className="settings-source-row">
-                              <input
-                                type="checkbox"
-                                checked={isSourceEnabled(option.id, source, sourceEnabled)}
-                                disabled={props.saving || props.loading}
-                                onChange={(event) => toggleSource(option.id, source, event.target.checked)}
-                              />
-                              <span className="settings-source-main">
-                                <span className="settings-source-title">
-                                  {source.title}
-                                  <small>{formatSourceMeta(source, t)}</small>
-                                </span>
-                                <code>{source.path || t("settings.dynamicSource")}</code>
-                                {source.description ? <span className="settings-source-note">{source.description}</span> : null}
-                              </span>
-                              <span className={source.exists ? "settings-source-state ok" : "settings-source-state"}>
-                                {source.exists ? t("common.exists") : t("common.notCreated")}
-                              </span>
-                            </label>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="settings-help">{t("settings.noSources")}</p>
-                      )}
-                    </section>
-                  ))}
+                <div className="settings-choice-grid settings-kernel-choice-grid">
+                  {kernels.map(renderKernelChoice)}
                 </div>
               </section>
             </div>
           ) : null}
 
           {activeSection === "providers" ? (
-            <div className="settings-page-stack">
-              <section className="settings-panel">
-                <div className="settings-panel-heading">
-                  <div>
-                    <h2>{t("settings.providers")}</h2>
-                    <p>{t("settings.providersDescription")}</p>
-                  </div>
-                </div>
+            <div className="settings-providers-workspace">
+              <section className="settings-provider-browser">
                 <div className="settings-provider-list">
-                  {(props.settings?.providers ?? []).map((provider) => (
-                    <div className="settings-provider-row" key={provider.id}>
-                      <span>
-                        <strong>{provider.name}</strong>
-                        <small>{provider.custom ? t("settings.customProvider") : t("settings.builtinProvider")} · {provider.protocol}</small>
-                      </span>
-                      <code>{provider.openaiBaseUrl || provider.anthropicBaseUrl || provider.geminiBaseUrl || provider.protocol}</code>
-                      <span className="settings-provider-models">
-                        {(provider.models ?? []).slice(0, 4).map((model) => <small key={model.id}>{model.label}</small>)}
-                      </span>
-                      <span className="settings-provider-actions">
-                        {provider.custom ? (
-                          <>
-                            <button type="button" onClick={() => editProviderProfile(provider)}>{t("common.edit")}</button>
-                            <button type="button" onClick={() => deleteProviderProfile(provider.id)}><Trash2 size={14} /></button>
-                          </>
-                        ) : (
-                          <small>{provider.apiKeyEnv ? `${t("settings.secretEnv")} ${provider.apiKeyEnv}` : ""}</small>
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="settings-panel">
-                <div className="settings-panel-heading">
-                  <div>
-                    <h2>{t("settings.addProvider")}</h2>
-                    <p>{t("settings.addProviderCopy")}</p>
-                  </div>
-                </div>
-                <div className="settings-form-grid">
-                  <label>
-                    <span>{t("settings.providerName")}</span>
-                    <input
-                      value={providerForm.name}
-                      onChange={(event) => setProviderForm(updateProviderForm(providerForm, "name", event.target.value))}
-                      placeholder="Volc Coding Plan"
-                    />
-                  </label>
-                  <label>
-                    <span>{t("settings.providerId")}</span>
-                    <input
-                      value={providerForm.id}
-                      onChange={(event) => setProviderForm(updateProviderForm(providerForm, "id", event.target.value))}
-                      placeholder="volc-coding-plan"
-                    />
-                  </label>
-                  <div className="settings-form-wide">
-                    <span>{t("settings.protocol")}</span>
-                    <div className="settings-segmented">
-                      {PROVIDER_PROTOCOL_OPTIONS.map((option) => (
-                        <button
-                          key={option.id}
-                          className={providerForm.protocol === option.id ? "active" : ""}
-                          type="button"
-                          onClick={() => setProviderForm(updateProviderForm(providerForm, "protocol", option.id))}
-                        >
-                          {option.label}
+                  {providerDetailOpen && !selectedProvider ? (
+                    <div className="settings-provider-item active new">
+                      <div className="settings-provider-row">
+                        <span className="settings-provider-summary as-static">
+                          <span className="settings-provider-avatar" aria-hidden="true">+</span>
+                          <span className="settings-provider-main">
+                            <strong>{providerDetailTitle}</strong>
+                            <small>{t("settings.addProviderCopy")}</small>
+                          </span>
+                        </span>
+                        <button className="settings-provider-icon-button" type="button" onClick={closeProviderDetail} aria-label={t("common.cancel")}>
+                          <ChevronDown size={16} />
                         </button>
-                      ))}
+                      </div>
+                    <section className="settings-provider-detail inline">
+                      <div className="settings-detail-section">
+                        <div className="settings-detail-section-heading">
+                          <h3>{t("settings.baseConfig")}</h3>
+                        </div>
+                        <div className="settings-form-grid compact">
+                          <label>
+                            <span>{t("settings.providerName")}</span>
+                            <input
+                              value={detailForm.name}
+                              onChange={(event) => updateProviderField("name", event.target.value)}
+                              placeholder="Volc Coding Plan"
+                            />
+                          </label>
+                          <label>
+                            <span>{t("settings.providerId")}</span>
+                            <input
+                              value={detailForm.id}
+                              onChange={(event) => updateProviderField("id", event.target.value)}
+                              placeholder="volc-coding-plan"
+                            />
+                          </label>
+                          {!isNativeAuthProtocol(detailForm.protocol) ? (
+                            <>
+                              <div className="settings-form-wide">
+                                <span>{t("settings.protocol")}</span>
+                                <div className="settings-segmented">
+                                  {PROVIDER_PROTOCOL_OPTIONS.map((option) => (
+                                    <button
+                                      key={option.id}
+                                      className={detailForm.protocol === option.id ? "active" : ""}
+                                      type="button"
+                                      onClick={() => updateProviderField("protocol", option.id)}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <label>
+                                <span>{t("settings.apiBaseUrl")}</span>
+                                <input
+                                  value={primaryBaseUrl(detailForm)}
+                                  onChange={(event) => updatePrimaryBaseUrl(event.target.value)}
+                                  placeholder="https://example.com/v1"
+                                />
+                              </label>
+                              <label>
+                                <span>{t("settings.apiKeyEnv")}</span>
+                                <input
+                                  value={detailForm.apiKeyEnv}
+                                  onChange={(event) => updateProviderField("apiKeyEnv", event.target.value)}
+                                  placeholder="OPENGROVE_VOLC_CODING_API_KEY"
+                                />
+                              </label>
+                            </>
+                          ) : null}
+                          <label className="settings-form-wide">
+                            <span>{t("settings.description")}</span>
+                            <input
+                              value={detailForm.description}
+                              onChange={(event) => updateProviderField("description", event.target.value)}
+                              placeholder={t("settings.providerDescriptionPlaceholder")}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                      <div className="settings-detail-section">
+                        <div className="settings-detail-section-heading">
+                          <h3>{t("settings.availableModels")}</h3>
+                        </div>
+                        <div className="settings-model-row">
+                          {editableProviderModels.length ? (
+                            <span className="settings-provider-models editable">
+                              {editableProviderModels.map((model, index) => (
+                                <span className="settings-model-chip" key={`new-model-${index}`}>
+                                  <input
+                                    className="settings-model-chip-input"
+                                    value={model}
+                                    size={Math.max(model.length, 6)}
+                                    onBlur={() => setProviderModels(editableProviderModels)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") {
+                                        event.preventDefault();
+                                        event.currentTarget.blur();
+                                      }
+                                    }}
+                                    onChange={(event) => updateProviderModel(index, event.target.value)}
+                                    aria-label={t("settings.models")}
+                                  />
+                                  <button type="button" onClick={() => removeProviderModelAt(index)} aria-label={t("settings.removeModel")}>
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </span>
+                          ) : (
+                            <p className="settings-help">{t("settings.noProviderModels")}</p>
+                          )}
+                          <button className="settings-model-add-button" type="button" onClick={addProviderModel} aria-label={t("settings.addModel")}>
+                            <Plus size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      {providerFormError ? <p className="settings-warning">{providerFormError}</p> : null}
+                      <div className="settings-form-actions settings-provider-detail-actions">
+                        <span />
+                        <span>
+                          <button type="button" onClick={closeProviderDetail}>{t("common.cancel")}</button>
+                          {renderProviderSaveButton()}
+                        </span>
+                      </div>
+                    </section>
                     </div>
-                  </div>
-                  <label>
-                    <span>{t("settings.openaiBaseUrl")}</span>
-                    <input
-                      value={providerForm.openaiBaseUrl}
-                      onChange={(event) => setProviderForm(updateProviderForm(providerForm, "openaiBaseUrl", event.target.value))}
-                      placeholder="https://example.com/v1"
-                    />
-                  </label>
-                  <label>
-                    <span>{t("settings.anthropicBaseUrl")}</span>
-                    <input
-                      value={providerForm.anthropicBaseUrl}
-                      onChange={(event) => setProviderForm(updateProviderForm(providerForm, "anthropicBaseUrl", event.target.value))}
-                      placeholder="https://example.com"
-                    />
-                  </label>
-                  <label>
-                    <span>{t("settings.apiKeyEnv")}</span>
-                    <input
-                      value={providerForm.apiKeyEnv}
-                      onChange={(event) => setProviderForm(updateProviderForm(providerForm, "apiKeyEnv", event.target.value))}
-                      placeholder="OPENGROVE_VOLC_CODING_API_KEY"
-                    />
-                  </label>
-                  <label>
-                    <span>{t("settings.models")}</span>
-                    <input
-                      value={providerForm.models}
-                      onChange={(event) => setProviderForm(updateProviderForm(providerForm, "models", event.target.value))}
-                      placeholder="glm-5.1, minimax-m2.7"
-                    />
-                  </label>
-                  <label className="settings-form-wide">
-                    <span>{t("settings.description")}</span>
-                    <input
-                      value={providerForm.description}
-                      onChange={(event) => setProviderForm(updateProviderForm(providerForm, "description", event.target.value))}
-                      placeholder={t("settings.providerDescriptionPlaceholder")}
-                    />
-                  </label>
-                </div>
-                {providerFormError ? <p className="settings-warning">{providerFormError}</p> : null}
-                <div className="settings-form-actions">
-                  <button type="button" onClick={() => setProviderForm(emptyProviderForm())}>{t("common.cancel")}</button>
-                  <button className="primary" type="button" onClick={saveProviderProfile}>
-                    <Plus size={15} />
-                    {t("settings.saveProvider")}
-                  </button>
+                  ) : null}
+                  {sortedProviders.map((provider) => {
+                    const providerEnabled = isProviderEnabled(provider, providerBindings);
+                    return (
+                    <div
+                      className={[
+                        "settings-provider-item",
+                        selectedProviderId === provider.id ? "active" : "",
+                        providerEnabled ? "enabled" : "disabled",
+                      ].filter(Boolean).join(" ")}
+                      key={provider.id}
+                    >
+                      <div className="settings-provider-row">
+                        <button className="settings-provider-summary" type="button" onClick={() => selectProvider(provider)}>
+                          <ProviderIcon provider={provider} className="settings-provider-logo" size={16} />
+                          <span className="settings-provider-main">
+                            <strong>{provider.name}</strong>
+                            <small>{formatModelCount(provider.models?.length ?? 0, t)} · {providerMetaLabel(provider, t)}</small>
+                          </span>
+                        </button>
+                        <span className="settings-provider-row-actions">
+                          <button
+                            className={providerEnabled ? "settings-provider-enable-button enabled" : "settings-provider-enable-button"}
+                            type="button"
+                            role="switch"
+                            aria-checked={providerEnabled}
+                            aria-label={`${provider.name} ${providerEnabled ? t("settings.providerEnabled") : t("settings.providerDisabled")}`}
+                            disabled={props.loading || props.saving}
+                            onClick={() => setProviderEnabled(provider.id, !providerEnabled)}
+                          >
+                            <span aria-hidden="true" />
+                          </button>
+                          <button className="settings-provider-icon-button" type="button" onClick={() => selectProvider(provider)} aria-label={selectedProviderId === provider.id ? t("common.cancel") : t("settings.baseConfig")}>
+                            <ChevronDown size={16} />
+                          </button>
+                        </span>
+                      </div>
+                      {providerDetailOpen && selectedProviderId === provider.id ? (
+                        <section className="settings-provider-detail inline">
+                          <div className="settings-detail-section">
+                            <div className="settings-detail-section-heading">
+                              <h3>{t("settings.baseConfig")}</h3>
+                              <button
+                                className="settings-provider-heading-delete"
+                                type="button"
+                                onClick={() => setProviderDeleteTargetId(provider.id)}
+                                aria-label={t("settings.removeProvider")}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                            <div className="settings-form-grid compact">
+                              <label>
+                                <span>{t("settings.providerName")}</span>
+                                <input
+                                  value={detailForm.name}
+                                  readOnly={!providerDetailEditable}
+                                  onChange={(event) => updateProviderField("name", event.target.value)}
+                                  placeholder="Volc Coding Plan"
+                                />
+                              </label>
+                              <label>
+                                <span>{t("settings.providerId")}</span>
+                                <input
+                                  value={detailForm.id}
+                                  readOnly={!providerDetailEditable}
+                                  onChange={(event) => updateProviderField("id", event.target.value)}
+                                  placeholder="volc-coding-plan"
+                                />
+                              </label>
+                              {!isNativeAuthProtocol(detailForm.protocol) ? (
+                                <>
+                                  <div className="settings-form-wide">
+                                    <span>{t("settings.protocol")}</span>
+                                    <div className="settings-segmented">
+                                      {PROVIDER_PROTOCOL_OPTIONS.map((option) => (
+                                        <button
+                                          key={option.id}
+                                          className={detailForm.protocol === option.id ? "active" : ""}
+                                          type="button"
+                                          disabled={!providerDetailEditable}
+                                          onClick={() => updateProviderField("protocol", option.id)}
+                                        >
+                                          {option.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <label>
+                                    <span>{t("settings.apiBaseUrl")}</span>
+                                    <input
+                                      value={primaryBaseUrl(detailForm)}
+                                      readOnly={!providerDetailEditable}
+                                      onChange={(event) => updatePrimaryBaseUrl(event.target.value)}
+                                      placeholder="https://example.com/v1"
+                                    />
+                                  </label>
+                                  <label>
+                                    <span>{t("settings.apiKeyEnv")}</span>
+                                    <input
+                                      value={detailForm.apiKeyEnv}
+                                      readOnly={!providerDetailEditable}
+                                      onChange={(event) => updateProviderField("apiKeyEnv", event.target.value)}
+                                      placeholder="OPENGROVE_VOLC_CODING_API_KEY"
+                                    />
+                                  </label>
+                                </>
+                              ) : null}
+                              <label className="settings-form-wide">
+                                <span>{t("settings.description")}</span>
+                                <input
+                                  value={detailForm.description}
+                                  onChange={(event) => updateProviderField("description", event.target.value)}
+                                  placeholder={t("settings.providerDescriptionPlaceholder")}
+                                />
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="settings-detail-section">
+                            <div className="settings-detail-section-heading">
+                              <h3>{t("settings.availableModels")}</h3>
+                            </div>
+                            <div className="settings-model-row">
+                              {editableProviderModels.length ? (
+                                <span className="settings-provider-models editable">
+                                  {editableProviderModels.map((model, index) => (
+                                    <span className="settings-model-chip" key={`model-${index}`}>
+                                      <input
+                                        className="settings-model-chip-input"
+                                        value={model}
+                                        size={Math.max(model.length, 6)}
+                                        onBlur={() => setProviderModels(editableProviderModels)}
+                                        onKeyDown={(event) => {
+                                          if (event.key === "Enter") {
+                                            event.preventDefault();
+                                            event.currentTarget.blur();
+                                          }
+                                        }}
+                                        onChange={(event) => updateProviderModel(index, event.target.value)}
+                                        aria-label={t("settings.models")}
+                                      />
+                                      <button type="button" onClick={() => removeProviderModelAt(index)} aria-label={t("settings.removeModel")}>
+                                        ×
+                                      </button>
+                                    </span>
+                                  ))}
+                                </span>
+                              ) : (
+                                <p className="settings-help">{t("settings.noProviderModels")}</p>
+                              )}
+                              <button className="settings-model-add-button" type="button" onClick={addProviderModel} aria-label={t("settings.addModel")}>
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                          </div>
+
+                          {providerFormError ? <p className="settings-warning">{providerFormError}</p> : null}
+                          <div className="settings-form-actions settings-provider-detail-actions">
+                            <span />
+                            <span>
+                              <button type="button" onClick={closeProviderDetail}>{t("common.cancel")}</button>
+                              {providerDetailEditable ? renderProviderSaveButton() : null}
+                            </span>
+                          </div>
+                        </section>
+                      ) : null}
+                    </div>
+                    );
+                  })}
+                  {!providerDetailOpen || selectedProvider ? (
+                    <button className="settings-provider-add-row" type="button" onClick={startAddProvider}>
+                      <Plus size={15} />
+                      <span>{t("settings.addProvider")}</span>
+                    </button>
+                  ) : null}
                 </div>
               </section>
+            </div>
+          ) : null}
 
-              <section className="settings-panel">
-                <div className="settings-panel-heading">
-                  <div>
-                    <h2>{t("settings.providerBindings")}</h2>
-                    <p>{t("settings.providerBindingsCopy")}</p>
-                  </div>
+          {activeSection === "network" ? (
+            <div className="settings-page-stack">
+              <section className="settings-list-section">
+                <div className="settings-list-section-heading">
+                  <h2>{t("settings.kernelProxy")}</h2>
                 </div>
-                <div className="settings-binding-list">
-                  {kernels.filter((option) => option.id !== "auto").map((option) => (
-                    <div className="settings-binding-row" key={option.id}>
-                      <span>
-                        <strong>{option.label}</strong>
-                        <small>{option.available ? t("settings.detected") : option.reason || t("settings.notInstalled")}</small>
-                      </span>
-                      <InlineSelect
-                        value={providerBindings[option.id] ?? ""}
-                        disabled={props.loading || props.saving}
-                        options={[
-                          { id: "", label: t("settings.nativeProvider") },
-                          ...(props.settings?.providers ?? [])
-                          .filter((provider) => !provider.recommendedFor?.length || provider.recommendedFor.includes(option.id))
-                          .map((provider) => ({ id: provider.id, label: provider.name })),
-                        ]}
-                        onChange={(value) => bindProvider(option.id, value)}
-                      />
-                    </div>
-                  ))}
+                <div className="settings-list">
+                  <label className="settings-list-row">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.kernelProxy")}</strong>
+                      <small>{t("settings.kernelProxyCopy")}</small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={kernelProxy.enabled}
+                      disabled={props.loading || props.saving}
+                      onChange={(event) => saveKernelProxy({ enabled: event.target.checked })}
+                    />
+                  </label>
+                  <label className="settings-list-row settings-list-row-field">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.proxyUrl")}</strong>
+                    </span>
+                    <input
+                      value={kernelProxy.proxyUrl}
+                      disabled={props.loading || props.saving}
+                      placeholder="http://127.0.0.1:7890"
+                      onBlur={() => saveKernelProxy()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                      onChange={(event) => setKernelProxyDraft({ proxyUrl: event.target.value })}
+                    />
+                  </label>
+                  <label className="settings-list-row settings-list-row-field">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.noProxy")}</strong>
+                    </span>
+                    <input
+                      value={kernelProxy.noProxy}
+                      disabled={props.loading || props.saving}
+                      placeholder="127.0.0.1,localhost,::1"
+                      onBlur={() => saveKernelProxy()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                      onChange={(event) => setKernelProxyDraft({ noProxy: event.target.value })}
+                    />
+                  </label>
+                  <label className="settings-list-row">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.nodeUseEnvProxy")}</strong>
+                      <small>{t("settings.nodeUseEnvProxyCopy")}</small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={kernelProxy.nodeUseEnvProxy}
+                      disabled={props.loading || props.saving}
+                      onChange={(event) => saveKernelProxy({ nodeUseEnvProxy: event.target.checked })}
+                    />
+                  </label>
+                  <div className="settings-list-row">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.effectiveProxy")}</strong>
+                      <small>{effectiveProxyDescription(kernelProxy, t)}</small>
+                    </span>
+                    <code>{effectiveProxyValue(kernelProxy, t)}</code>
+                  </div>
                 </div>
               </section>
             </div>
@@ -455,53 +945,67 @@ export function SettingsDialog(props: {
 
           {activeSection === "diagnostics" ? (
             <div className="settings-page-stack">
-              <section className="settings-panel">
-                <label className="settings-switch-row settings-switch-card">
-                  <span className="settings-section-copy">
-                    <span className="settings-section-title">{t("settings.httpsCapture")}</span>
-                    <span className="settings-section-note">
-                      {t("settings.httpsCaptureCopy")}
+              <section className="settings-list-section">
+                <div className="settings-list-section-heading">
+                  <h2>{t("settings.httpsCapture")}</h2>
+                </div>
+                <div className="settings-list">
+                  <label className="settings-list-row">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.httpsCapture")}</strong>
+                      <small>{t("settings.httpsCaptureCopy")}</small>
                     </span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={providerHttpCaptureEnabled}
-                    disabled={props.loading || props.saving}
-                    onChange={(event) => setCaptureEnabled(event.target.checked)}
-                  />
-                </label>
-                <div className="settings-capture-grid">
-                  <span>{t("settings.proxy")}</span>
-                  <code>{capture?.proxyUrl || "http://127.0.0.1:9080"}</code>
-                  <span>{t("settings.ca")}</span>
-                  <code>{capture?.caCertPath || t("common.unknown")}</code>
-                  <span>{t("settings.service")}</span>
-                  <strong>{capture?.running ? t("settings.running") : t("settings.notRunning")}</strong>
-                  <span>{t("settings.injection")}</span>
-                  <strong>{capture?.injected ? t("settings.injected") : providerHttpCaptureEnabled ? t("settings.kernelNotInjected") : t("common.disabled")}</strong>
-                  <span>{t("settings.status")}</span>
-                  <strong>{capture?.status || "disabled"}</strong>
+                    <input
+                      type="checkbox"
+                      checked={providerHttpCaptureEnabled}
+                      disabled={props.loading || props.saving}
+                      onChange={(event) => setCaptureEnabled(event.target.checked)}
+                    />
+                  </label>
+                  <div className="settings-list-row">
+                    <span className="settings-list-row-main"><strong>{t("settings.proxy")}</strong></span>
+                    <code>{capture?.proxyUrl || "http://127.0.0.1:9080"}</code>
+                  </div>
+                  <div className="settings-list-row">
+                    <span className="settings-list-row-main"><strong>{t("settings.upstreamProxy")}</strong></span>
+                    <code>{capture?.upstreamProxy || t("settings.proxySourceNone")}</code>
+                  </div>
+                  <div className="settings-list-row">
+                    <span className="settings-list-row-main"><strong>{t("settings.ca")}</strong></span>
+                    <code>{capture?.caCertPath || t("common.unknown")}</code>
+                  </div>
+                  <div className="settings-list-row">
+                    <span className="settings-list-row-main"><strong>{t("settings.service")}</strong></span>
+                    <strong>{capture?.running ? t("settings.running") : t("settings.notRunning")}</strong>
+                  </div>
+                  <div className="settings-list-row">
+                    <span className="settings-list-row-main"><strong>{t("settings.injection")}</strong></span>
+                    <strong>{capture?.injected ? t("settings.injected") : providerHttpCaptureEnabled ? t("settings.kernelNotInjected") : t("common.disabled")}</strong>
+                  </div>
+                  <div className="settings-list-row">
+                    <span className="settings-list-row-main"><strong>{t("settings.status")}</strong></span>
+                    <strong>{capture?.status || "disabled"}</strong>
+                  </div>
                 </div>
                 {capture?.warning ? <p className="settings-warning">{capture.warning}</p> : null}
               </section>
 
-              <section className="settings-panel">
-                <div className="settings-panel-heading">
-                  <div>
-                    <h2>{t("settings.rawContext")}</h2>
-                    <p>{t("settings.rawContextCopy")}</p>
-                  </div>
+              <section className="settings-list-section">
+                <div className="settings-list-section-heading">
+                  <h2>{t("settings.rawContext")}</h2>
                   <span className="settings-status-pill muted">{props.contextRecords?.length ?? 0}</span>
                 </div>
-                <div className="panel-list settings-context-list">
+                <div className="settings-list settings-context-list">
                   {props.contextRecords?.length ? (
                     props.contextRecords.map((record, index) => (
-                      <div className="panel-list-row" key={String(record.runId || record.id || index)}>
+                      <div className="settings-list-row context" key={String(record.runId || record.id || index)}>
                         {renderContextRecordCard(record)}
                       </div>
                     ))
                   ) : (
-                    <div className="panel-empty">{t("settings.noContextRecords")}</div>
+                    <div className="settings-list-row muted">
+                      <span className="settings-list-row-main"><small>{t("settings.noContextRecords")}</small></span>
+                    </div>
                   )}
                 </div>
               </section>
@@ -510,69 +1014,55 @@ export function SettingsDialog(props: {
 
           {activeSection === "appearance" ? (
             <div className="settings-page-stack">
-              <section className="settings-panel">
-                <div className="settings-panel-heading">
-                  <div>
-                    <h2>{t("settings.language")}</h2>
-                    <p>{t("settings.languageCopy")}</p>
-                  </div>
+              <section className="settings-list-section">
+                <div className="settings-list-section-heading">
+                  <h2>{t("settings.language")}</h2>
                 </div>
-                <div className="settings-choice-grid compact">
+                <div className="settings-list">
                   {LANGUAGE_OPTIONS.map((option) => (
                     <button
                       key={option.id}
-                      className={preference === option.id ? "settings-choice-card active" : "settings-choice-card"}
+                      className={preference === option.id ? "settings-list-row choice active" : "settings-list-row choice"}
                       type="button"
                       onClick={() => setLanguagePreference(option.id)}
                     >
-                      <Globe2 size={17} />
-                      <strong>{t(option.labelKey)}</strong>
+                      <span className="settings-list-icon"><Globe2 size={17} /></span>
+                      <span className="settings-list-row-main">
+                        <strong>{t(option.labelKey)}</strong>
+                        <small>{t("settings.languageCopy")}</small>
+                      </span>
+                      <span className="settings-list-row-control">
+                        {preference === option.id ? <Check size={16} /> : null}
+                      </span>
                     </button>
                   ))}
                 </div>
               </section>
-
-              <section className="settings-panel">
-                <div className="settings-empty-state">
-                  <Palette size={22} />
-                  <strong>{t("settings.appearanceEmptyTitle")}</strong>
-                  <span>{t("settings.appearanceEmptyCopy")}</span>
-                </div>
-              </section>
             </div>
-          ) : null}
-
-          {activeSection === "developer" ? (
-            <section className="settings-panel">
-              <div className="settings-panel-heading">
-                <div>
-                  <h2>{t("settings.installPaths")}</h2>
-                  <p>{t("settings.installPathsCopy")}</p>
-                </div>
-              </div>
-              <div className="settings-install-list">
-                {kernels.filter((option) => option.id !== "auto").map((option) => (
-                  <div className="settings-install-card" key={option.id}>
-                    <strong>{option.label}</strong>
-                    <span>{option.available ? t("common.available") : option.reason || t("common.unavailable")}</span>
-                    {option.binaryPath ? <code>{option.binaryPath}</code> : null}
-                    {(option.installActions ?? []).map((action) => (
-                      <div className="settings-install-action" key={action.id}>
-                        <span>{action.title}</span>
-                        {action.command?.length ? <code>{action.command.join(" ")}</code> : null}
-                        {action.description ? <small>{action.description}</small> : null}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </section>
           ) : null}
 
           {props.error ? <p className="settings-warning">{props.error}</p> : null}
           {props.saving ? <p className="settings-restart-note">{t("common.saving")}</p> : null}
         </div>
       </main>
+      {providerDeleteTarget ? (
+        <Dialog open onOpenChange={(open) => (!open ? setProviderDeleteTargetId("") : undefined)}>
+          <DialogContent className="settings-confirm-dialog" aria-label={t("settings.removeProvider")}>
+            <DialogTitle>{t("settings.removeProvider")}</DialogTitle>
+            <p className="settings-confirm-copy">
+              {t("settings.removeProviderConfirm", { name: providerDeleteTarget.name })}
+            </p>
+            <div className="modal-actions">
+              <button className="ghost-button" type="button" onClick={() => setProviderDeleteTargetId("")}>
+                {t("common.cancel")}
+              </button>
+              <button className="danger-button" type="button" onClick={confirmDeleteProvider}>
+                {t("common.delete")}
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   );
 }
@@ -592,7 +1082,6 @@ type ProviderFormState = {
 const PROVIDER_PROTOCOL_OPTIONS = [
   { id: "openai-compatible", label: "OpenAI" },
   { id: "anthropic-compatible", label: "Anthropic" },
-  { id: "custom-gateway", label: "Gateway" },
 ];
 
 function emptyProviderForm(): ProviderFormState {
@@ -625,22 +1114,222 @@ function providerProfileFromForm(form: ProviderFormState): ProviderProfile | und
   const id = slug(form.id || form.name);
   const name = form.name.trim();
   if (!id || !name) return undefined;
+  const nativeAuth = isNativeAuthProtocol(form.protocol);
+  const keyInput = form.apiKeyEnv.trim();
+  const keyIsEnv = isEnvironmentVariableName(keyInput);
   return {
     id,
     name,
     custom: true,
+    enabled: true,
+    origin: "user",
     protocol: form.protocol,
     description: form.description.trim() || undefined,
-    openaiBaseUrl: form.openaiBaseUrl.trim() || undefined,
-    anthropicBaseUrl: form.anthropicBaseUrl.trim() || undefined,
-    geminiBaseUrl: form.geminiBaseUrl.trim() || undefined,
-    apiKeyEnv: form.apiKeyEnv.trim() || undefined,
+    openaiBaseUrl: nativeAuth ? undefined : form.openaiBaseUrl.trim() || undefined,
+    anthropicBaseUrl: nativeAuth ? undefined : form.anthropicBaseUrl.trim() || undefined,
+    geminiBaseUrl: nativeAuth ? undefined : form.geminiBaseUrl.trim() || undefined,
+    apiKey: nativeAuth || keyIsEnv ? undefined : keyInput || undefined,
+    apiKeyEnv: nativeAuth || !keyIsEnv ? undefined : keyInput || undefined,
+    credentialKind: nativeAuth ? "native-login" : keyInput ? (keyIsEnv ? "env-key" : "api-key") : "none",
     models: form.models
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean)
       .map((id) => ({ id, label: id })),
   };
+}
+
+function providerFormFromProfile(provider: ProviderProfile): ProviderFormState {
+  return {
+    id: provider.id,
+    name: provider.name,
+    protocol: editableProviderProtocol(provider),
+    description: provider.description || "",
+    openaiBaseUrl: provider.openaiBaseUrl || "",
+    anthropicBaseUrl: provider.anthropicBaseUrl || "",
+    geminiBaseUrl: provider.geminiBaseUrl || "",
+    apiKeyEnv: provider.apiKey || provider.apiKeyEnv || "",
+    models: (provider.models ?? []).map((model) => model.id).join(", "),
+  };
+}
+
+function primaryBaseUrl(form: ProviderFormState): string {
+  if (form.protocol === "anthropic-compatible") return form.anthropicBaseUrl;
+  return form.openaiBaseUrl;
+}
+
+function isNativeAuthProtocol(value: string | undefined): boolean {
+  return value === "native-oauth";
+}
+
+function editableProviderProtocol(provider: ProviderProfile): string {
+  if (provider.protocol === "native-oauth") return "native-oauth";
+  if (provider.protocol === "anthropic-compatible") return "anthropic-compatible";
+  if (provider.protocol === "openai-compatible") return "openai-compatible";
+  if (provider.anthropicBaseUrl && !provider.openaiBaseUrl) return "anthropic-compatible";
+  return "openai-compatible";
+}
+
+function sortAvailableKernelsFirst(options: KernelOption[]): KernelOption[] {
+  return options
+    .map((option, index) => ({ option, index }))
+    .sort((left, right) => {
+      if (left.option.available !== right.option.available) {
+        return left.option.available ? -1 : 1;
+      }
+      return left.index - right.index;
+    })
+    .map(({ option }) => option);
+}
+
+function sortEnabledProvidersFirst(
+  providers: ProviderProfile[],
+  bindings: Record<string, string>,
+): ProviderProfile[] {
+  return providers
+    .map((provider, index) => ({
+      provider,
+      index,
+      enabled: isProviderEnabled(provider, bindings),
+    }))
+    .sort((left, right) => {
+      if (left.enabled !== right.enabled) {
+        return left.enabled ? -1 : 1;
+      }
+      return left.index - right.index;
+    })
+    .map(({ provider }) => provider);
+}
+
+function isProviderEnabled(provider: ProviderProfile, bindings: Record<string, string>): boolean {
+  if (typeof provider.enabled === "boolean") {
+    return provider.enabled;
+  }
+  return Boolean(provider.authConfigured || Object.values(bindings).includes(provider.id));
+}
+
+function emptyKernelProxySettings(): KernelProxySettings {
+  return {
+    enabled: false,
+    injected: false,
+    proxyUrl: "http://127.0.0.1:7890",
+    noProxy: "127.0.0.1,localhost,::1",
+    nodeUseEnvProxy: false,
+    environmentProxyUrl: "",
+    source: "none",
+  };
+}
+
+function normalizeKernelProxySettings(input: Partial<KernelProxySettings> | undefined): KernelProxySettings {
+  const defaults = emptyKernelProxySettings();
+  return {
+    ...defaults,
+    ...input,
+    enabled: Boolean(input?.enabled),
+    proxyUrl: input?.proxyUrl?.trim() || defaults.proxyUrl,
+    noProxy: input?.noProxy?.trim() || defaults.noProxy,
+    nodeUseEnvProxy: Boolean(input?.nodeUseEnvProxy),
+  };
+}
+
+function effectiveProxyValue(proxy: KernelProxySettings, t: TranslationFn): string {
+  if (proxy.enabled) return proxy.proxyUrl || t("settings.proxySourceNone");
+  return proxy.environmentProxyUrl || t("settings.proxySourceNone");
+}
+
+function effectiveProxyDescription(proxy: KernelProxySettings, t: TranslationFn): string {
+  if (proxy.enabled) return t("settings.effectiveProxyOpenGrove");
+  if (proxy.environmentProxyUrl) return t("settings.effectiveProxyEnvironment");
+  return t("settings.effectiveProxyNone");
+}
+
+function sanitizeProviderBindings(bindings: Record<string, string>, providers: ProviderProfile[]): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const [kernelId, providerId] of Object.entries(bindings)) {
+    const provider = providers.find((candidate) => candidate.id === providerId);
+    if (provider && providerSupportsKernel(provider, kernelId)) {
+      next[kernelId] = providerId;
+    }
+  }
+  return next;
+}
+
+function providerSupportsKernel(provider: ProviderProfile, kernelId: string): boolean {
+  return Boolean(providerProtocolForKernel(provider, kernelId));
+}
+
+function providerProtocolForKernel(provider: ProviderProfile, kernelId: string): "native-oauth" | "openai-compatible" | "anthropic-compatible" | "gemini-compatible" | undefined {
+  if (provider.sourceKernel === kernelId && provider.authConfigured) {
+    if (provider.protocol === "native-oauth") return "native-oauth";
+    if (provider.protocol === "anthropic-compatible") return "anthropic-compatible";
+    if (provider.protocol === "gemini-compatible") return "gemini-compatible";
+    return "openai-compatible";
+  }
+  if (kernelId === "claude-code") {
+    return provider.anthropicBaseUrl && providerCredentialIsSupported(provider, ["api-key", "env-key", "aws", "google-adc"])
+      ? "anthropic-compatible"
+      : undefined;
+  }
+  if (kernelId === "codex") {
+    if (provider.protocol === "native-oauth") {
+      return !provider.sourceKernel || provider.sourceKernel === "codex" ? "native-oauth" : undefined;
+    }
+    return provider.openaiBaseUrl && providerCredentialIsSupported(provider, ["api-key", "env-key"]) ? "openai-compatible" : undefined;
+  }
+  if (kernelId === "pi") {
+    if (provider.protocol === "native-oauth") return undefined;
+    if (provider.openaiBaseUrl && providerCredentialIsSupported(provider, ["api-key", "env-key"])) return "openai-compatible";
+    if (provider.anthropicBaseUrl && providerCredentialIsSupported(provider, ["api-key", "env-key"])) return "anthropic-compatible";
+    return provider.geminiBaseUrl && providerCredentialIsSupported(provider, ["api-key", "env-key"]) ? "gemini-compatible" : undefined;
+  }
+  if (kernelId === "hermes") {
+    if (!providerCredentialIsSupported(provider, ["api-key", "env-key"])) return undefined;
+    if (provider.protocol === "anthropic-compatible" && provider.anthropicBaseUrl) return "anthropic-compatible";
+    if (provider.openaiBaseUrl) return "openai-compatible";
+    return provider.anthropicBaseUrl ? "anthropic-compatible" : undefined;
+  }
+  if (kernelId === "gemini-cli") {
+    return provider.geminiBaseUrl && providerCredentialIsSupported(provider, ["api-key", "env-key"]) ? "gemini-compatible" : undefined;
+  }
+  return provider.openaiBaseUrl && providerCredentialIsSupported(provider, ["api-key", "env-key"]) ? "openai-compatible" : undefined;
+}
+
+function providerCredentialIsSupported(provider: ProviderProfile, allowed: string[]): boolean {
+  return allowed.includes(providerCredentialKind(provider));
+}
+
+function providerCredentialKind(provider: ProviderProfile): string {
+  if (provider.credentialKind) return provider.credentialKind;
+  if (provider.protocol === "native-oauth") return "native-login";
+  if (provider.apiKey) return "api-key";
+  if (provider.apiKeyEnv) return "env-key";
+  const text = `${provider.id} ${provider.name}`.toLowerCase();
+  if (text.includes("bedrock")) return "aws";
+  if (text.includes("vertex")) return "google-adc";
+  return provider.authConfigured && provider.sourceKernel ? "kernel-native" : "none";
+}
+
+function providerBindingLabel(provider: ProviderProfile, kernelId: string, t: TranslationFn): string {
+  const protocol = providerProtocolForKernel(provider, kernelId);
+  const protocolLabel = protocol === "native-oauth"
+    ? t("settings.accountLogin")
+    : protocol === "anthropic-compatible"
+      ? "Anthropic"
+      : protocol === "gemini-compatible"
+        ? "Gemini"
+      : "OpenAI";
+  return `${provider.name} · ${protocolLabel}`;
+}
+
+function providerMetaLabel(provider: ProviderProfile, t: TranslationFn): string {
+  if (provider.origin === "discovered" || provider.sourceKernel) return t("settings.nativeProvider");
+  if (isNativeAuthProtocol(provider.protocol)) return t("settings.accountLogin");
+  if (provider.apiKey) return t("settings.apiKeyConfigured");
+  return provider.apiKeyEnv || provider.protocol;
+}
+
+function formatModelCount(count: number, t: TranslationFn): string {
+  return t("settings.modelsCount", { count });
 }
 
 function slug(value: string): string {
@@ -651,9 +1340,15 @@ function slug(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function isEnvironmentVariableName(value: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+}
+
+type InlineSelectOption = { id: string; label: string; icon?: ReactNode };
+
 function InlineSelect(props: {
   value: string;
-  options: Array<{ id: string; label: string }>;
+  options: InlineSelectOption[];
   disabled?: boolean;
   onChange(value: string): void;
 }) {
@@ -679,7 +1374,10 @@ function InlineSelect(props: {
         disabled={props.disabled}
         onClick={() => setOpen((value) => !value)}
       >
-        <span>{selected?.label}</span>
+        <span className="settings-inline-select-value">
+          {selected?.icon ? <span className="settings-inline-select-icon">{selected.icon}</span> : null}
+          <span>{selected?.label}</span>
+        </span>
         <ChevronDown size={14} />
       </button>
       {open ? (
@@ -693,22 +1391,15 @@ function InlineSelect(props: {
                 setOpen(false);
               }}
             >
-              <span>{option.label}</span>
-              {option.id === props.value ? <Check size={14} /> : null}
+              <span className="settings-inline-select-value">
+                {option.icon ? <span className="settings-inline-select-icon">{option.icon}</span> : null}
+                <span>{option.label}</span>
+              </span>
             </button>
           ))}
         </span>
       ) : null}
     </span>
-  );
-}
-
-function InfoRow(props: { title: string; value: string; mono?: boolean }) {
-  return (
-    <div className="settings-info-row">
-      <span>{props.title}</span>
-      {props.mono ? <code>{props.value}</code> : <strong>{props.value}</strong>}
-    </div>
   );
 }
 
@@ -725,49 +1416,11 @@ function buildSourceEnabledState(settings: BridgeSettings): Record<string, Recor
 
 function isSourceEnabled(
   kernelId: string,
-  source: KernelKnowledgeSource,
+  source: NonNullable<KernelOption["sources"]>[number],
   state: Record<string, Record<string, boolean>>,
 ): boolean {
   const explicit = state[kernelId]?.[source.id];
   return typeof explicit === "boolean" ? explicit : source.enabled ?? source.enabledByDefault ?? true;
-}
-
-function formatSourceMeta(source: KernelKnowledgeSource, t: TranslationFn): string {
-  const parts = [formatSourceKind(source.kind, t), formatSourceScope(source.scope, t), source.syncMode || "index"].filter(Boolean);
-  return parts.join(" · ");
-}
-
-function formatSourceKind(value: string, t: TranslationFn): string {
-  const keys: Record<string, Parameters<TranslationFn>[0]> = {
-    skills: "source.kind.skills",
-    commands: "source.kind.commands",
-    agents: "source.kind.agents",
-    memory: "source.kind.memory",
-    project_instructions: "source.kind.project_instructions",
-    settings: "source.kind.settings",
-    config: "source.kind.config",
-    auth: "source.kind.auth",
-    sessions: "source.kind.sessions",
-    logs: "source.kind.logs",
-    plugins: "source.kind.plugins",
-    toolsets: "source.kind.toolsets",
-    artifacts: "source.kind.artifacts",
-    vault: "source.kind.vault",
-  };
-  return keys[value] ? t(keys[value]!) : value;
-}
-
-function formatSourceScope(value: string, t: TranslationFn): string {
-  const keys: Record<string, Parameters<TranslationFn>[0]> = {
-    user: "source.scope.user",
-    project: "source.scope.project",
-    workspace: "source.scope.workspace",
-    system: "source.scope.system",
-    managed: "source.scope.managed",
-    external: "source.scope.external",
-  };
-  if (value === "app") return APP_PRODUCT_NAME;
-  return keys[value] ? t(keys[value]!) : value;
 }
 
 function sectionTitle(value: SettingsSectionId, t: TranslationFn): string {
@@ -778,8 +1431,8 @@ function sectionTitle(value: SettingsSectionId, t: TranslationFn): string {
 function sectionDescription(value: SettingsSectionId, t: TranslationFn): string {
   if (value === "kernels") return t("settings.kernelsDescription");
   if (value === "providers") return t("settings.providersDescription");
+  if (value === "network") return t("settings.networkDescription");
   if (value === "diagnostics") return t("settings.diagnosticsDescription");
-  if (value === "developer") return t("settings.developerDescription");
   if (value === "appearance") return t("settings.appearanceDescription");
   return t("app.settings");
 }

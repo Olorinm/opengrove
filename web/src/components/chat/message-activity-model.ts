@@ -276,9 +276,10 @@ function countEditedFiles(items: ActivityItem[]): number {
 }
 
 export function activityItemTitle(item: ActivityItem): string {
+  const status = activityItemStatus(item);
   if (item.type === "skill") {
     const name = item.part.skillName || item.part.title || item.part.skillId || "skill";
-    return `${activityItemStatus(item) === "running" ? "加载" : "使用"} /${name.replace(/^\//, "")}`;
+    return `${status === "running" ? "正在加载" : "已使用"} /${name.replace(/^\//, "")}`;
   }
   if (item.type === "approval") {
     return item.part.approvalStatus === "pending"
@@ -289,14 +290,25 @@ export function activityItemTitle(item: ActivityItem): string {
   const tool = item.call || item.result;
   const kind = activityItemKind(item);
   const target = activityTargetLabel(item);
-  if (kind === "search") return target ? `搜索 ${target}` : `搜索文件 · ${toolPreview(tool)}`;
-  if (kind === "read") return target ? `读取 ${target}` : `读取文件 · ${filePreview(item)}`;
-  if (kind === "command") return target ? `运行 ${target}` : `运行命令 · ${toolPreview(tool)}`;
-  if (kind === "edit") return target ? `编辑 ${target}` : `编辑文件 · ${filePreview(item)}`;
-  if (kind === "browser") return target ? `浏览 ${target}` : `浏览网页 · ${toolPreview(tool)}`;
-  if (kind === "memory") return `处理记忆 · ${toolPreview(tool)}`;
-  if (kind === "artifact") return `产出成果 · ${toolPreview(tool)}`;
+  if (kind === "search") return statusAwareTitle(status, "正在搜索", "已搜索", target || `文件 · ${toolPreview(tool)}`);
+  if (kind === "read") return statusAwareTitle(status, "正在读取", "已读取", target || `文件 · ${filePreview(item)}`);
+  if (kind === "command") return statusAwareTitle(status, "正在运行", "已运行", target || `命令 · ${toolPreview(tool)}`);
+  if (kind === "edit") return statusAwareTitle(status, "正在编辑", "已编辑", target || `文件 · ${filePreview(item)}`);
+  if (kind === "browser") return statusAwareTitle(status, "正在浏览", "已浏览", target || `网页 · ${toolPreview(tool)}`);
+  if (kind === "memory") return statusAwareTitle(status, "正在处理", "已处理", `记忆 · ${toolPreview(tool)}`);
+  if (kind === "artifact") return statusAwareTitle(status, "正在生成", "已生成", `结果 · ${toolPreview(tool)}`);
   return tool?.title || tool?.toolId || "工具调用";
+}
+
+function statusAwareTitle(status: string, runningPrefix: string, completedPrefix: string, label: string): string {
+  const normalized = status.toLowerCase();
+  if (normalized === "running") {
+    return `${runningPrefix} ${label}`;
+  }
+  if (["blocked", "incomplete", "rejected", "failed", "error"].includes(normalized)) {
+    return `未完成 ${label}`;
+  }
+  return `${completedPrefix} ${label}`;
 }
 
 export function activityItemDetail(item: ActivityItem): string {
@@ -461,12 +473,10 @@ function commandTargetLabel(tool: ToolPart): string {
   const command = commandText(tool);
   const tokens = shellWords(command);
   if (tokens[0] === "npm" && tokens[1] === "run" && tokens[2]) {
-    if (tokens[2] === "build:web") return "前端构建";
-    if (tokens[2] === "typecheck:web") return "前端类型检查";
-    return tokens[2];
+    return summarize(command, 44);
   }
   if (tokens[0] === "npm" && tokens[1]) {
-    return `npm ${tokens[1]}`;
+    return summarize(command, 44);
   }
   return summarize(command || structuredTargetLabel(tool) || tool.title || "", 44);
 }

@@ -10,7 +10,6 @@ import { normalizeComputerSnapshot } from "../environment/computer-adapter.js";
 import type { BrowserPageAttachmentSnapshot, BrowserPageSnapshot } from "../tools/browser.js";
 import type { ComputerStateSnapshot } from "../tools/computer.js";
 import {
-  BRIDGE_MODEL_IDS,
   DEFAULT_BRIDGE_MODEL_ID,
   type BridgeAskPayload,
   type BridgeModelId,
@@ -48,8 +47,22 @@ export function normalizeAskPayload(input: unknown): BridgeAskPayload {
     threadId: normalizeThreadId(object.threadId, normalizedSnapshot),
     allowMemory: booleanValue(object.allowMemory),
     saveCandidateNote: booleanValue(object.saveCandidateNote),
+    requestedSkill: normalizeRequestedSkill(object.requestedSkill),
     snapshot: normalizedSnapshot,
     computerSnapshot: normalizedComputerSnapshot,
+  };
+}
+
+function normalizeRequestedSkill(input: unknown): BridgeAskPayload["requestedSkill"] {
+  const object = record(input);
+  const name = stringValue(object.name).trim();
+  if (!name) {
+    return undefined;
+  }
+  const args = stringValue(object.args).trim();
+  return {
+    name,
+    args: args || undefined,
   };
 }
 
@@ -306,9 +319,8 @@ function normalizeThreadId(value: unknown, snapshot: BrowserPageSnapshot): strin
 }
 
 function normalizeBridgeModelId(value: unknown): BridgeModelId {
-  return typeof value === "string" && (BRIDGE_MODEL_IDS as readonly string[]).includes(value)
-    ? (value as BridgeModelId)
-    : DEFAULT_BRIDGE_MODEL_ID;
+  const model = stringValue(value).trim();
+  return model || DEFAULT_BRIDGE_MODEL_ID;
 }
 
 function artifactAssetArray(value: unknown) {

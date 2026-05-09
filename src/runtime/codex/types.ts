@@ -18,15 +18,27 @@ export interface CodexRuntimeOptions {
   cwd?: string;
   statePath?: string;
   configuredModel?: string;
+  configuredModelProvider?: string;
+  runtimeBindingFingerprint?: string;
+  providerConfig?: CodexModelProviderRuntimeConfig;
   approvalPolicy?: CodexApprovalPolicy;
   sandbox?: CodexSandboxMode;
   approvalsReviewer?: CodexApprovalsReviewer;
   serviceTier?: string;
+  allowServiceTier?: boolean;
   requestTimeoutMs?: number;
   env?: NodeJS.ProcessEnv;
   rpcCapture?: CodexRpcCaptureOptions;
   providerHttpCapture?: ProviderHttpCaptureOptions;
 }
+
+export type CodexModelProviderRuntimeConfig = {
+  providerKey: string;
+  name: string;
+  baseUrl: string;
+  envKey: string;
+  wireApi: "chat" | "responses";
+};
 
 export type RpcRequest = {
   id?: number | string;
@@ -69,7 +81,10 @@ export type CodexDynamicToolCallResponse = {
 export type CodexThreadBinding = {
   threadId: string;
   dynamicToolsFingerprint: string;
+  runtimeBindingFingerprint?: string;
   model?: string;
+  modelProvider?: string;
+  cwd?: string;
   createdAt: string;
   updatedAt: string;
 };

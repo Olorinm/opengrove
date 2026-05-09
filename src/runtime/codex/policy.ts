@@ -13,15 +13,22 @@ import type {
 import { DEFAULT_CODEX_MODEL } from "./types.js";
 
 export function normalizeCodexModelId(requestedModelId: string | undefined, configuredModel: string | undefined): string {
+  const requested = requestedModelId?.trim();
   const configured = configuredModel?.trim();
+  if (configured && !isCodexModelId(configured)) {
+    return configured;
+  }
+  if (requested && (isCodexModelId(requested) || requested === configured)) {
+    return requested;
+  }
   if (configured) {
     return configured;
   }
-  const requested = requestedModelId?.trim();
-  if (requested && /^(gpt|o)\b/i.test(requested)) {
-    return requested;
-  }
   return DEFAULT_CODEX_MODEL;
+}
+
+function isCodexModelId(value: string): boolean {
+  return /^(?:gpt(?:[-_]|$)|o(?:\d|[-_]|$))/i.test(value);
 }
 
 export function resolveCodexSandboxMode(

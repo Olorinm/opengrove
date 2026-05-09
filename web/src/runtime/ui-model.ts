@@ -39,6 +39,15 @@ export function parseSlashSkillQuery(value: string): { active: boolean; keyword:
   return { active: true, keyword: afterSlash.toLowerCase() };
 }
 
+export interface KernelSlashCommand {
+  id: string;
+  name: string;
+  title: string;
+  description: string;
+  source: "kernel-native";
+  kernelId?: string;
+}
+
 export interface ComposerSkillInvocation {
   name: string;
   skill: SkillRecord;
@@ -109,6 +118,96 @@ export function getMatchingSkills(skills: SkillRecord[], keyword: string): Skill
     .map((entry) => entry.skill);
 }
 
+export function getKernelSlashCommands(kernelId?: string, workingState?: WorkingStateRecord): KernelSlashCommand[] {
+  const normalizedKernel = String(kernelId || "").trim() || "kernel";
+  const common = [
+    command(normalizedKernel, "help", "帮助", "显示当前内核可用的命令和用法。"),
+    command(normalizedKernel, "status", "状态", "显示会话、上下文、额度或运行状态。"),
+  ];
+
+  if (normalizedKernel === "codex") {
+    return [
+      command(normalizedKernel, "model", "模型", "切换或查看当前模型。"),
+      command(normalizedKernel, "branch", "派生", "为此对话创建分支至本地或全新工作树。"),
+      command(normalizedKernel, "status", "状态", "显示对话 ID、上下文使用情况及额度限制。"),
+      command(normalizedKernel, "plan", "计划模式", "开启计划模式。"),
+      command(normalizedKernel, "memory", "记忆", "生成或查看当前对话记忆。"),
+      command(normalizedKernel, "compact", "压缩", "压缩当前上下文。"),
+      command(normalizedKernel, "help", "帮助", "显示 Codex 命令。"),
+    ];
+  }
+
+  if (normalizedKernel === "claude-code") {
+    const discovered = readClaudeSlashCommands(workingState);
+    const fallback = [
+      command(normalizedKernel, "model", "模型", "切换或查看当前 Claude 模型。"),
+      command(normalizedKernel, "status", "状态", "显示 Claude Code 会话状态。"),
+      command(normalizedKernel, "permissions", "权限", "查看或调整 Claude Code 权限模式。"),
+      command(normalizedKernel, "compact", "压缩", "压缩当前 Claude Code 上下文。"),
+      command(normalizedKernel, "clear", "清空", "开始一个新的 Claude Code 对话上下文。"),
+      command(normalizedKernel, "agents", "子代理", "查看或管理 Claude Code 子代理。"),
+      command(normalizedKernel, "help", "帮助", "显示 Claude Code 命令。"),
+    ];
+    return discovered.length ? mergeDiscoveredSlashCommands(normalizedKernel, discovered, fallback) : fallback;
+  }
+
+  return [
+    command(normalizedKernel, "model", "模型", "切换或查看当前模型。"),
+    ...common,
+    command(normalizedKernel, "compact", "压缩", "压缩当前上下文。"),
+    command(normalizedKernel, "clear", "清空", "清空当前会话上下文。"),
+  ];
+}
+
+function readClaudeSlashCommands(workingState?: WorkingStateRecord): string[] {
+  const value = workingState?.toolSchemaCache?.["claude.slashCommands"];
+  const parsed = typeof value === "string" ? parseJsonArray(value) : value;
+  return Array.isArray(parsed)
+    ? parsed.filter((item): item is string => typeof item === "string" && item.trim().startsWith("/"))
+    : [];
+}
+
+function parseJsonArray(value: string): unknown[] {
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function mergeDiscoveredSlashCommands(
+  kernelId: string,
+  discovered: string[],
+  fallback: KernelSlashCommand[],
+): KernelSlashCommand[] {
+  const fallbackByName = new Map(fallback.map((item) => [item.name, item]));
+  const seen = new Set<string>();
+  const output: KernelSlashCommand[] = [];
+  for (const raw of discovered) {
+    const name = raw.trim().replace(/^\/+/, "");
+    if (!name || seen.has(name)) {
+      continue;
+    }
+    seen.add(name);
+    output.push(fallbackByName.get(name) ?? command(kernelId, name, name, "Claude Code 原生命令。"));
+  }
+  return output;
+}
+
+export function getMatchingSlashCommands(commands: KernelSlashCommand[], keyword: string): KernelSlashCommand[] {
+  return (Array.isArray(commands) ? commands : [])
+    .map((item, index) => ({ item, index, score: scoreSlashCommandMatch(item, keyword) }))
+    .filter((entry) => entry.score < Number.POSITIVE_INFINITY)
+    .sort((left, right) => {
+      if (left.score !== right.score) {
+        return left.score - right.score;
+      }
+      return left.index - right.index;
+    })
+    .map((entry) => entry.item);
+}
+
 export function pickCodexSkills(skills: SkillRecord[]): SkillRecord[] {
   const allSkills = Array.isArray(skills) ? skills : [];
   const codexSkills = allSkills.filter(isCodexSkill);
@@ -136,6 +235,33 @@ export function scoreSkillMatch(skill: SkillRecord, keyword: string): number {
   if (title.includes(keyword)) return 4;
   if (whenToUse.includes(keyword)) return 5;
   if (description.includes(keyword)) return 6;
+  return Number.POSITIVE_INFINITY;
+}
+
+function command(kernelId: string, name: string, title: string, description: string): KernelSlashCommand {
+  return {
+    id: `${kernelId}.${name}`,
+    name,
+    title,
+    description,
+    source: "kernel-native",
+    kernelId,
+  };
+}
+
+function scoreSlashCommandMatch(command: KernelSlashCommand, keyword: string): number {
+  if (!keyword) {
+    return 0;
+  }
+  const name = command.name.toLowerCase();
+  const title = command.title.toLowerCase();
+  const description = command.description.toLowerCase();
+  if (name === keyword) return 0;
+  if (name.startsWith(keyword)) return 1;
+  if (title.startsWith(keyword)) return 2;
+  if (name.includes(keyword)) return 3;
+  if (title.includes(keyword)) return 4;
+  if (description.includes(keyword)) return 5;
   return Number.POSITIVE_INFINITY;
 }
 

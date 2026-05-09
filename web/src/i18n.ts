@@ -17,6 +17,8 @@ export type TranslationKey =
   | "common.remove"
   | "common.rename"
   | "common.edit"
+  | "common.install"
+  | "common.installing"
   | "common.unknown"
   | "common.available"
   | "common.unavailable"
@@ -65,6 +67,8 @@ export type TranslationKey =
   | "layout.sidebar"
   | "layout.spaceNav"
   | "layout.resizeSidebar"
+  | "layout.collapseSidebar"
+  | "layout.expandSidebar"
   | "layout.localBridge"
   | "layout.openWorkbench"
   | "layout.closeWorkbench"
@@ -110,13 +114,15 @@ export type TranslationKey =
   | "composer.effortXHigh"
   | "settings.kernels"
   | "settings.providers"
+  | "settings.network"
   | "settings.diagnostics"
   | "settings.appearance"
-  | "settings.developer"
   | "settings.nav"
   | "settings.kicker"
   | "settings.kernelsDescription"
   | "settings.providersDescription"
+  | "settings.networkDescription"
+  | "settings.providerList"
   | "settings.providerBindings"
   | "settings.providerBindingsCopy"
   | "settings.nativeProvider"
@@ -125,28 +131,48 @@ export type TranslationKey =
   | "settings.builtinProvider"
   | "settings.addProvider"
   | "settings.addProviderCopy"
+  | "settings.newProvider"
+  | "settings.removeProvider"
+  | "settings.removeProviderConfirm"
+  | "settings.configured"
+  | "settings.missingKey"
+  | "settings.notChecked"
+  | "settings.accountLogin"
+  | "settings.baseConfig"
+  | "settings.apiBaseUrl"
+  | "settings.availableModels"
+  | "settings.addModel"
+  | "settings.removeModel"
+  | "settings.noProviderModels"
   | "settings.providerName"
   | "settings.providerId"
   | "settings.protocol"
   | "settings.openaiBaseUrl"
   | "settings.anthropicBaseUrl"
   | "settings.apiKeyEnv"
+  | "settings.apiKeyConfigured"
   | "settings.models"
+  | "settings.modelsCount"
   | "settings.description"
   | "settings.providerDescriptionPlaceholder"
   | "settings.saveProvider"
+  | "settings.providerSaving"
+  | "settings.providerSaved"
   | "settings.providerFormRequired"
+  | "settings.providerEnabled"
+  | "settings.providerDisabled"
   | "settings.diagnosticsDescription"
-  | "settings.developerDescription"
   | "settings.appearanceDescription"
   | "settings.workMode"
   | "settings.workModeCopy"
   | "settings.autoMode"
   | "settings.resolvedAs"
+  | "settings.expandKernel"
+  | "settings.collapseKernel"
   | "settings.detected"
   | "settings.notInstalled"
   | "settings.version"
-  | "settings.configDir"
+  | "settings.rootPath"
   | "settings.knowledgeSources"
   | "settings.knowledgeSourcesCopy"
   | "settings.adapter"
@@ -154,7 +180,23 @@ export type TranslationKey =
   | "settings.noSources"
   | "settings.httpsCapture"
   | "settings.httpsCaptureCopy"
+  | "settings.kernelProxy"
+  | "settings.kernelProxyCopy"
   | "settings.proxy"
+  | "settings.proxyUrl"
+  | "settings.upstreamProxy"
+  | "settings.noProxy"
+  | "settings.nodeUseEnvProxy"
+  | "settings.nodeUseEnvProxyCopy"
+  | "settings.proxySource"
+  | "settings.proxySourceOpenGrove"
+  | "settings.proxySourceEnvironment"
+  | "settings.proxySourceNone"
+  | "settings.environmentProxy"
+  | "settings.effectiveProxy"
+  | "settings.effectiveProxyOpenGrove"
+  | "settings.effectiveProxyEnvironment"
+  | "settings.effectiveProxyNone"
   | "settings.ca"
   | "settings.service"
   | "settings.injection"
@@ -169,8 +211,6 @@ export type TranslationKey =
   | "settings.noContextRecords"
   | "settings.appearanceEmptyTitle"
   | "settings.appearanceEmptyCopy"
-  | "settings.installPaths"
-  | "settings.installPathsCopy"
   | "settings.language"
   | "settings.languageCopy"
   | "settings.languageSystem"
@@ -238,6 +278,8 @@ const ZH_CN: Dictionary = {
   "common.remove": "移除",
   "common.rename": "重命名",
   "common.edit": "编辑",
+  "common.install": "安装",
+  "common.installing": "安装中...",
   "common.unknown": "未知",
   "common.available": "可用",
   "common.unavailable": "不可用",
@@ -286,6 +328,8 @@ const ZH_CN: Dictionary = {
   "layout.sidebar": "侧边栏",
   "layout.spaceNav": "当前空间导航",
   "layout.resizeSidebar": "调整侧边栏宽度",
+  "layout.collapseSidebar": "收起侧边栏",
+  "layout.expandSidebar": "展开侧边栏",
   "layout.localBridge": "本地 bridge",
   "layout.openWorkbench": "打开工作台",
   "layout.closeWorkbench": "收起工作台",
@@ -297,7 +341,7 @@ const ZH_CN: Dictionary = {
   "library.selectAiConversation": "选择资料库 AI 对话",
   "library.newAiConversation": "新建资料库 AI 对话",
   "thread.welcome": "今天想推进什么？",
-  "composer.placeholder": "问 Codex，或输入 / 调用能力",
+  "composer.placeholder": "问当前内核，或输入 / 查看命令和技能",
   "composer.skillPlaceholder": "补充这个技能要做什么...",
   "composer.addAttachment": "添加图片或文件",
   "composer.removeSkill": "移除技能 {name}",
@@ -331,13 +375,15 @@ const ZH_CN: Dictionary = {
   "composer.effortXHigh": "超高",
   "settings.kernels": "内核与知识",
   "settings.providers": "模型提供方",
+  "settings.network": "网络代理",
   "settings.diagnostics": "抓包与诊断",
   "settings.appearance": "外观",
-  "settings.developer": "开发者",
   "settings.nav": "设置分类",
   "settings.kicker": "Settings",
   "settings.kernelsDescription": "选择默认内核，并管理它们暴露给资料库的本机知识来源。",
   "settings.providersDescription": "管理可绑定到不同内核的模型网关和 coding plan。密钥只从环境变量读取，不写入设置文件。",
+  "settings.networkDescription": "配置内核和安装命令使用的代理；未开启时会继承终端环境代理。",
+  "settings.providerList": "供应商列表",
   "settings.providerBindings": "内核绑定",
   "settings.providerBindingsCopy": "给每个内核选择默认 provider。未选择时使用该内核自己的原生登录或配置。",
   "settings.nativeProvider": "使用原生配置",
@@ -346,28 +392,48 @@ const ZH_CN: Dictionary = {
   "settings.builtinProvider": "内置",
   "settings.addProvider": "添加 provider",
   "settings.addProviderCopy": "填写网关地址、模型名和密钥环境变量。这里不保存真实 key。",
+  "settings.newProvider": "新提供方",
+  "settings.removeProvider": "移除提供方",
+  "settings.removeProviderConfirm": "删除提供方「{name}」？相关内核绑定也会一起移除。",
+  "settings.configured": "已配置",
+  "settings.missingKey": "缺少 Key",
+  "settings.notChecked": "未检测",
+  "settings.accountLogin": "账号登录",
+  "settings.baseConfig": "基本配置",
+  "settings.apiBaseUrl": "API 地址",
+  "settings.availableModels": "可用模型",
+  "settings.addModel": "添加模型",
+  "settings.removeModel": "移除模型",
+  "settings.noProviderModels": "暂无模型。为自定义提供方填写逗号分隔的模型 ID。",
   "settings.providerName": "名称",
   "settings.providerId": "ID",
   "settings.protocol": "协议",
   "settings.openaiBaseUrl": "OpenAI 兼容地址",
   "settings.anthropicBaseUrl": "Anthropic 兼容地址",
-  "settings.apiKeyEnv": "密钥环境变量",
+  "settings.apiKeyEnv": "密钥或环境变量",
+  "settings.apiKeyConfigured": "已配置密钥",
   "settings.models": "模型",
+  "settings.modelsCount": "{count} 个模型",
   "settings.description": "说明",
   "settings.providerDescriptionPlaceholder": "用于某个 coding plan 或内部网关",
   "settings.saveProvider": "保存 provider",
+  "settings.providerSaving": "保存中...",
+  "settings.providerSaved": "已保存",
   "settings.providerFormRequired": "至少需要填写名称和 ID。",
+  "settings.providerEnabled": "已启用",
+  "settings.providerDisabled": "未启用",
   "settings.diagnosticsDescription": "管理 RPC、原生日志、provider HTTPS 抓包和 trajectory。",
-  "settings.developerDescription": "查看内核二进制、配置路径和安装建议。",
   "settings.appearanceDescription": "界面外观偏好。",
   "settings.workMode": "工作模式",
   "settings.workModeCopy": "决定新回合默认交给哪个内核。自动模式会按可用性选择。",
   "settings.autoMode": "自动选择",
   "settings.resolvedAs": "自动解析为 {kernel}",
+  "settings.expandKernel": "展开内核设置",
+  "settings.collapseKernel": "收起内核设置",
   "settings.detected": "已检测",
   "settings.notInstalled": "未安装",
   "settings.version": "版本",
-  "settings.configDir": "配置目录",
+  "settings.rootPath": "根路径",
   "settings.knowledgeSources": "资料库来源",
   "settings.knowledgeSourcesCopy": "已识别 {count} 个本机来源。资料库按来源分组，不再把不同内核的目录揉成一层。",
   "settings.adapter": "内核适配器",
@@ -375,7 +441,23 @@ const ZH_CN: Dictionary = {
   "settings.noSources": "暂无可同步来源。",
   "settings.httpsCapture": "HTTPS 抓包模式",
   "settings.httpsCaptureCopy": "开启后会自动启动 mitmproxy 并重建内核；只有代理服务启动成功且内核支持时，OpenGrove 才把代理和 CA 注入子进程。",
+  "settings.kernelProxy": "内核代理转发",
+  "settings.kernelProxyCopy": "开启后，内核子进程和安装命令会使用这里的 HTTP/HTTPS 代理。",
   "settings.proxy": "代理",
+  "settings.proxyUrl": "代理地址",
+  "settings.upstreamProxy": "上游代理",
+  "settings.noProxy": "直连地址",
+  "settings.nodeUseEnvProxy": "Node 使用环境代理",
+  "settings.nodeUseEnvProxyCopy": "给 Node 内核附加 --use-env-proxy，适合 Codex、Claude Code 等 Node 入口。",
+  "settings.proxySource": "代理来源",
+  "settings.proxySourceOpenGrove": "OpenGrove 设置",
+  "settings.proxySourceEnvironment": "系统环境变量",
+  "settings.proxySourceNone": "未设置",
+  "settings.environmentProxy": "环境代理",
+  "settings.effectiveProxy": "当前生效代理",
+  "settings.effectiveProxyOpenGrove": "使用 OpenGrove 里填写的代理地址。",
+  "settings.effectiveProxyEnvironment": "未开启 OpenGrove 代理，当前继承终端环境变量。",
+  "settings.effectiveProxyNone": "未开启 OpenGrove 代理，也没有检测到终端环境代理。",
   "settings.ca": "CA",
   "settings.service": "服务",
   "settings.injection": "注入",
@@ -390,8 +472,6 @@ const ZH_CN: Dictionary = {
   "settings.noContextRecords": "还没有上下文记录",
   "settings.appearanceEmptyTitle": "外观设置还没有接入",
   "settings.appearanceEmptyCopy": "当前先保持系统默认主题。后续这里放主题、字体和编辑器偏好。",
-  "settings.installPaths": "安装与路径",
-  "settings.installPathsCopy": "OpenGrove 只记录安装建议，不自动执行。真正安装内核需要用户确认后再跑命令。",
   "settings.language": "语言",
   "settings.languageCopy": "默认跟随浏览器/系统语言，也可以固定为中文或英文。",
   "settings.languageSystem": "跟随系统",
@@ -446,7 +526,7 @@ const ZH_CN: Dictionary = {
 
 const EN: Dictionary = {
   "app.chat": "Chat",
-  "app.library": "Vault",
+  "app.library": "Library",
   "app.settings": "Settings",
   "app.mainNav": "Main navigation",
   "app.mobileNav": "Mobile navigation",
@@ -457,6 +537,8 @@ const EN: Dictionary = {
   "common.remove": "Remove",
   "common.rename": "Rename",
   "common.edit": "Edit",
+  "common.install": "Install",
+  "common.installing": "Installing...",
   "common.unknown": "Unknown",
   "common.available": "Available",
   "common.unavailable": "Unavailable",
@@ -487,36 +569,38 @@ const EN: Dictionary = {
   "conversation.codeProject": "Code project",
   "conversation.localProject": "Local project",
   "conversation.newThreadFallback": "New chat",
-  "vault.files": "Vault files",
+  "vault.files": "Library files",
   "vault.empty": "No files in this folder yet.",
   "vault.newNote": "New note",
   "vault.newFolder": "New folder",
   "vault.deleteNote": "Delete note",
   "vault.deleteFolder": "Delete folder",
-  "vault.deleteCopy": "{name} will be removed from the local vault.",
+  "vault.deleteCopy": "{name} will be removed from the local library.",
   "vault.rename": "Rename",
   "vault.search": "Search files",
   "vault.expandAll": "Expand all",
   "vault.collapseAll": "Collapse all",
-  "vault.actions": "Vault actions",
+  "vault.actions": "Library actions",
   "vault.searchClose": "Close file search",
   "vault.newNoteInRoot": "Create a note in the {root} root",
   "vault.newFolderInRoot": "Create a folder in the {root} root",
   "layout.sidebar": "Sidebar",
   "layout.spaceNav": "Current space navigation",
   "layout.resizeSidebar": "Resize sidebar",
+  "layout.collapseSidebar": "Collapse sidebar",
+  "layout.expandSidebar": "Expand sidebar",
   "layout.localBridge": "Local bridge",
   "layout.openWorkbench": "Open workbench",
   "layout.closeWorkbench": "Close workbench",
   "layout.workbench": "Workbench",
   "library.ai": "AI",
-  "library.openAi": "Open vault AI",
-  "library.closeAi": "Close vault AI",
-  "library.aiTitle": "Vault AI",
-  "library.selectAiConversation": "Select vault AI chat",
-  "library.newAiConversation": "New vault AI chat",
+  "library.openAi": "Open library AI",
+  "library.closeAi": "Close library AI",
+  "library.aiTitle": "Library AI",
+  "library.selectAiConversation": "Select library AI chat",
+  "library.newAiConversation": "New library AI chat",
   "thread.welcome": "What would you like to move forward today?",
-  "composer.placeholder": "Ask Codex, or type / to use a skill",
+  "composer.placeholder": "Ask the current kernel, or type / for commands and skills",
   "composer.skillPlaceholder": "Add what this skill should do...",
   "composer.addAttachment": "Add image or file",
   "composer.removeSkill": "Remove skill {name}",
@@ -550,13 +634,15 @@ const EN: Dictionary = {
   "composer.effortXHigh": "Extra high",
   "settings.kernels": "Kernels & Knowledge",
   "settings.providers": "Providers",
+  "settings.network": "Network proxy",
   "settings.diagnostics": "Capture & Diagnostics",
   "settings.appearance": "Appearance",
-  "settings.developer": "Developer",
   "settings.nav": "Settings sections",
   "settings.kicker": "Settings",
-  "settings.kernelsDescription": "Choose the default kernel and manage the local knowledge sources it exposes to the vault.",
+  "settings.kernelsDescription": "Choose the default kernel and manage the local knowledge sources it exposes to the library.",
   "settings.providersDescription": "Manage model gateways and coding plans that can be bound to different kernels. Secrets are read from environment variables and never persisted in settings.",
+  "settings.networkDescription": "Configure the proxy used by kernels and install commands. When disabled, terminal proxy environment variables are inherited.",
+  "settings.providerList": "Provider list",
   "settings.providerBindings": "Kernel bindings",
   "settings.providerBindingsCopy": "Choose the default provider for each kernel. Empty means the kernel keeps using its native login/config.",
   "settings.nativeProvider": "Use native config",
@@ -565,36 +651,72 @@ const EN: Dictionary = {
   "settings.builtinProvider": "Built-in",
   "settings.addProvider": "Add provider",
   "settings.addProviderCopy": "Fill in gateway URLs, model names, and the environment variable that holds the secret. Raw keys are not saved here.",
+  "settings.newProvider": "New provider",
+  "settings.removeProvider": "Remove provider",
+  "settings.removeProviderConfirm": "Delete provider “{name}”? Related kernel bindings will be removed too.",
+  "settings.configured": "Configured",
+  "settings.missingKey": "Missing key",
+  "settings.notChecked": "Not checked",
+  "settings.accountLogin": "Account login",
+  "settings.baseConfig": "Base config",
+  "settings.apiBaseUrl": "API URL",
+  "settings.availableModels": "Available models",
+  "settings.addModel": "Add model",
+  "settings.removeModel": "Remove model",
+  "settings.noProviderModels": "No models yet. For custom providers, enter comma-separated model IDs.",
   "settings.providerName": "Name",
   "settings.providerId": "ID",
   "settings.protocol": "Protocol",
   "settings.openaiBaseUrl": "OpenAI-compatible URL",
   "settings.anthropicBaseUrl": "Anthropic-compatible URL",
-  "settings.apiKeyEnv": "Secret environment variable",
+  "settings.apiKeyEnv": "Secret or environment variable",
+  "settings.apiKeyConfigured": "API key configured",
   "settings.models": "Models",
+  "settings.modelsCount": "{count} models",
   "settings.description": "Description",
   "settings.providerDescriptionPlaceholder": "For a coding plan or internal gateway",
   "settings.saveProvider": "Save provider",
+  "settings.providerSaving": "Saving...",
+  "settings.providerSaved": "Saved",
   "settings.providerFormRequired": "Name and ID are required.",
+  "settings.providerEnabled": "Enabled",
+  "settings.providerDisabled": "Disabled",
   "settings.diagnosticsDescription": "Manage RPC, native logs, provider HTTPS capture, and trajectories.",
-  "settings.developerDescription": "Inspect kernel binaries, config paths, and install suggestions.",
   "settings.appearanceDescription": "Interface preferences.",
   "settings.workMode": "Work mode",
   "settings.workModeCopy": "Choose which kernel new turns use by default. Auto mode resolves by availability.",
   "settings.autoMode": "Auto",
   "settings.resolvedAs": "Resolved as {kernel}",
+  "settings.expandKernel": "Expand kernel settings",
+  "settings.collapseKernel": "Collapse kernel settings",
   "settings.detected": "Detected",
   "settings.notInstalled": "Not installed",
   "settings.version": "Version",
-  "settings.configDir": "Config directory",
+  "settings.rootPath": "Root path",
   "settings.knowledgeSources": "Knowledge sources",
-  "settings.knowledgeSourcesCopy": "{count} local sources detected. The vault groups them by source instead of merging kernel folders into one layer.",
+  "settings.knowledgeSourcesCopy": "{count} local sources detected. The library groups them by source instead of merging kernel folders into one layer.",
   "settings.adapter": "Kernel adapter",
   "settings.dynamicSource": "Provided dynamically by the kernel",
   "settings.noSources": "No syncable sources yet.",
   "settings.httpsCapture": "HTTPS capture mode",
   "settings.httpsCaptureCopy": "When enabled, OpenGrove starts mitmproxy and rebuilds the kernel. Proxy and CA settings are injected only when capture is running and the kernel supports it.",
+  "settings.kernelProxy": "Kernel proxy forwarding",
+  "settings.kernelProxyCopy": "When enabled, kernel child processes and install commands use this HTTP/HTTPS proxy.",
   "settings.proxy": "Proxy",
+  "settings.proxyUrl": "Proxy URL",
+  "settings.upstreamProxy": "Upstream proxy",
+  "settings.noProxy": "No proxy",
+  "settings.nodeUseEnvProxy": "Node uses env proxy",
+  "settings.nodeUseEnvProxyCopy": "Adds --use-env-proxy for Node-based kernels such as Codex and Claude Code.",
+  "settings.proxySource": "Proxy source",
+  "settings.proxySourceOpenGrove": "OpenGrove settings",
+  "settings.proxySourceEnvironment": "Environment",
+  "settings.proxySourceNone": "None",
+  "settings.environmentProxy": "Environment proxy",
+  "settings.effectiveProxy": "Effective proxy",
+  "settings.effectiveProxyOpenGrove": "Using the proxy configured in OpenGrove.",
+  "settings.effectiveProxyEnvironment": "OpenGrove proxy is off; inheriting terminal environment variables.",
+  "settings.effectiveProxyNone": "OpenGrove proxy is off and no terminal proxy was detected.",
   "settings.ca": "CA",
   "settings.service": "Service",
   "settings.injection": "Injection",
@@ -609,8 +731,6 @@ const EN: Dictionary = {
   "settings.noContextRecords": "No context records yet",
   "settings.appearanceEmptyTitle": "Appearance settings are not wired yet",
   "settings.appearanceEmptyCopy": "For now the app keeps the system theme. Theme, font, and editor preferences will live here later.",
-  "settings.installPaths": "Install & paths",
-  "settings.installPathsCopy": "OpenGrove records install suggestions only. It does not run install commands without user confirmation.",
   "settings.language": "Language",
   "settings.languageCopy": "Follow the browser/system language by default, or pin the interface to Chinese or English.",
   "settings.languageSystem": "System",
@@ -619,7 +739,7 @@ const EN: Dictionary = {
   "settings.saveFailed": "Failed to save settings",
   "system.saveSettingsFailed": "Failed to save settings: {message}",
   "system.savedLocalFile": "Saved to local file: {name}",
-  "system.saveLibraryPageFailed": "Failed to save vault page: {message}",
+  "system.saveLibraryPageFailed": "Failed to save library page: {message}",
   "system.createLocalFileFailed": "Failed to create local file: {message}",
   "system.moveLocalFileFailed": "Failed to move local file: {message}",
   "system.renameLocalFileFailed": "Failed to rename local file: {message}",
@@ -654,7 +774,7 @@ const EN: Dictionary = {
   "source.kind.plugins": "Plugins",
   "source.kind.toolsets": "Toolsets",
   "source.kind.artifacts": "Artifacts",
-  "source.kind.vault": "Vault",
+  "source.kind.vault": "Library",
   "source.scope.user": "User",
   "source.scope.project": "Project",
   "source.scope.workspace": "Local",

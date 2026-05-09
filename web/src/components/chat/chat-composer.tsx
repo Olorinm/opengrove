@@ -55,6 +55,7 @@ const SPEED_OPTIONS: Array<{ id: ResponseSpeed; labelKey: "composer.speedStandar
 ];
 
 const CODEX_MODEL_LABELS: Record<string, string> = {
+  "claude-code-default": "Claude Code 默认",
   "gpt-5.5": "GPT-5.5",
   "gpt-5.4": "GPT-5.4",
   "gpt-5.4-mini": "GPT-5.4 Mini",
@@ -84,7 +85,8 @@ function isResponseSpeed(value: string): value is ResponseSpeed {
 }
 
 export function modelOptionsForKernel(kernelId?: string, runtimeControls?: RuntimeControls): ComposerModelOption[] {
-  const discovered = runtimeControls?.models
+  const controls = runtimeControls?.kernel === kernelId ? runtimeControls : undefined;
+  const discovered = controls?.models
     ?.filter((item): item is ComposerModelOption => isModelId(item.id))
     .map((item) => ({ id: item.id, label: item.label, description: item.description }));
   if (discovered?.length) {
@@ -94,16 +96,16 @@ export function modelOptionsForKernel(kernelId?: string, runtimeControls?: Runti
     return MODEL_OPTIONS.filter((item) => item.id.startsWith("gpt-"));
   }
   if (kernelId === "claude-code") {
-    return MODEL_OPTIONS.filter((item) => item.id === "claude-opus-4-6");
+    return [{ id: "claude-code-default", label: "Claude Code 默认" }];
   }
   if (kernelId === "pi") {
-    return MODEL_OPTIONS.filter((item) => item.id !== "gpt-5.3-codex-spark");
+    return [{ id: "pi-default", label: "Pi 默认" }];
   }
   return [...MODEL_OPTIONS];
 }
 
 export function supportsComposerEffort(kernelId?: string): boolean {
-  return kernelId === "codex" || kernelId === "pi";
+  return kernelId === "codex";
 }
 
 export function supportsComposerSpeed(kernelId?: string): boolean {
@@ -424,13 +426,14 @@ function ComposerModelPicker(props: {
   onSetResponseSpeed(speed: ResponseSpeed): void;
 }) {
   const { t } = useI18n();
+  const controls = props.runtimeControls?.kernel === props.activeKernel ? props.runtimeControls : undefined;
   const modelOptions = modelOptionsForKernel(props.activeKernel, props.runtimeControls);
   const selectedModel = modelOptions.find((item) => item.id === props.model) ?? modelOptions[0] ?? MODEL_OPTIONS[0];
-  const effortOptions = effortOptionsForRuntime(t, props.runtimeControls);
-  const speedOptions = speedOptionsForRuntime(t, props.runtimeControls);
-  const effortEnabled = Boolean(props.runtimeControls?.reasoningEfforts?.length) || supportsComposerEffort(props.activeKernel);
-  const speedEnabled = Boolean(props.runtimeControls?.speedTiers?.length) || supportsComposerSpeed(props.activeKernel);
-  const effortLabel = effortEnabled ? effortOptions.find((item) => item.id === props.effort)?.label || t("composer.effortHigh") : t("common.default");
+  const effortOptions = effortOptionsForRuntime(t, controls);
+  const speedOptions = speedOptionsForRuntime(t, controls);
+  const effortEnabled = Boolean(controls?.reasoningEfforts?.length) || (!controls && supportsComposerEffort(props.activeKernel));
+  const speedEnabled = Boolean(controls?.speedTiers?.length) || (!controls && supportsComposerSpeed(props.activeKernel));
+  const effortLabel = effortEnabled ? effortOptions.find((item) => item.id === props.effort)?.label || t("composer.effortHigh") : "";
   const compactModelLabel = selectedModel.id.startsWith("gpt-")
     ? selectedModel.id.replace(/^gpt-/, "").replace(/-codex-spark$/, " spark").replace(/-codex$/, " codex").replace(/-mini$/, " mini")
     : CODEX_MODEL_LABELS[selectedModel.id as ModelId] || selectedModel.label;
@@ -446,9 +449,9 @@ function ComposerModelPicker(props: {
         data-speed={speedEnabled ? props.responseSpeed : undefined}
         onClick={props.onToggle}
       >
-        <Zap size={15} strokeWidth={2.3} />
+        {speedEnabled ? <Zap size={15} strokeWidth={2.3} /> : null}
         <span className="opengrove-model-label">{compactModelLabel}</span>
-        <span className="opengrove-model-effort">{effortLabel}</span>
+        {effortLabel ? <span className="opengrove-model-effort">{effortLabel}</span> : null}
         <span className="opengrove-chevron" aria-hidden="true"></span>
       </button>
       <div

@@ -56,7 +56,7 @@ export async function resolveApproval(
   const runId = approval.resume?.runId ?? `approval_${approvalId}`;
   const sessionId = app.workingState.get().sessionId ?? "browser-bridge";
 
-  if (approval.resume?.type === "codex.native") {
+  if (approval.resume?.type === "codex.native" || approval.resume?.type === "claude.native") {
     const resolved = app.approvals.decide(approvalId, status, approvalResponse);
     syncBridgeWorkingState(app);
     state.store.saveFrom(app);

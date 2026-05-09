@@ -68,6 +68,10 @@ export function commandVersion(command: string | undefined, args: string[] = ["-
   }
 }
 
+export function clearCommandVersionCache(): void {
+  COMMAND_VERSION_CACHE.clear();
+}
+
 function pathSource(input: KernelSourceInput, expected: "file" | "directory"): KernelKnowledgeSource {
   const path = input.path ? expandHome(input.path) : undefined;
   const exists = path ? existsSync(path) : false;

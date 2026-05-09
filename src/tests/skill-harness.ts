@@ -62,13 +62,25 @@ async function main() {
     userId: "local-user",
   });
 
-  const events: AgentEvent[] = [];
+  const plainSlashEvents: AgentEvent[] = [];
   for await (const event of app.runTurn("/demo-inline explain")) {
+    plainSlashEvents.push(event);
+  }
+  assert.ok(
+    !plainSlashEvents.some((event) => event.type === "skill.invoked"),
+    "plain slash input should pass through to the kernel instead of implicitly invoking a skill",
+  );
+
+  const events: AgentEvent[] = [];
+  for await (const event of app.runTurn("explain", {
+    requestedSkillName: "demo-inline",
+    requestedSkillArgs: "explain",
+  })) {
     events.push(event);
   }
 
-  assert.ok(events.some((event) => event.type === "skill.invoked"), "slash skill should emit skill.invoked");
-  assert.ok(events.some((event) => event.type === "skill.loaded"), "slash skill should emit skill.loaded");
+  assert.ok(events.some((event) => event.type === "skill.invoked"), "selected skill should emit skill.invoked");
+  assert.ok(events.some((event) => event.type === "skill.loaded"), "selected skill should emit skill.loaded");
 
   const request = events.find((event): event is Extract<AgentEvent, { type: "model.requested" }> => event.type === "model.requested");
   assert.ok(request, "model.requested should be emitted");
@@ -83,7 +95,7 @@ async function main() {
       delivery.mode === "loaded_skill" &&
       !delivery.includeInPrompt
     ),
-    "active slash skill should be recorded as loaded through the skill channel, not duplicated in prompt context",
+    "selected skill should be recorded as loaded through the skill channel, not duplicated in prompt context",
   );
 
   const workingState = app.workingState.get();
