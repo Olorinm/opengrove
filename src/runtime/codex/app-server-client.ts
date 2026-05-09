@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 import type { JsonValue } from "../../core.js";
+import { resolveCommandInvocation } from "../../kernel/discovery.js";
 import type { CodexRpcCaptureRecorder } from "../codex-rpc-capture.js";
 import {
   defaultCodexApprovalResponse,
@@ -64,13 +65,14 @@ export class CodexAppServerClient {
     env?: NodeJS.ProcessEnv;
     rpcCapture?: CodexRpcCaptureRecorder;
   }): CodexAppServerClient {
-    const child = spawn(options.command, options.args, {
+    const invocation = resolveCommandInvocation(options.command, options.args);
+    const child = spawn(invocation.command, invocation.args, {
       env: { ...process.env, ...options.env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     options.rpcCapture?.recordLifecycle("app_server.spawned", {
-      command: options.command,
-      args: options.args,
+      command: invocation.command,
+      args: invocation.args,
       pid: child.pid,
     });
     return new CodexAppServerClient(child, options.rpcCapture);

@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { delimiter, extname, resolve } from "node:path";
 import type {
   KernelInstallAction,
   KernelKnowledgeSource,
@@ -46,14 +46,38 @@ export function resolveHomePath(...parts: string[]): string {
   return resolve(homedir(), ...parts);
 }
 
+export function resolveCommandPath(command: string | undefined): string | undefined {
+  const trimmed = command?.trim();
+  if (!trimmed) return undefined;
+  if (isPathLike(trimmed)) {
+    return resolveExistingCommandPath(trimmed);
+  }
+  return resolveCommandOnPath(trimmed);
+}
+
+export function resolveCommandInvocation(
+  command: string,
+  args: string[] = [],
+): { command: string; args: string[] } {
+  if (process.platform === "win32" && WINDOWS_SHELL_EXTENSIONS.has(extname(command).toLowerCase())) {
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      args: ["/d", "/s", "/c", command, ...args],
+    };
+  }
+  return { command, args };
+}
+
 export function commandVersion(command: string | undefined, args: string[] = ["--version"]): string | undefined {
-  if (!command) return undefined;
-  const cacheKey = JSON.stringify([command, args]);
+  const resolvedCommand = resolveCommandPath(command) ?? command?.trim();
+  if (!resolvedCommand) return undefined;
+  const invocation = resolveCommandInvocation(resolvedCommand, args);
+  const cacheKey = JSON.stringify([invocation.command, invocation.args]);
   if (COMMAND_VERSION_CACHE.has(cacheKey)) {
     return COMMAND_VERSION_CACHE.get(cacheKey);
   }
   try {
-    const result = spawnSync(command, args, {
+    const result = spawnSync(invocation.command, invocation.args, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 2_000,
@@ -108,4 +132,63 @@ function expandHome(path: string): string {
   if (path === "~") return homedir();
   if (path.startsWith("~/")) return resolve(homedir(), path.slice(2));
   return resolve(path);
+}
+
+const WINDOWS_SHELL_EXTENSIONS = new Set([".cmd", ".bat"]);
+
+function isPathLike(value: string): boolean {
+  return value.includes("/") || value.includes("\\");
+}
+
+function resolveExistingCommandPath(candidate: string): string | undefined {
+  const resolvedCandidate = resolve(candidate);
+  const extension = extname(resolvedCandidate);
+  if (extension) {
+    return existsSync(resolvedCandidate) ? resolvedCandidate : undefined;
+  }
+  if (process.platform === "win32") {
+    for (const candidateWithExtension of candidateExtensions(resolvedCandidate)) {
+      if (existsSync(candidateWithExtension)) {
+        return candidateWithExtension;
+      }
+    }
+  }
+  return existsSync(resolvedCandidate) ? resolvedCandidate : undefined;
+}
+
+function resolveCommandOnPath(command: string): string | undefined {
+  const pathEntries = process.env.PATH?.split(delimiter).filter(Boolean) ?? [];
+  for (const entry of pathEntries) {
+    const baseCandidate = resolve(entry, command);
+    const extension = extname(baseCandidate);
+    if (extension) {
+      if (existsSync(baseCandidate)) {
+        return baseCandidate;
+      }
+      continue;
+    }
+    if (process.platform === "win32") {
+      for (const candidateWithExtension of candidateExtensions(baseCandidate)) {
+        if (existsSync(candidateWithExtension)) {
+          return candidateWithExtension;
+        }
+      }
+    }
+    if (existsSync(baseCandidate)) {
+      return baseCandidate;
+    }
+  }
+  return undefined;
+}
+
+function candidateExtensions(command: string): string[] {
+  return windowsExecutableExtensions().map((extension) => `${command}${extension}`);
+}
+
+function windowsExecutableExtensions(): string[] {
+  const configured = process.env.PATHEXT
+    ?.split(";")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  return configured?.length ? configured : [".com", ".exe", ".bat", ".cmd"];
 }

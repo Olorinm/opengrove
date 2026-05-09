@@ -5,6 +5,7 @@ import type {
   AgentSessionTrace,
   AgentTurnRequest,
 } from "../core.js";
+import { resolveCommandInvocation } from "../kernel/discovery.js";
 import {
   applyProviderHttpCaptureEnv,
   providerHttpCaptureSummary,
@@ -38,6 +39,7 @@ export class GenericCliRuntime implements AgentRuntime {
     const args = this.options.promptMode === "arg"
       ? [...(this.options.args ?? []), prompt]
       : [...(this.options.args ?? [])];
+    const invocation = resolveCommandInvocation(this.options.command, args);
     const env = applyProviderHttpCaptureEnv({ ...process.env, ...this.options.env }, capture);
     const session: AgentSessionTrace = {
       provider: this.options.kernelId,
@@ -74,7 +76,7 @@ export class GenericCliRuntime implements AgentRuntime {
       },
     };
 
-    const child = spawn(this.options.command, args, {
+    const child = spawn(invocation.command, invocation.args, {
       cwd: this.options.cwd ?? process.cwd(),
       env,
       stdio: ["pipe", "pipe", "pipe"],

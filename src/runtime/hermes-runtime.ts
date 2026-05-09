@@ -10,6 +10,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { readAppEnv } from "../identity.js";
+import { resolveCommandInvocation, resolveCommandPath } from "../kernel/discovery.js";
 import type {
   AgentEvent,
   AgentRuntime,
@@ -111,9 +112,10 @@ export class HermesRuntime implements AgentRuntime {
       provider: requestedProvider,
       toolsets: this.options.toolsets,
     });
+    const invocation = resolveCommandInvocation(this.options.command, [...(this.options.commandArgs ?? []), ...args]);
     const env = this.prepareEnv(providerCapture);
     const cwd = this.options.cwd ?? process.cwd();
-    const child = spawn(this.options.command, [...(this.options.commandArgs ?? []), ...args], {
+    const child = spawn(invocation.command, invocation.args, {
       cwd,
       env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -393,20 +395,7 @@ function resolveHermesCommandCandidate(value: string | undefined): string | unde
   if (!trimmed) {
     return undefined;
   }
-  if (trimmed.includes("/")) {
-    const resolved = resolve(trimmed);
-    return existsSync(resolved) ? resolved : undefined;
-  }
-  if (!/^[a-zA-Z0-9._-]+$/.test(trimmed)) {
-    return undefined;
-  }
-
-  const result = spawnSync("sh", ["-lc", `command -v ${trimmed}`], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  const path = result.stdout?.trim();
-  return path && existsSync(path) ? path : undefined;
+  return resolveCommandPath(trimmed);
 }
 
 function toStableHermesSessionId(input: string): string {

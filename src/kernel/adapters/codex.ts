@@ -1,7 +1,7 @@
 import { CodexRuntime, type CodexRuntimeOptions } from "../../runtime/codex-runtime.js";
 import { APP_PROTOCOL_ID, appEnvName, readAppEnv } from "../../identity.js";
 import { RuntimeKernelAdapter } from "../adapter.js";
-import { commandVersion, directorySource, fileSource, plannedInstallAction, resolveHomePath } from "../discovery.js";
+import { commandVersion, directorySource, fileSource, plannedInstallAction, resolveCommandPath, resolveHomePath } from "../discovery.js";
 import type { KernelAdapterContract, KernelDiscovery } from "../types.js";
 
 export class CodexKernelAdapter extends RuntimeKernelAdapter {
@@ -47,13 +47,13 @@ export function discoverCodexKernel(
   diagnostics = CODEX_KERNEL_CONTRACT.diagnostics,
 ): KernelDiscovery {
   const codexHome = options.env?.CODEX_HOME || process.env.CODEX_HOME || resolveHomePath(".codex");
-  const command = options.command || readAppEnv("CODEX_BIN") || "codex";
+  const command = options.command || resolveCommandPath(readAppEnv("CODEX_BIN")) || resolveCommandPath("codex") || "codex";
   return {
     kernelId: "codex",
     title: "Codex",
-    installed: Boolean(options.command || commandVersion(command)),
-    available: Boolean(options.command || commandVersion(command)),
-    binaryPath: options.command,
+    installed: Boolean(commandVersion(command)),
+    available: Boolean(commandVersion(command)),
+    binaryPath: command,
     version: commandVersion(command),
     configHome: codexHome,
     diagnostics,
