@@ -2,6 +2,7 @@ import type { AgentEvent } from "../../core.js";
 import {
   HermesRuntime,
   hermesHealth,
+  resolveHermesCommandPath,
   type HermesRuntimeOptions,
 } from "../../runtime/hermes-runtime.js";
 import { APP_CONFIG_DIR, APP_PRODUCT_NAME, APP_PROTOCOL_ID, appEnvName, readAppEnv } from "../../identity.js";
@@ -127,15 +128,15 @@ export function discoverHermesKernel(
   diagnostics = HERMES_KERNEL_CONTRACT.diagnostics,
 ): KernelDiscovery {
   const hermesHome = options.env?.HERMES_HOME || process.env.HERMES_HOME || resolveHomePath(".hermes");
-  const command = options.command || readAppEnv("HERMES_BIN") || "hermes";
+  const command = options.command || resolveHermesCommandPath() || readAppEnv("HERMES_BIN") || "hermes";
   const version = commandVersion(command);
-  const installed = Boolean(options.command || version);
+  const installed = Boolean(version);
   return {
     kernelId: "hermes",
     title: "Hermes",
     installed,
     available: installed,
-    binaryPath: options.command,
+    binaryPath: command,
     version,
     configHome: hermesHome,
     diagnostics,

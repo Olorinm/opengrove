@@ -10,6 +10,7 @@ import {
   directorySource,
   fileSource,
   plannedInstallAction,
+  resolveCommandPath,
   resolveHomePath,
 } from "../discovery.js";
 import type {
@@ -275,10 +276,12 @@ export function discoverExternalCliKernel(
 
 export function resolveExternalCliCommand(definition: ExternalCliKernelDefinition): string | undefined {
   const configured = readAppEnv(definition.envName)?.trim();
-  if (configured) return configured;
+  const resolvedConfigured = resolveCommandPath(configured);
+  if (resolvedConfigured) return resolvedConfigured;
   for (const command of definition.commands) {
-    if (commandVersion(command, definition.versionArgs ?? ["--version"])) {
-      return command;
+    const resolvedCommand = resolveCommandPath(command);
+    if (resolvedCommand && commandVersion(resolvedCommand, definition.versionArgs ?? ["--version"])) {
+      return resolvedCommand;
     }
   }
   return undefined;

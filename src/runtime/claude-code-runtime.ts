@@ -5,6 +5,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readAppEnv } from "../identity.js";
+import { resolveCommandPath, resolveCommandInvocation } from "../kernel/discovery.js";
 import type {
   AgentEvent,
   AgentRuntime,
@@ -528,25 +529,13 @@ function resolveClaudeCliCandidate(value: string | undefined): string | undefine
   if (!trimmed) {
     return undefined;
   }
-  if (trimmed.includes("/")) {
-    const resolved = resolve(trimmed);
-    return existsSync(resolved) ? resolved : undefined;
-  }
-  if (!/^[a-zA-Z0-9._-]+$/.test(trimmed)) {
-    return undefined;
-  }
-
-  const result = spawnSync("sh", ["-lc", `command -v ${trimmed}`], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  const path = result.stdout?.trim();
-  return path && existsSync(path) ? path : undefined;
+  return resolveCommandPath(trimmed);
 }
 
 function resolveClaudeLaunchCommand(
   options: ClaudeCodeRuntimeOptions,
 ): { executable: string; prefixArgs: string[] } {
+  const invocation = resolveCommandInvocation(options.cliPath, []);
   const cliKind = options.cliKind ?? inferClaudeCliKind(options.cliPath);
   if (cliKind === "node-script") {
     return {
@@ -556,8 +545,8 @@ function resolveClaudeLaunchCommand(
   }
 
   return {
-    executable: options.cliPath,
-    prefixArgs: [],
+    executable: invocation.command,
+    prefixArgs: invocation.args,
   };
 }
 

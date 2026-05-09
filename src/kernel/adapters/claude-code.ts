@@ -2,6 +2,7 @@ import {
   ClaudeAgentSdkRuntime,
   type ClaudeAgentSdkRuntimeOptions,
 } from "../../runtime/claude-agent-sdk-runtime.js";
+import { resolveClaudeCodeCliPath } from "../../runtime/claude-code-runtime.js";
 import { APP_PROTOCOL_ID, appEnvName, readAppEnv } from "../../identity.js";
 import { RuntimeKernelAdapter } from "../adapter.js";
 import { commandVersion, directorySource, fileSource, plannedInstallAction, resolveHomePath } from "../discovery.js";
@@ -52,14 +53,15 @@ export function discoverClaudeCodeKernel(
   diagnostics = CLAUDE_CODE_KERNEL_CONTRACT.diagnostics,
 ): KernelDiscovery {
   const claudeHome = options.env?.CLAUDE_CONFIG_DIR || process.env.CLAUDE_CONFIG_DIR || resolveHomePath(".claude");
-  const cliPath = options.cliPath || readAppEnv("CLAUDE_CLI_PATH") || "claude";
+  const cliPath = options.cliPath || resolveClaudeCodeCliPath(cwd) || readAppEnv("CLAUDE_CLI_PATH") || "claude";
   const version = commandVersion(cliPath);
+  const installed = Boolean(version);
   return {
     kernelId: "claude-code",
     title: "Claude Code",
-    installed: true,
-    available: true,
-    binaryPath: options.cliPath,
+    installed,
+    available: installed,
+    binaryPath: cliPath,
     version,
     configHome: claudeHome,
     diagnostics,
