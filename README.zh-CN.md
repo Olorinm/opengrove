@@ -1,11 +1,7 @@
 <h1 align="center">
-  <img src="assets/brand/opengrove-sapling.png" alt="OpenGrove logo" width="34" />
+  <img src="assets/brand/opengrove-sapling.png" alt="OpenGrove logo" width="34" align="absmiddle" />
   OpenGrove — 本地优先 Agent Host
 </h1>
-
-<p align="center">
-  <img src="assets/brand/opengrove-wordmark.png" alt="OpenGrove wordmark" width="420" />
-</p>
 
 <p align="center">
   <strong>一个本地优先的 agent host，让工作更安静、更有组织。</strong>

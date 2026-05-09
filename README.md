@@ -1,11 +1,7 @@
 <h1 align="center">
-  <img src="assets/brand/opengrove-sapling.png" alt="OpenGrove logo" width="34" />
+  <img src="assets/brand/opengrove-sapling.png" alt="OpenGrove logo" width="34" align="absmiddle" />
   OpenGrove — Local-first Agent Host
 </h1>
-
-<p align="center">
-  <img src="assets/brand/opengrove-wordmark.png" alt="OpenGrove wordmark" width="420" />
-</p>
 
 <p align="center">
   <strong>A local-first agent host for calm, organized work.</strong>
