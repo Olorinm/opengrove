@@ -201,6 +201,7 @@ export function App() {
   const libraryAiResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const modelMenuRef = useRef<HTMLDivElement | null>(null);
   const threadScrollRef = useRef<HTMLElement | null>(null);
+  const libraryAiScrollRef = useRef<HTMLElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const queuedChoicePromptsRef = useRef(new Map<string, string>());
@@ -426,18 +427,24 @@ export function App() {
   }, [composerHeight, setComposerHeight]);
 
   useEffect(() => {
-    if (activeView !== "chat") {
-      return;
-    }
+    const scrollEl =
+      activeView === "chat"
+        ? threadScrollRef.current
+        : activeView === "library"
+          ? libraryAiScrollRef.current
+          : null;
+    if (!scrollEl) return;
     const frameId = window.requestAnimationFrame(() => {
-      const scrollEl = threadScrollRef.current;
-      if (!scrollEl) {
-        return;
-      }
       scrollEl.scrollTop = scrollEl.scrollHeight;
     });
     return () => window.cancelAnimationFrame(frameId);
   }, [activeView, activeThreadIsRunning, messages]);
+
+  useEffect(() => {
+    if (activeView === "library" && libraryAiOpen && threadId && !threadId.startsWith("empty:")) {
+      window.localStorage.setItem(APP_STORAGE_KEYS.libraryAiLastThreadId, threadId);
+    }
+  }, [activeView, libraryAiOpen, threadId]);
 
   const settingsMutation = useMutation({
     mutationFn: (payload: {
@@ -791,7 +798,15 @@ export function App() {
 
   function openLibraryAiPanel() {
     if (!libraryAiOpen && messages.length > 0) {
-      startNewThread(projectId);
+      const lastLibraryThreadId = window.localStorage.getItem(APP_STORAGE_KEYS.libraryAiLastThreadId);
+      const lastThread = lastLibraryThreadId
+        ? threads.find((t) => t.id === lastLibraryThreadId)
+        : undefined;
+      if (lastThread) {
+        openThread(lastThread.id);
+      } else {
+        startNewThread(projectId);
+      }
       setView("library");
       clearComposerDraft();
     }
@@ -1548,6 +1563,7 @@ export function App() {
               onOpenFolderProject={openFolderProject}
               onOpenNewThread={openNewThread}
               onOpenThread={openThread}
+              onToggleProjectCollapsed={(projectId) => setProjectCollapsedIds((ids) => ids.includes(projectId) ? ids.filter((id) => id !== projectId) : [...ids, projectId])}
               onToggleProjectMenu={(projectId) => setProjectMenuOpenId((current) => (current === projectId ? "" : projectId))}
               onRenameProject={renameProjectWithPrompt}
               onChangeProjectFolder={changeProjectFolder}
@@ -1751,7 +1767,7 @@ export function App() {
                     <X size={15} />
                   </button>
                 </header>
-                <section className="library-ai-thread chat-thread-scroll" aria-live="polite">
+                <section ref={libraryAiScrollRef} className="library-ai-thread chat-thread-scroll" aria-live="polite">
                   {renderSharedThreadShell()}
                 </section>
                 {renderSharedComposer({ messagesEmpty: messages.length === 0, showSuggestions: false })}

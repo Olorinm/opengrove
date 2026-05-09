@@ -38,6 +38,7 @@ export interface ConversationSidebarProps {
   onOpenFolderProject(): void;
   onOpenNewThread(projectId?: string): void;
   onOpenThread(threadId: string): void;
+  onToggleProjectCollapsed(projectId: string): void;
   onToggleProjectMenu(projectId: string): void;
   onRenameProject(project: SidebarProject): void;
   onChangeProjectFolder(project: SidebarProject): void;
@@ -101,17 +102,10 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
               <button
                 className="project-item"
                 type="button"
-                onClick={() => {
-                  const firstThread = project.threads[0];
-                  if (!firstThread || firstThread.id.startsWith("empty:")) {
-                    props.onOpenNewThread(project.id);
-                    return;
-                  }
-                  props.onOpenThread(firstThread.id);
-                }}
+                onClick={() => props.onToggleProjectCollapsed(project.id)}
               >
                 <span className="project-item-main">
-                  <Folder size={17} />
+                  {props.collapsedProjectIds.has(project.id) ? <Folder size={17} /> : <FolderOpen size={17} />}
                   <span className="project-item-copy">
                     <span className="project-item-title">{project.title}</span>
                     {project.workspaceRoot ? (

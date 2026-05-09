@@ -1,4 +1,4 @@
-import type { MessagePart, SkillPart, StoredMessage, ToolPart } from "./bridge";
+import type { MessagePart, NotePart, SkillPart, StoredMessage, ToolPart } from "./bridge";
 import { createClientId } from "./bridge";
 import { toolStatusFromResult } from "./format";
 
@@ -255,9 +255,20 @@ export function applyStreamEventToMessage(message: StoredMessage, event: any): {
     case "compaction.started":
       appendNotePart(message, "正在自动压缩上下文", "compaction-started");
       break;
-    case "compaction.finished":
-      appendNotePart(message, "上下文已自动压缩", "compaction-finished");
+    case "compaction.finished": {
+      const startedPart = findLatestPart<NotePart>(
+        message,
+        (part): part is NotePart =>
+          part.type === "note" && part.tone === "compaction-started",
+      );
+      if (startedPart) {
+        startedPart.text = "上下文已自动压缩";
+        startedPart.tone = "compaction-finished";
+      } else {
+        appendNotePart(message, "上下文已自动压缩", "compaction-finished");
+      }
       break;
+    }
     case "tool.started":
       if (isQuietToolEvent(event.toolId)) {
         break;

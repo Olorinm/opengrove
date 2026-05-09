@@ -371,23 +371,17 @@ function mapClaudeSdkMessage(
   }
 
   if (message.type === "system" && message.subtype === "compact_boundary") {
-    context.state.compactionActive = false;
-    return [
-      {
-        type: "compaction.started",
-        runId: context.runId,
-        at: new Date().toISOString(),
-        reason: message.compact_metadata.trigger,
-        item: asJsonValue(message.compact_metadata),
-      },
-      {
+    if (context.state.compactionActive) {
+      context.state.compactionActive = false;
+      return [{
         type: "compaction.finished",
         runId: context.runId,
         at: new Date().toISOString(),
         summary: "Claude Code compact boundary recorded.",
         item: asJsonValue(message.compact_metadata),
-      },
-    ];
+      }];
+    }
+    return [];
   }
 
   if (message.type === "system" && (

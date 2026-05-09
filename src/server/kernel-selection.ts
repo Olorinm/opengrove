@@ -22,6 +22,7 @@ import {
   resolveExternalCliCommand,
 } from "../kernel/adapters/external-cli.js";
 import { createHermesKernelAdapter, discoverHermesKernel } from "../kernel/adapters/hermes.js";
+import { OpenAiHttpKernelAdapter, type OpenAiHttpKernelDefinition } from "../kernel/adapters/openai-http.js";
 import type { KernelAdapter, KernelDiscovery, KernelKnowledgeSource } from "../kernel/types.js";
 import { resolveClaudeCodeCliPath } from "../runtime/claude-code-runtime.js";
 import { resolveCodexCommandPath } from "../runtime/codex-runtime.js";
@@ -83,6 +84,44 @@ import {
   kernelPathEnv,
 } from "./kernel-paths.js";
 import { resolveBridgeWorkspaceRoot } from "./workspace-root.js";
+
+const OPENAI_HTTP_KERNEL_DEFINITIONS: Record<string, () => OpenAiHttpKernelDefinition | undefined> = {
+  openclaw: () => {
+    const baseUrl = readAppEnv("OPENCLAW_API_URL")?.trim();
+    if (!baseUrl) return undefined;
+    return {
+      id: "openclaw",
+      title: "OpenClaw",
+      baseUrl,
+      apiKeyEnv: "OPENCLAW_API_KEY",
+      model: readAppEnv("OPENCLAW_MODEL")?.trim() || "default",
+      sessionMode: "stateless",
+      healthPath: "/models",
+      knowledgeSources: [],
+      notes: ["OpenClaw connected via OpenAI-compatible HTTP gateway."],
+    };
+  },
+  hermes: () => {
+    const baseUrl = readAppEnv("HERMES_API_URL")?.trim();
+    if (!baseUrl) return undefined;
+    return {
+      id: "hermes",
+      title: "Hermes",
+      baseUrl,
+      apiKeyEnv: "HERMES_API_KEY",
+      model: readAppEnv("HERMES_MODEL")?.trim() || "hermes-default",
+      sessionMode: "stateless",
+      healthPath: "/models",
+      knowledgeSources: [],
+      notes: ["Hermes connected via OpenAI-compatible HTTP gateway."],
+    };
+  },
+};
+
+function resolveOpenAiHttpDefinition(kernelId: BridgeKernelId): OpenAiHttpKernelDefinition | undefined {
+  const factory = OPENAI_HTTP_KERNEL_DEFINITIONS[kernelId];
+  return factory?.();
+}
 
 export function createBridgeKernel(state: BridgeState): KernelAdapter {
   const kernel = resolveBridgeKernel(state.settings.kernel, state);
@@ -151,6 +190,10 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
   }
 
   if (kernel === "hermes") {
+    const hermesHttp = resolveOpenAiHttpDefinition("hermes");
+    if (hermesHttp) {
+      return new OpenAiHttpKernelAdapter(hermesHttp);
+    }
     const command = resolveKernelCommandPath(state, "hermes");
     if (!command) {
       throw new Error(`Hermes CLI was not found. Set ${appEnvName("HERMES_BIN")}.`);
@@ -167,6 +210,11 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
       providerHttpCapture,
       env: providerEnv,
     });
+  }
+
+  const httpDefinition = resolveOpenAiHttpDefinition(kernel);
+  if (httpDefinition) {
+    return new OpenAiHttpKernelAdapter(httpDefinition);
   }
 
   const external = externalCliDefinition(kernel);

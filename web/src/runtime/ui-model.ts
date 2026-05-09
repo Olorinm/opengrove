@@ -140,13 +140,10 @@ export function getKernelSlashCommands(kernelId?: string, workingState?: Working
   if (normalizedKernel === "claude-code") {
     const discovered = readClaudeSlashCommands(workingState);
     const fallback = [
-      command(normalizedKernel, "model", "模型", "切换或查看当前 Claude 模型。"),
-      command(normalizedKernel, "status", "状态", "显示 Claude Code 会话状态。"),
-      command(normalizedKernel, "permissions", "权限", "查看或调整 Claude Code 权限模式。"),
       command(normalizedKernel, "compact", "压缩", "压缩当前 Claude Code 上下文。"),
       command(normalizedKernel, "clear", "清空", "开始一个新的 Claude Code 对话上下文。"),
-      command(normalizedKernel, "agents", "子代理", "查看或管理 Claude Code 子代理。"),
-      command(normalizedKernel, "help", "帮助", "显示 Claude Code 命令。"),
+      command(normalizedKernel, "context", "上下文", "查看当前上下文使用情况。"),
+      command(normalizedKernel, "cost", "费用", "查看当前会话费用。"),
     ];
     return discovered.length ? mergeDiscoveredSlashCommands(normalizedKernel, discovered, fallback) : fallback;
   }

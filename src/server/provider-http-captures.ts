@@ -5,10 +5,10 @@ import type {
   BridgeProviderHttpCaptureFlow,
 } from "./bridge-types.js";
 
-const MAX_CAPTURE_FLOWS = 240;
+const MAX_CAPTURE_FLOWS = 60;
 const MAX_CAPTURE_FLOWS_PER_RECORD = 24;
-const MAX_CAPTURE_BODY_READ_BYTES = 256_000;
-const MAX_CAPTURE_BODY_PREVIEW_CHARS = 8_000;
+const MAX_CAPTURE_BODY_READ_BYTES = 64_000;
+const MAX_CAPTURE_BODY_PREVIEW_CHARS = 4_000;
 const CAPTURE_WINDOW_BEFORE_MS = 5_000;
 const CAPTURE_WINDOW_AFTER_MS = 15_000;
 
@@ -276,9 +276,10 @@ function redactCaptureBodyText(text: string): string {
   }
 }
 
-function redactJsonValue(value: unknown): unknown {
+function redactJsonValue(value: unknown, depth = 0): unknown {
+  if (depth > 12) return value;
   if (Array.isArray(value)) {
-    return value.map(redactJsonValue);
+    return value.map((v) => redactJsonValue(v, depth + 1));
   }
   if (!value || typeof value !== "object") {
     return typeof value === "string" ? redactSecretLikeText(value) : value;
@@ -289,7 +290,7 @@ function redactJsonValue(value: unknown): unknown {
       output[key] = "[redacted]";
       continue;
     }
-    output[key] = redactJsonValue(child);
+    output[key] = redactJsonValue(child, depth + 1);
   }
   return output;
 }
@@ -303,7 +304,7 @@ function redactSecretLikeText(text: string): string {
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(/sk-[A-Za-z0-9_-]{16,}/g, "sk-[redacted]")
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[jwt-redacted]")
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email-redacted]");
+    .replace(/[A-Za-z0-9._%+\-]{1,64}@[A-Za-z0-9\-]{1,63}\.[A-Za-z]{2,10}/g, "[email-redacted]");
 }
 
 function redactUrl(value: string): string {
