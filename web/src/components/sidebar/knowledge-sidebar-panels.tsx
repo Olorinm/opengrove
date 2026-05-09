@@ -67,6 +67,7 @@ export function VaultSidebarPanel(props: {
   const { t } = useI18n();
   const [menuState, setMenuState] = useState<VaultMenuState | null>(null);
   const [selectedFolderPath, setSelectedFolderPath] = useState("");
+  const [dragSourcePath, setDragSourcePath] = useState("");
   const [dropTargetPath, setDropTargetPath] = useState("");
   const [openPaths, setOpenPaths] = useState<Record<string, boolean>>(readStoredVaultOpenPaths);
   const [treeOrder, setTreeOrder] = useState<VaultTreeOrder>(readStoredVaultTreeOrder);
@@ -166,6 +167,7 @@ export function VaultSidebarPanel(props: {
 
   function moveEntryToFolder(sourcePath: string, targetFolderPath: string) {
     if (!isDroppableVaultTarget(sourcePath, targetFolderPath)) return;
+    setDragSourcePath("");
     setDropTargetPath("");
     props.onMoveEntry(sourcePath, targetFolderPath);
   }
@@ -176,6 +178,7 @@ export function VaultSidebarPanel(props: {
     if (!source || !target || source === target) return;
     const sourceParent = parentVaultPathFromTreePath(source);
     if (sourceParent !== parentVaultPathFromTreePath(target)) return;
+    setDragSourcePath("");
     setDropTargetPath("");
     setTreeOrder((current) => {
       const siblings = childPathsForParent(tree, sourceParent);
@@ -198,6 +201,7 @@ export function VaultSidebarPanel(props: {
               forceOpen={props.forceOpen}
               key={node.id}
               node={node}
+              dragSourcePath={dragSourcePath}
               dropTargetPath={dropTargetPath}
               editingPath={props.editingPath}
               menuAnchor={menuState}
@@ -214,6 +218,7 @@ export function VaultSidebarPanel(props: {
                 onMoveEntry={moveEntryToFolder}
               onSelectFolder={setSelectedFolderPath}
               onSetDropTarget={setDropTargetPath}
+              onSetDragSource={setDragSourcePath}
               onToggleNode={toggleNode}
               openPaths={openPaths}
             />
@@ -287,6 +292,7 @@ function VaultTreeNodeView(props: {
   forceOpen?: boolean;
   node: VaultTreeNode;
   openPaths: Record<string, boolean>;
+  dragSourcePath: string;
   dropTargetPath: string;
   editingPath?: string;
   menuAnchor: VaultMenuState | null;
@@ -303,6 +309,7 @@ function VaultTreeNodeView(props: {
   onStartRename(sourcePath: string): void;
   onSelectFolder(path: string): void;
   onSetDropTarget(path: string): void;
+  onSetDragSource(path: string): void;
   onToggleNode(path: string, currentlyOpen: boolean): void;
 }) {
   const isFolder = props.node.kind === "folder";
@@ -327,21 +334,37 @@ function VaultTreeNodeView(props: {
   }, [displayName, isEditing]);
 
   function startDrag(event: DragEvent<HTMLElement>, path: string) {
+    props.onSetDragSource(path);
     event.dataTransfer.setData("text/plain", path);
     event.dataTransfer.effectAllowed = "move";
   }
 
+  function dragSourceFromEvent(event: DragEvent<HTMLElement>): string {
+    return props.dragSourcePath || event.dataTransfer.getData("text/plain");
+  }
+
+  function finishDrag() {
+    props.onSetDragSource("");
+    props.onSetDropTarget("");
+  }
+
   function handleFolderDragOver(event: DragEvent<HTMLElement>) {
-    const sourcePath = event.dataTransfer.getData("text/plain");
-    if (sourcePath && !canReorderVaultEntry(sourcePath, props.node.path) && !isDroppableVaultTarget(sourcePath, props.node.path)) return;
+    const sourcePath = dragSourceFromEvent(event);
+    if (!canReorderVaultEntry(sourcePath, props.node.path) && !isDroppableVaultTarget(sourcePath, props.node.path)) {
+      props.onSetDropTarget("");
+      return;
+    }
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     props.onSetDropTarget(props.node.path);
   }
 
   function handleFolderDrop(event: DragEvent<HTMLElement>) {
-    const sourcePath = event.dataTransfer.getData("text/plain");
-    if (!canReorderVaultEntry(sourcePath, props.node.path) && !isDroppableVaultTarget(sourcePath, props.node.path)) return;
+    const sourcePath = dragSourceFromEvent(event);
+    if (!canReorderVaultEntry(sourcePath, props.node.path) && !isDroppableVaultTarget(sourcePath, props.node.path)) {
+      finishDrag();
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     if (canReorderVaultEntry(sourcePath, props.node.path)) {
@@ -352,16 +375,22 @@ function VaultTreeNodeView(props: {
   }
 
   function handleFileDragOver(event: DragEvent<HTMLElement>) {
-    const sourcePath = event.dataTransfer.getData("text/plain");
-    if (!canReorderVaultEntry(sourcePath, props.node.path)) return;
+    const sourcePath = dragSourceFromEvent(event);
+    if (!canReorderVaultEntry(sourcePath, props.node.path)) {
+      props.onSetDropTarget("");
+      return;
+    }
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     props.onSetDropTarget(props.node.path);
   }
 
   function handleFileDrop(event: DragEvent<HTMLElement>) {
-    const sourcePath = event.dataTransfer.getData("text/plain");
-    if (!canReorderVaultEntry(sourcePath, props.node.path)) return;
+    const sourcePath = dragSourceFromEvent(event);
+    if (!canReorderVaultEntry(sourcePath, props.node.path)) {
+      finishDrag();
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     props.onReorderEntry(sourcePath, props.node.path);
@@ -469,6 +498,7 @@ function VaultTreeNodeView(props: {
           style={style}
           tabIndex={0}
           onDragLeave={() => props.onSetDropTarget("")}
+          onDragEnd={finishDrag}
           onDragOver={handleFolderDragOver}
           onDragStart={(event) => canDragFolder ? startDrag(event, props.node.path) : event.preventDefault()}
           onDrop={handleFolderDrop}
@@ -503,6 +533,7 @@ function VaultTreeNodeView(props: {
                 forceOpen={props.forceOpen}
                 key={child.id}
                 node={child}
+                dragSourcePath={props.dragSourcePath}
                 dropTargetPath={props.dropTargetPath}
                 editingPath={props.editingPath}
                 menuAnchor={props.menuAnchor}
@@ -519,6 +550,7 @@ function VaultTreeNodeView(props: {
                 onMoveEntry={props.onMoveEntry}
                 onSelectFolder={props.onSelectFolder}
                 onSetDropTarget={props.onSetDropTarget}
+                onSetDragSource={props.onSetDragSource}
                 onToggleNode={props.onToggleNode}
                 openPaths={props.openPaths}
               />
@@ -538,6 +570,7 @@ function VaultTreeNodeView(props: {
       role="button"
       style={style}
       onDragLeave={() => props.onSetDropTarget("")}
+      onDragEnd={finishDrag}
       onDragOver={handleFileDragOver}
       onDragStart={(event) => startDrag(event, props.node.path)}
       onDrop={handleFileDrop}

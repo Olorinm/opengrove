@@ -72,6 +72,11 @@
   background: var(--c-bg);
 }
 
+:root[data-resolved-theme="dark"] .library-ai-panel {
+  border-left-color: rgba(255, 255, 255, 0.18);
+  box-shadow: -1px 0 0 rgba(255, 255, 255, 0.06);
+}
+
 .library-ai-resize-handle {
   grid-column: 2;
   grid-row: 1;
@@ -94,6 +99,11 @@
 .library-ai-resize-handle:hover::before,
 body[data-sidebar-resizing="true"] .library-ai-resize-handle::before {
   background: rgba(0, 0, 0, 0.035);
+}
+
+:root[data-resolved-theme="dark"] .library-ai-resize-handle:hover::before,
+:root[data-resolved-theme="dark"] body[data-sidebar-resizing="true"] .library-ai-resize-handle::before {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .library-ai-header {

@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import {
   Folder,
+  FolderOpen,
   FolderPlus,
   ListChecks,
   Maximize2,
@@ -34,12 +35,15 @@ export interface ConversationSidebarProps {
   onOpenConversationSortMenu(): void;
   onSortKeyChange(key: ConversationSortKey): void;
   onOpenNewProject(): void;
+  onOpenFolderProject(): void;
   onOpenNewThread(projectId?: string): void;
   onOpenThread(threadId: string): void;
   onToggleProjectMenu(projectId: string): void;
   onRenameProject(project: SidebarProject): void;
+  onChangeProjectFolder(project: SidebarProject): void;
   onDeleteProject(project: SidebarProject): void;
   onDeleteThread(thread: UiThread): void;
+  folderProjectPending?: boolean;
 }
 
 export function ConversationSidebar(props: ConversationSidebarProps) {
@@ -50,6 +54,16 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
       <div className="thread-heading-row">
         <span>{t("app.chat")}</span>
         <span className={clsx("thread-heading-actions", props.conversationSortMenuOpen && "active")}>
+          <button
+            className="sidebar-mini-action"
+            type="button"
+            onClick={props.onOpenFolderProject}
+            disabled={props.folderProjectPending}
+            aria-label={t("conversation.newFolderProject")}
+            title={t("conversation.newFolderProject")}
+          >
+            <FolderOpen size={13} />
+          </button>
           <button
             className="sidebar-mini-action"
             type="button"
@@ -100,6 +114,11 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                   <Folder size={17} />
                   <span className="project-item-copy">
                     <span className="project-item-title">{project.title}</span>
+                    {project.workspaceRoot ? (
+                      <span className="project-item-context" title={t("conversation.projectFolder", { path: project.workspaceRoot })}>
+                        {folderNameFromPath(project.workspaceRoot)}
+                      </span>
+                    ) : null}
                   </span>
                 </span>
                 <span className="project-item-count">{project.threads.length}</span>
@@ -130,6 +149,10 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                   <button type="button" role="menuitem" onClick={() => props.onRenameProject(project)}>
                     <Pencil size={14} />
                     {t("conversation.renameProject")}
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => props.onChangeProjectFolder(project)}>
+                    <FolderOpen size={14} />
+                    {t("conversation.changeProjectFolder")}
                   </button>
                   <button
                     type="button"
@@ -164,6 +187,12 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
       </div>
     </div>
   );
+}
+
+function folderNameFromPath(path: string): string {
+  const normalized = path.replace(/[\\/]+$/, "");
+  const parts = normalized.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || normalized;
 }
 
 function ThreadRow(props: {

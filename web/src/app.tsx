@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ChangeEvent, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { Bot, ChevronDown, FilePlus2, FolderOpen, FolderPlus, ListChevronsDownUp, ListChevronsUpDown, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Search, SquarePen, X } from "lucide-react";
+import { Bot, ChevronDown, FilePlus2, FolderPlus, ListChecks, ListChevronsDownUp, ListChevronsUpDown, PanelLeftClose, PanelLeftOpen, Search, SquarePen, X } from "lucide-react";
 import type {
   AttachmentPayload,
   ApprovalsResponse,
@@ -253,6 +253,7 @@ export function App() {
     startNewThread,
     startNewProject,
     renameProject,
+    setProjectWorkspaceRoot,
     selectThread,
     deleteThread: deleteThreadFromStore,
     deleteProject: deleteProjectFromStore,
@@ -471,21 +472,35 @@ export function App() {
     },
   });
 
-  async function chooseWorkspaceRoot() {
+  async function pickWorkspaceDirectory(): Promise<string | undefined> {
     setWorkspacePickerPending(true);
     try {
       const result = await postJson<WorkspaceDirectoryResponse>("/workspace/choose-directory", {});
       if (result.cancelled) {
-        return;
+        return undefined;
       }
       if (!result.ok || !result.path) {
         throw new Error(result.error || "directory_picker_failed");
       }
-      settingsMutation.mutate({ workspaceRoot: result.path });
+      return result.path;
     } catch (error) {
       appendMessage("system", t("system.chooseWorkspaceFailed", { message: error instanceof Error ? error.message : String(error) }));
+      return undefined;
     } finally {
       setWorkspacePickerPending(false);
+    }
+  }
+
+  function folderTitleFromPath(path: string): string {
+    const normalized = path.replace(/[\\/]+$/, "");
+    const parts = normalized.split(/[\\/]/).filter(Boolean);
+    return parts[parts.length - 1] || normalized || t("conversation.newProject");
+  }
+
+  function syncProjectWorkspace(projectIdToSync: string | undefined) {
+    const workspaceRoot = projects.find((project) => project.id === projectIdToSync)?.workspaceRoot;
+    if (workspaceRoot && workspaceRoot !== activeWorkspaceRoot) {
+      settingsMutation.mutate({ workspaceRoot });
     }
   }
 
@@ -749,7 +764,9 @@ export function App() {
   }
 
   function openNewThread(targetProjectId?: string) {
-    startNewThread(targetProjectId);
+    const nextProjectId = targetProjectId || projectId;
+    startNewThread(nextProjectId);
+    syncProjectWorkspace(nextProjectId);
     setProjectMenuOpenId("");
     setQuestion("");
     setComposerSkillInvocation(null);
@@ -812,8 +829,31 @@ export function App() {
     setInspectorOpen(false);
   }
 
+  async function openFolderProject() {
+    const workspaceRoot = await pickWorkspaceDirectory();
+    if (!workspaceRoot) {
+      return;
+    }
+    startNewProject({
+      title: folderTitleFromPath(workspaceRoot),
+      workspaceRoot,
+    });
+    settingsMutation.mutate({ workspaceRoot });
+    setProjectMenuOpenId("");
+    setConversationSortMenuOpen(false);
+    setQuestion("");
+    setComposerSkillInvocation(null);
+    setActiveSlashIndex(0);
+    setAttachments([]);
+    setContextArtifacts([]);
+    setModelMenuKind(null);
+    setInspectorOpen(false);
+  }
+
   function openThread(nextThreadId: string) {
+    const nextProjectId = threads.find((thread) => thread.id === nextThreadId)?.projectId;
     selectThread(nextThreadId);
+    syncProjectWorkspace(nextProjectId);
     setProjectMenuOpenId("");
     setQuestion("");
     setComposerSkillInvocation(null);
@@ -859,6 +899,19 @@ export function App() {
       return;
     }
     renameProject(project.id, trimmedTitle);
+    setProjectMenuOpenId("");
+  }
+
+  async function changeProjectFolder(project: UiProject) {
+    const workspaceRoot = await pickWorkspaceDirectory();
+    if (!workspaceRoot) {
+      setProjectMenuOpenId("");
+      return;
+    }
+    setProjectWorkspaceRoot(project.id, workspaceRoot);
+    if (project.id === projectId) {
+      settingsMutation.mutate({ workspaceRoot });
+    }
     setProjectMenuOpenId("");
   }
 
@@ -1489,12 +1542,15 @@ export function App() {
               onOpenConversationSortMenu={openConversationSortMenu}
               onSortKeyChange={setConversationSortKey}
               onOpenNewProject={openNewProject}
+              onOpenFolderProject={openFolderProject}
               onOpenNewThread={openNewThread}
               onOpenThread={openThread}
               onToggleProjectMenu={(projectId) => setProjectMenuOpenId((current) => (current === projectId ? "" : projectId))}
               onRenameProject={renameProjectWithPrompt}
+              onChangeProjectFolder={changeProjectFolder}
               onDeleteProject={deleteProjectWithConfirm}
               onDeleteThread={deleteThreadWithConfirm}
+              folderProjectPending={workspacePickerPending || settingsMutation.isPending}
             />
           ) : null}
         </nav>
@@ -1534,21 +1590,6 @@ export function App() {
                   <span>{formatKernelLabel(healthQuery.data?.kernel) || "Codex"}</span>
                 </div>
                 <button
-                  className="topbar-icon-button workspace-root-button"
-                  data-active={activeWorkspaceRoot ? "true" : "false"}
-                  type="button"
-                  disabled={workspacePickerPending || settingsMutation.isPending}
-                  onClick={chooseWorkspaceRoot}
-                  title={activeWorkspaceRoot
-                    ? t("layout.workspaceRoot", { path: activeWorkspaceRoot })
-                    : t("layout.chooseWorkspace")}
-                  aria-label={activeWorkspaceRoot
-                    ? t("layout.workspaceRoot", { path: activeWorkspaceRoot })
-                    : t("layout.chooseWorkspace")}
-                >
-                  <FolderOpen size={16} />
-                </button>
-                <button
                   className="topbar-icon-button"
                   data-open={inspectorOpen ? "true" : "false"}
                   type="button"
@@ -1556,7 +1597,7 @@ export function App() {
                   title={inspectorOpen ? t("layout.closeWorkbench") : t("layout.openWorkbench")}
                   aria-label={inspectorOpen ? t("layout.closeWorkbench") : t("layout.openWorkbench")}
                 >
-                  {inspectorOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+                  <ListChecks size={16} />
                 </button>
               </>
             ) : null}

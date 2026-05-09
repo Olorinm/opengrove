@@ -20,6 +20,7 @@ const DEFAULT_PROJECT_TITLE = APP_DEFAULT_PROJECT_TITLE;
 export interface UiProject {
   id: string;
   title: string;
+  workspaceRoot?: string;
   updatedAt: string;
 }
 
@@ -67,8 +68,9 @@ interface UiState {
   updateThreadMessage(threadId: string, messageId: string, updater: (message: StoredMessage) => void): void;
   replaceMessages(messages: StoredMessage[]): void;
   startNewThread(projectId?: string): string;
-  startNewProject(): string;
+  startNewProject(options?: { title?: string; workspaceRoot?: string }): string;
   renameProject(projectId: string, title: string): void;
+  setProjectWorkspaceRoot(projectId: string, workspaceRoot: string): void;
   selectThread(threadId: string): void;
   deleteThread(threadId: string): void;
   deleteProject(projectId: string): void;
@@ -137,10 +139,11 @@ function createProjectId(): string {
   return `project:${Date.now().toString(36)}:${Math.random().toString(16).slice(2)}`;
 }
 
-function createProject(title: string): UiProject {
+function createProject(title: string, workspaceRoot?: string): UiProject {
   return {
     id: createProjectId(),
     title,
+    workspaceRoot: normalizeWorkspaceRoot(workspaceRoot),
     updatedAt: nowIso(),
   };
 }
@@ -161,6 +164,10 @@ function createThread(threadId: string, projectId: string, messages: StoredMessa
     updatedAt: nowIso(),
     messages: trimMessages(messages),
   };
+}
+
+function normalizeWorkspaceRoot(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function deriveThreadTitle(messages: StoredMessage[], fallback = "新线程"): string {
@@ -212,6 +219,7 @@ function normalizeProjects(value: unknown): UiProject[] {
         .map((item: any) => ({
           id: typeof item.id === "string" && item.id ? item.id : createProjectId(),
           title: typeof item.title === "string" && item.title ? item.title : DEFAULT_PROJECT_TITLE,
+          workspaceRoot: normalizeWorkspaceRoot(item.workspaceRoot),
           updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : nowIso(),
         }))
     : [];
@@ -403,8 +411,9 @@ export const useUiStore = create<UiState>()(
         });
         return id;
       },
-      startNewProject() {
-        const project = createProject(`新项目 ${new Date().toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}`);
+      startNewProject(options = {}) {
+        const defaultTitle = `新项目 ${new Date().toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })}`;
+        const project = createProject(options.title?.trim() || defaultTitle, options.workspaceRoot);
         const threadId = createThreadId();
         set((state) => ({
           activeView: "chat",
@@ -428,6 +437,23 @@ export const useUiStore = create<UiState>()(
               ? {
                   ...project,
                   title: nextTitle,
+                  updatedAt: nowIso(),
+                }
+              : project,
+          ),
+        }));
+      },
+      setProjectWorkspaceRoot(targetProjectId, workspaceRoot) {
+        const normalized = normalizeWorkspaceRoot(workspaceRoot);
+        if (!normalized) {
+          return;
+        }
+        set((state) => ({
+          projects: state.projects.map((project) =>
+            project.id === targetProjectId
+              ? {
+                  ...project,
+                  workspaceRoot: normalized,
                   updatedAt: nowIso(),
                 }
               : project,

@@ -30,8 +30,11 @@ export type TranslationKey =
   | "common.enabled"
   | "common.disabled"
   | "conversation.newProject"
+  | "conversation.newFolderProject"
   | "conversation.newThread"
   | "conversation.renameProject"
+  | "conversation.changeProjectFolder"
+  | "conversation.projectFolder"
   | "conversation.more"
   | "conversation.sort"
   | "conversation.sortProjects"
@@ -70,8 +73,6 @@ export type TranslationKey =
   | "layout.collapseSidebar"
   | "layout.expandSidebar"
   | "layout.localBridge"
-  | "layout.chooseWorkspace"
-  | "layout.workspaceRoot"
   | "layout.openWorkbench"
   | "layout.closeWorkbench"
   | "layout.workbench"
@@ -300,8 +301,11 @@ const ZH_CN: Dictionary = {
   "common.enabled": "已开启",
   "common.disabled": "未开启",
   "conversation.newProject": "新建项目",
+  "conversation.newFolderProject": "从本地文件夹新建项目",
   "conversation.newThread": "新对话",
   "conversation.renameProject": "重命名项目",
+  "conversation.changeProjectFolder": "修改文件夹",
+  "conversation.projectFolder": "对应文件夹：{path}",
   "conversation.more": "更多",
   "conversation.sort": "排序",
   "conversation.sortProjects": "项目排序",
@@ -340,8 +344,6 @@ const ZH_CN: Dictionary = {
   "layout.collapseSidebar": "收起侧边栏",
   "layout.expandSidebar": "展开侧边栏",
   "layout.localBridge": "本地 bridge",
-  "layout.chooseWorkspace": "选择工作目录",
-  "layout.workspaceRoot": "当前工作目录：{path}",
   "layout.openWorkbench": "打开工作台",
   "layout.closeWorkbench": "收起工作台",
   "layout.workbench": "工作台",
@@ -568,8 +570,11 @@ const EN: Dictionary = {
   "common.enabled": "Enabled",
   "common.disabled": "Disabled",
   "conversation.newProject": "New project",
+  "conversation.newFolderProject": "New project from local folder",
   "conversation.newThread": "New chat",
   "conversation.renameProject": "Rename project",
+  "conversation.changeProjectFolder": "Change folder",
+  "conversation.projectFolder": "Folder: {path}",
   "conversation.more": "More",
   "conversation.sort": "Sort",
   "conversation.sortProjects": "Sort projects",
@@ -608,8 +613,6 @@ const EN: Dictionary = {
   "layout.collapseSidebar": "Collapse sidebar",
   "layout.expandSidebar": "Expand sidebar",
   "layout.localBridge": "Local bridge",
-  "layout.chooseWorkspace": "Choose working directory",
-  "layout.workspaceRoot": "Current working directory: {path}",
   "layout.openWorkbench": "Open workbench",
   "layout.closeWorkbench": "Close workbench",
   "layout.workbench": "Workbench",
