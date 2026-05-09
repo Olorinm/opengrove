@@ -38,8 +38,10 @@ export function applyDocumentTheme(preference: ThemePreference = readStoredTheme
     return;
   }
   const root = document.documentElement;
+  const resolvedTheme = resolveTheme(preference);
   root.dataset.theme = preference;
-  root.style.colorScheme = resolveTheme(preference);
+  root.dataset.resolvedTheme = resolvedTheme;
+  root.style.colorScheme = resolvedTheme;
 }
 
 export function setThemePreference(preference: ThemePreference): void {

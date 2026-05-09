@@ -99,14 +99,14 @@ function kernelIconSpec(kernelId?: KernelPreference | string): BrandIconSpec {
   const normalized = normalizeToken(kernelId);
   if (normalized === "codex") return { brand: "codex", component: CodexColor };
   if (normalized === "claude-code" || normalized === "claude") return { brand: "claude-code", component: ClaudeCodeColor };
-  if (normalized === "opencode") return { brand: "opencode", component: OpenCodeMono, currentColor: "#111111" };
-  if (normalized === "hermes") return { brand: "hermes", component: HermesAgentMono, currentColor: "#111111" };
-  if (normalized === "pi") return { brand: "pi", component: PiMark, currentColor: "#111111" };
+  if (normalized === "opencode") return { brand: "opencode", component: OpenCodeMono };
+  if (normalized === "hermes") return { brand: "hermes", component: HermesAgentMono };
+  if (normalized === "pi") return { brand: "pi", component: PiMark };
   if (normalized === "openclaw") return { brand: "openclaw", component: OpenClawColor };
   if (normalized === "gemini-cli") return { brand: "gemini-cli", component: GeminiCliColor };
   if (normalized === "deepseek-tui" || normalized === "deepseek") return { brand: "deepseek", component: DeepSeekColor };
   if (normalized === "qwen-code" || normalized === "qwen") return { brand: "qwen", component: QwenColor };
-  if (normalized === "auto") return { brand: "auto", component: Bot, currentColor: "#6f737a" };
+  if (normalized === "auto") return { brand: "auto", component: Bot };
   return { brand: normalized || "kernel", placeholder: true };
 }
 
@@ -139,7 +139,7 @@ function providerIconSpec(provider?: ProviderIconInput, providerId?: string, pro
   if (includesAny(haystack, ["zhipu", "bigmodel", "智谱"])) return { brand: "zhipu", component: ZhipuColor };
   if (includesAny(haystack, ["glm"])) return { brand: "chatglm", component: ChatGLMColor };
   if (includesAny(haystack, ["kimi"])) return { brand: "kimi", component: KimiColor };
-  if (includesAny(haystack, ["moonshot"])) return { brand: "moonshot", component: MoonshotMono, currentColor: "#111111" };
+  if (includesAny(haystack, ["moonshot"])) return { brand: "moonshot", component: MoonshotMono };
   if (includesAny(haystack, ["minimax"])) return { brand: "minimax", component: MinimaxColor };
   if (includesAny(haystack, ["siliconflow", "silicon-cloud"])) return { brand: "silicon-cloud", component: SiliconCloudColor };
   if (includesAny(haystack, ["modelscope"])) return { brand: "modelscope", component: ModelScopeColor };
@@ -147,15 +147,15 @@ function providerIconSpec(provider?: ProviderIconInput, providerId?: string, pro
   if (includesAny(haystack, ["novita"])) return { brand: "novita", component: NovitaColor };
   if (includesAny(haystack, ["qianfan", "baidu-cloud"])) return { brand: "baidu-cloud", component: BaiduCloudColor };
   if (includesAny(haystack, ["baidu", "百度"])) return { brand: "baidu", component: BaiduColor };
-  if (includesAny(haystack, ["opencode"])) return { brand: "opencode", component: OpenCodeMono, currentColor: "#111111" };
-  if (includesAny(haystack, ["hermes"])) return { brand: "hermes", component: HermesAgentMono, currentColor: "#111111" };
+  if (includesAny(haystack, ["opencode"])) return { brand: "opencode", component: OpenCodeMono };
+  if (includesAny(haystack, ["hermes"])) return { brand: "hermes", component: HermesAgentMono };
   if (includesAny(haystack, ["openclaw"])) return { brand: "openclaw", component: OpenClawColor };
-  if (includesAny(haystack, ["pi-agent", "pi-ai", "pi-native"]) || hasToken(haystack, "pi")) return { brand: "pi", component: PiMark, currentColor: "#111111" };
+  if (includesAny(haystack, ["pi-agent", "pi-ai", "pi-native"]) || hasToken(haystack, "pi")) return { brand: "pi", component: PiMark };
   if (includesAny(haystack, ["codex"])) return { brand: "codex", component: CodexColor };
   if (includesAny(haystack, ["claude-code"])) return { brand: "claude-code", component: ClaudeCodeColor };
   if (includesAny(haystack, ["anthropic", "claude"])) return { brand: "claude", component: ClaudeColor };
-  if (includesAny(haystack, ["openai", "chatgpt", "gpt"])) return { brand: "openai", component: OpenAIMono, currentColor: "#6f737a" };
-  if (includesAny(haystack, ["native", "oauth", "account"])) return { brand: "native", component: OpenAIMono, currentColor: "#6f737a" };
+  if (includesAny(haystack, ["openai", "chatgpt", "gpt"])) return { brand: "openai", component: OpenAIMono };
+  if (includesAny(haystack, ["native", "oauth", "account"])) return { brand: "native", component: OpenAIMono };
   return { brand: normalizeToken(providerId || provider?.id || providerName || provider?.name) || "provider", placeholder: true };
 }
 

@@ -36,6 +36,32 @@ body {
   color: var(--og-text-soft);
 }
 
+:root[data-theme="dark"] .entity-icon {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: #1f1f1f;
+  color: #f4f4f4;
+}
+
+:root[data-theme="dark"] .entity-icon[data-placeholder="true"] {
+  background: #2f2f2f;
+  color: #d7d7d7;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .entity-icon,
+  :root:not([data-theme]) .entity-icon {
+    border-color: rgba(255, 255, 255, 0.16);
+    background: #1f1f1f;
+    color: #f4f4f4;
+  }
+
+  :root[data-theme="system"] .entity-icon[data-placeholder="true"],
+  :root:not([data-theme]) .entity-icon[data-placeholder="true"] {
+    background: #2f2f2f;
+    color: #d7d7d7;
+  }
+}
+
 .thread-shell {
   display: grid;
   gap: var(--sp-6);
