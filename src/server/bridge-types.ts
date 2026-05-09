@@ -233,6 +233,7 @@ export interface BridgeProviderHttpCaptureFlow {
 
 export interface BridgeSettings {
   kernel: BridgeKernelPreference;
+  workspaceRoot?: string;
   providerSetupVersion?: number;
   providerHttpCaptureEnabled: boolean;
   kernelProxy: BridgeKernelProxySettings;

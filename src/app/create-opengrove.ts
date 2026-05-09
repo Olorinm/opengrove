@@ -141,10 +141,12 @@ export interface CreateOpenGroveOptions {
   sessionId?: string;
   userId?: string;
   cwd?: string;
+  workspaceRoot?: string;
   includeCodexSkills?: boolean;
 }
 
 export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
+  const workspaceRoot = options.workspaceRoot ?? options.cwd;
   const events = new EventLog();
   const approvals = new ApprovalInbox();
   const capabilities = new CapabilityRegistry()
@@ -158,11 +160,12 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
   const artifacts = createKnowledgeBackedArtifactStore(knowledge);
   const baseSkills = createSkillCatalog({
     cwd: options.cwd,
+    workspaceRoot,
     includeCodexSkills: options.includeCodexSkills === true,
   });
   const nativeSkillPublications = options.kernel?.capabilities.knowledge?.nativeSkills
     ? publishNativeSkills({
-        cwd: options.cwd,
+        cwd: workspaceRoot,
         kernelId: options.kernel.id,
         kernelCapabilities: options.kernel.capabilities,
         skills: baseSkills.list(),
@@ -330,7 +333,7 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
       const preparedInput = prepareTurnInput(input, {
         runId,
         sessionId,
-        cwd: options.cwd,
+        cwd: workspaceRoot,
         skills,
         workingState,
         kernel: options.kernel,

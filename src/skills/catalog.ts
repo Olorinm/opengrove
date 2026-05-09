@@ -27,6 +27,7 @@ interface ParsedFrontmatter {
 
 interface CreateSkillCatalogOptions {
   cwd?: string;
+  workspaceRoot?: string;
   includeCodexSkills?: boolean;
 }
 
@@ -38,7 +39,11 @@ interface SkillInterfaceMetadata {
 
 export function createSkillCatalog(options: CreateSkillCatalogOptions = {}): SkillCatalog {
   const cwd = resolve(options.cwd ?? process.cwd());
-  const loaded = loadSkillManifests(cwd, { includeCodexSkills: options.includeCodexSkills === true });
+  const workspaceRoot = resolve(options.workspaceRoot ?? cwd);
+  const loaded = loadSkillManifests(cwd, {
+    workspaceRoot,
+    includeCodexSkills: options.includeCodexSkills === true,
+  });
   const byId = new Map<string, SkillManifest>();
   const byName = new Map<string, SkillManifest>();
 
@@ -96,7 +101,7 @@ export function estimateSkillFrontmatterText(skill: SkillManifest): string {
   return [skill.name, skill.description, skill.whenToUse ?? ""].filter(Boolean).join(" ");
 }
 
-function loadSkillManifests(cwd: string, options: { includeCodexSkills: boolean }): SkillManifest[] {
+function loadSkillManifests(cwd: string, options: { workspaceRoot: string; includeCodexSkills: boolean }): SkillManifest[] {
   const roots = collectSkillRoots(cwd, options);
   const seen = new Set<string>();
   const seenSkillKeys = new Set<string>();
@@ -158,9 +163,9 @@ function loadSkillManifests(cwd: string, options: { includeCodexSkills: boolean 
   return skills;
 }
 
-function collectSkillRoots(cwd: string, options: { includeCodexSkills: boolean }): SkillRoot[] {
+function collectSkillRoots(cwd: string, options: { workspaceRoot: string; includeCodexSkills: boolean }): SkillRoot[] {
   const roots: SkillRoot[] = [];
-  const ancestry = collectAncestry(cwd);
+  const ancestry = collectAncestry(options.workspaceRoot);
   for (const dir of ancestry) {
     roots.push({
       dir: join(dir, APP_CONFIG_DIR, "skills"),

@@ -38,6 +38,10 @@ import {
   normalizeKernelPathOverrides,
 } from "./kernel-paths.js";
 import { getBridgeTurnContext } from "./bridge-turn-context.js";
+import {
+  normalizeWorkspaceRootValue,
+  resolveBridgeWorkspaceRoot,
+} from "./workspace-root.js";
 
 export function createBridgeState(options: LocalBridgeServerOptions): BridgeState {
   const state: BridgeState = {
@@ -49,6 +53,7 @@ export function createBridgeState(options: LocalBridgeServerOptions): BridgeStat
     kernel: "codex",
     settings: {
       kernel: "auto",
+      workspaceRoot: undefined,
       providerHttpCaptureEnabled: false,
       kernelProxy: defaultKernelProxySettings(),
       kernelPathOverrides: {},
@@ -72,6 +77,7 @@ export function createBridgeState(options: LocalBridgeServerOptions): BridgeStat
 
 export function recreateBridgeApp(state: BridgeState): void {
   const kernel = createBridgeKernel(state);
+  const workspaceRoot = resolveBridgeWorkspaceRoot(state.settings);
   state.app = createOpenGrove({
     readPage: () => getBridgeTurnContext()?.snapshot ?? state.snapshot,
     readComputer: () => getBridgeTurnContext()?.computerSnapshot ?? state.computerSnapshot,
@@ -80,6 +86,7 @@ export function recreateBridgeApp(state: BridgeState): void {
     sessionId: "browser-bridge",
     userId: "local-user",
     cwd: process.cwd(),
+    workspaceRoot,
     includeCodexSkills: state.kernel === "codex",
   });
   state.store.loadInto(state.app);
@@ -89,6 +96,8 @@ export function recreateBridgeApp(state: BridgeState): void {
 export function getBridgeSettingsSnapshot(state: BridgeState): JsonObject {
   return {
     kernel: state.settings.kernel,
+    workspaceRoot: resolveBridgeWorkspaceRoot(state.settings),
+    workspaceRootConfigured: Boolean(state.settings.workspaceRoot),
     providerSetupVersion: state.settings.providerSetupVersion ?? 0,
     activeKernel: state.kernel,
     kernels: getBridgeKernelOptions(state),
@@ -113,6 +122,7 @@ export function normalizeBridgeSettingsPatch(input: unknown, base: BridgeSetting
   const providerHttpCapture = record(source.providerHttpCapture);
   return {
     kernel: normalizeBridgeKernelPreference(source.kernel, base.kernel),
+    workspaceRoot: normalizeWorkspaceRootValue(source.workspaceRoot, base.workspaceRoot),
     providerSetupVersion: numberOrUndefined(source.providerSetupVersion) ?? base.providerSetupVersion,
     providerHttpCaptureEnabled:
       typeof source.providerHttpCaptureEnabled === "boolean"
@@ -143,6 +153,7 @@ export function loadBridgeSettings(state: BridgeState): BridgeSettings {
     const parsed = JSON.parse(readFileSync(bridgeSettingsPath(state), "utf8")) as Record<string, unknown>;
     return {
       kernel: normalizeBridgeKernelPreference(parsed.kernel, defaults.kernel),
+      workspaceRoot: normalizeWorkspaceRootValue(parsed.workspaceRoot, defaults.workspaceRoot),
       providerSetupVersion: numberOrUndefined(parsed.providerSetupVersion) ?? defaults.providerSetupVersion,
       providerHttpCaptureEnabled:
         typeof parsed.providerHttpCaptureEnabled === "boolean"
@@ -177,6 +188,7 @@ export function saveBridgeSettings(state: BridgeState): void {
 function defaultBridgeSettings(): BridgeSettings {
   return {
     kernel: normalizeBridgeKernelPreference(readAppEnv("KERNEL"), "auto"),
+    workspaceRoot: normalizeWorkspaceRootValue(readAppEnv("WORKSPACE_ROOT"), undefined),
     providerSetupVersion: 0,
     providerHttpCaptureEnabled: isEnabledEnvFlag(
       readAppEnv("PROVIDER_CAPTURE_ENABLED") ?? readAppEnv("PROVIDER_HTTP_CAPTURE"),

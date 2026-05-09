@@ -70,6 +70,8 @@ export type TranslationKey =
   | "layout.collapseSidebar"
   | "layout.expandSidebar"
   | "layout.localBridge"
+  | "layout.chooseWorkspace"
+  | "layout.workspaceRoot"
   | "layout.openWorkbench"
   | "layout.closeWorkbench"
   | "layout.workbench"
@@ -224,6 +226,7 @@ export type TranslationKey =
   | "settings.languageEnglish"
   | "settings.saveFailed"
   | "system.saveSettingsFailed"
+  | "system.chooseWorkspaceFailed"
   | "system.savedLocalFile"
   | "system.saveLibraryPageFailed"
   | "system.createLocalFileFailed"
@@ -337,6 +340,8 @@ const ZH_CN: Dictionary = {
   "layout.collapseSidebar": "收起侧边栏",
   "layout.expandSidebar": "展开侧边栏",
   "layout.localBridge": "本地 bridge",
+  "layout.chooseWorkspace": "选择工作目录",
+  "layout.workspaceRoot": "当前工作目录：{path}",
   "layout.openWorkbench": "打开工作台",
   "layout.closeWorkbench": "收起工作台",
   "layout.workbench": "工作台",
@@ -491,6 +496,7 @@ const ZH_CN: Dictionary = {
   "settings.languageEnglish": "English",
   "settings.saveFailed": "保存设置失败",
   "system.saveSettingsFailed": "保存设置失败：{message}",
+  "system.chooseWorkspaceFailed": "选择工作目录失败：{message}",
   "system.savedLocalFile": "已保存到本地文件：{name}",
   "system.saveLibraryPageFailed": "保存资料库页面失败：{message}",
   "system.createLocalFileFailed": "创建本地文件失败：{message}",
@@ -602,6 +608,8 @@ const EN: Dictionary = {
   "layout.collapseSidebar": "Collapse sidebar",
   "layout.expandSidebar": "Expand sidebar",
   "layout.localBridge": "Local bridge",
+  "layout.chooseWorkspace": "Choose working directory",
+  "layout.workspaceRoot": "Current working directory: {path}",
   "layout.openWorkbench": "Open workbench",
   "layout.closeWorkbench": "Close workbench",
   "layout.workbench": "Workbench",
@@ -756,6 +764,7 @@ const EN: Dictionary = {
   "settings.languageEnglish": "English",
   "settings.saveFailed": "Failed to save settings",
   "system.saveSettingsFailed": "Failed to save settings: {message}",
+  "system.chooseWorkspaceFailed": "Failed to choose working directory: {message}",
   "system.savedLocalFile": "Saved to local file: {name}",
   "system.saveLibraryPageFailed": "Failed to save library page: {message}",
   "system.createLocalFileFailed": "Failed to create local file: {message}",

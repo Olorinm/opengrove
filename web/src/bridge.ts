@@ -407,6 +407,8 @@ export interface KernelProxySettings {
 
 export interface BridgeSettings {
   kernel: KernelPreference;
+  workspaceRoot?: string;
+  workspaceRootConfigured?: boolean;
   providerSetupVersion?: number;
   activeKernel: string;
   kernels: KernelOption[];
@@ -476,6 +478,13 @@ export interface KernelInstallResponse {
   stdout?: string;
   stderr?: string;
   settings?: BridgeSettings;
+  error?: string;
+}
+
+export interface WorkspaceDirectoryResponse {
+  ok: boolean;
+  path?: string;
+  cancelled?: boolean;
   error?: string;
 }
 

@@ -82,9 +82,11 @@ import {
   kernelConfigHome,
   kernelPathEnv,
 } from "./kernel-paths.js";
+import { resolveBridgeWorkspaceRoot } from "./workspace-root.js";
 
 export function createBridgeKernel(state: BridgeState): KernelAdapter {
   const kernel = resolveBridgeKernel(state.settings.kernel, state);
+  const workspaceRoot = resolveBridgeWorkspaceRoot(state.settings);
   state.kernel = kernel;
   const providerHttpCapture = readProviderHttpCaptureOptions(state, kernel);
   const provider = resolveProviderForKernel(kernel, state.settings.kernelProviderBindings, state.settings.customProviders);
@@ -103,14 +105,14 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
     provider,
     providerModel: descriptor.thread.reuseAcrossModelChanges ? undefined : selectedModel,
     kernelModel: descriptor.thread.reuseAcrossModelChanges ? undefined : kernelSelectedModel,
-    cwd: process.cwd(),
+    cwd: workspaceRoot,
   });
 
   if (kernel === "claude-code") {
     const cliPath = resolveKernelCommandPath(state, "claude-code");
     return createClaudeCodeKernelAdapter({
       cliPath,
-      cwd: process.cwd(),
+      cwd: workspaceRoot,
       configuredModel: provider && !nativeProviderBinding ? kernelSelectedModel : undefined,
       runtimeBindingFingerprint,
       modelAliases,
@@ -134,7 +136,7 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
       : baseCodexProviderConfig;
     return createCodexKernelAdapter({
       command,
-      cwd: process.cwd(),
+      cwd: workspaceRoot,
       configuredModel: provider ? (kernelSelectedModel || readCodexConfiguredModel()) : readCodexConfiguredModel(),
       configuredModelProvider: codexProviderConfig?.providerKey,
       providerConfig: codexProviderConfig,
@@ -156,12 +158,12 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
     const hermesProviderConfig = hermesProviderConfigForKernel(provider, selectedModel);
     return createHermesKernelAdapter({
       command,
-      cwd: process.cwd(),
+      cwd: workspaceRoot,
       configuredModel: hermesProviderConfig ? (kernelSelectedModel || readHermesConfiguredModel()) : readHermesConfiguredModel(),
       configuredProvider: hermesProviderConfig?.providerKey ?? readHermesConfiguredProvider(),
       providerConfig: hermesProviderConfig,
       toolsets: readHermesToolsets(),
-      nativeSkillDir: defaultHermesExternalSkillDir(process.cwd()),
+      nativeSkillDir: defaultHermesExternalSkillDir(workspaceRoot),
       providerHttpCapture,
       env: providerEnv,
     });
@@ -172,7 +174,7 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
     const command = resolveKernelCommandPath(state, kernel);
     return createExternalCliKernelAdapter(external, {
       command,
-      cwd: process.cwd(),
+      cwd: workspaceRoot,
       env: providerEnv,
       providerHttpCapture,
     });
@@ -199,7 +201,7 @@ export function getBridgeKernelOptions(state: BridgeState): JsonObject[] {
     const discovery = buildKernelDiscoverySnapshot(id, state, available);
     const provider = resolveProviderForKernel(id, state.settings.kernelProviderBindings, state.settings.customProviders);
     const nativeProvider = !provider
-      ? readKernelNativeProviderProfile(id, { configHome: kernelConfigHome(state.settings, id) })
+      ? readKernelNativeProviderProfile(id, nativeProfileOptions(state, id))
       : undefined;
     options.push(stripUndefined({
       id,
@@ -464,7 +466,7 @@ function buildKernelDiscoverySnapshot(
   state: BridgeState,
   available: boolean,
 ): KernelDiscovery {
-  const cwd = process.cwd();
+  const cwd = resolveBridgeWorkspaceRoot(state.settings);
   if (id === "codex") {
     const command = resolveKernelCommandPath(state, "codex");
     return {
@@ -512,7 +514,7 @@ function buildKernelDiscoverySnapshot(
       available,
     });
   }
-  const base = createRuntimeKernelDiscovery(id, kernelLabel(id), available, cwd);
+  const base = createRuntimeKernelDiscovery(id, kernelLabel(id), available, process.cwd());
   return base;
 }
 
@@ -791,7 +793,7 @@ function resolveKernelCommandPath(state: BridgeState | undefined, id: BridgeKern
     return existingPath(override);
   }
   if (id === "codex") return resolveCodexCommandPath();
-  if (id === "claude-code") return resolveClaudeCodeCliPath(process.cwd());
+  if (id === "claude-code") return resolveClaudeCodeCliPath(state ? resolveBridgeWorkspaceRoot(state.settings) : process.cwd());
   if (id === "hermes") return resolveHermesCommandPath();
   const definition = externalCliDefinition(id);
   return definition ? resolveExternalCliCommand(definition) : undefined;
@@ -799,7 +801,7 @@ function resolveKernelCommandPath(state: BridgeState | undefined, id: BridgeKern
 
 function nativeProfileOptions(state: BridgeState | undefined, id: BridgeKernelId): { cwd: string; configHome: string } {
   return {
-    cwd: process.cwd(),
+    cwd: state ? resolveBridgeWorkspaceRoot(state.settings) : process.cwd(),
     configHome: kernelConfigHomeFromState(state, id),
   };
 }

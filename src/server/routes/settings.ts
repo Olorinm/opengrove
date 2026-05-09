@@ -95,6 +95,7 @@ export async function handleSettingsRoute(options: {
   );
   const restartRequired =
     nextSettings.kernel !== previousSettings.kernel ||
+    nextSettings.workspaceRoot !== previousSettings.workspaceRoot ||
     nextSettings.providerHttpCaptureEnabled !== previousSettings.providerHttpCaptureEnabled ||
     JSON.stringify(nextSettings.kernelProxy) !== JSON.stringify(previousSettings.kernelProxy) ||
     JSON.stringify(nextSettings.kernelPathOverrides) !== JSON.stringify(previousSettings.kernelPathOverrides) ||

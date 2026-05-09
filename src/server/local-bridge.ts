@@ -23,6 +23,7 @@ import { filterEnabledKnowledgeDocuments, listKnowledgeVaultFolders, resolveKnow
 import { serveStaticRoute } from "./routes/static.js";
 import { handleKnowledgeRoute } from "./routes/knowledge.js";
 import { handleSettingsRoute } from "./routes/settings.js";
+import { handleWorkspaceRoute } from "./routes/workspace.js";
 import {
   applyCors,
   createBridgeSecurity,
@@ -98,6 +99,10 @@ export function startLocalBridgeServer(options: LocalBridgeServerOptions = {}) {
       }
 
       if (await handleSettingsRoute({ request, response, url, state, sendJson, readJsonBody })) {
+        return;
+      }
+
+      if (await handleWorkspaceRoute({ request, response, url, sendJson })) {
         return;
       }
 

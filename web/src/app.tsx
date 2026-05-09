@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ChangeEvent, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { Bot, ChevronDown, FilePlus2, FolderPlus, ListChevronsDownUp, ListChevronsUpDown, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Search, SquarePen, X } from "lucide-react";
+import { Bot, ChevronDown, FilePlus2, FolderOpen, FolderPlus, ListChevronsDownUp, ListChevronsUpDown, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Search, SquarePen, X } from "lucide-react";
 import type {
   AttachmentPayload,
   ApprovalsResponse,
@@ -19,6 +19,7 @@ import type {
   RuntimeAccessMode,
   ResponseSpeed,
   SkillRecord,
+  WorkspaceDirectoryResponse,
 } from "./bridge";
 import {
   patchJson,
@@ -186,6 +187,7 @@ export function App() {
   const [responseSpeed, setResponseSpeedState] = useState<ResponseSpeed>(() => readStoredResponseSpeed());
   const [accessMode, setAccessModeState] = useState<RuntimeAccessMode>(() => readStoredAccessMode());
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [workspacePickerPending, setWorkspacePickerPending] = useState(false);
   const [libraryAiOpen, setLibraryAiOpen] = useState(false);
   const [libraryAiThreadMenuOpen, setLibraryAiThreadMenuOpen] = useState(false);
   const [isComposingText, setIsComposingText] = useState(false);
@@ -291,6 +293,7 @@ export function App() {
   const currentSession = resolveCurrentSession(sessions, workingState, threadId, latestRun, hasThreadActivity);
   const runtimeBlocker = resolveLatestRuntimeBlocker(executions, latestRun?.sessionId || currentSession?.id || "");
   const activeKernel = healthQuery.data?.kernel;
+  const activeWorkspaceRoot = settingsQuery.data?.settings.workspaceRoot || healthQuery.data?.settings?.workspaceRoot || "";
   const activeRuntimeControls = healthQuery.data?.runtimeControls?.kernel === activeKernel
     ? healthQuery.data?.runtimeControls
     : undefined;
@@ -437,8 +440,9 @@ export function App() {
 
   const settingsMutation = useMutation({
     mutationFn: (payload: {
-      kernel: KernelPreference;
-      providerHttpCaptureEnabled: boolean;
+      kernel?: KernelPreference;
+      workspaceRoot?: BridgeSettings["workspaceRoot"];
+      providerHttpCaptureEnabled?: boolean;
       kernelProxy?: BridgeSettings["kernelProxy"];
       kernelPathOverrides?: BridgeSettings["kernelPathOverrides"];
       kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
@@ -466,6 +470,24 @@ export function App() {
       appendMessage("system", t("system.saveSettingsFailed", { message: error instanceof Error ? error.message : String(error) }));
     },
   });
+
+  async function chooseWorkspaceRoot() {
+    setWorkspacePickerPending(true);
+    try {
+      const result = await postJson<WorkspaceDirectoryResponse>("/workspace/choose-directory", {});
+      if (result.cancelled) {
+        return;
+      }
+      if (!result.ok || !result.path) {
+        throw new Error(result.error || "directory_picker_failed");
+      }
+      settingsMutation.mutate({ workspaceRoot: result.path });
+    } catch (error) {
+      appendMessage("system", t("system.chooseWorkspaceFailed", { message: error instanceof Error ? error.message : String(error) }));
+    } finally {
+      setWorkspacePickerPending(false);
+    }
+  }
 
   const installKernelMutation = useMutation({
     mutationFn: (payload: { kernelId: string; actionId: string }) =>
@@ -1511,6 +1533,21 @@ export function App() {
                   <KernelIcon kernelId={healthQuery.data?.kernel} className="topbar-kernel-icon" size={13} />
                   <span>{formatKernelLabel(healthQuery.data?.kernel) || "Codex"}</span>
                 </div>
+                <button
+                  className="topbar-icon-button workspace-root-button"
+                  data-active={activeWorkspaceRoot ? "true" : "false"}
+                  type="button"
+                  disabled={workspacePickerPending || settingsMutation.isPending}
+                  onClick={chooseWorkspaceRoot}
+                  title={activeWorkspaceRoot
+                    ? t("layout.workspaceRoot", { path: activeWorkspaceRoot })
+                    : t("layout.chooseWorkspace")}
+                  aria-label={activeWorkspaceRoot
+                    ? t("layout.workspaceRoot", { path: activeWorkspaceRoot })
+                    : t("layout.chooseWorkspace")}
+                >
+                  <FolderOpen size={16} />
+                </button>
                 <button
                   className="topbar-icon-button"
                   data-open={inspectorOpen ? "true" : "false"}
