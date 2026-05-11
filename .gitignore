@@ -2,6 +2,7 @@ node_modules/
 dist/
 data/
 docs/
+doc/
 .DS_Store
 web-dist/
 .claude/

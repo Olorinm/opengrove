@@ -6,6 +6,8 @@ import { RoomGroupAvatar } from "./room-group-avatar";
 import {
   ROOM_OWNER_MEMBER,
   memberModelLabel,
+  roomMemberSourceDetail,
+  roomMemberSourceLabel,
   statusLabel,
   type Room,
   type RoomMember,
@@ -136,10 +138,10 @@ export function RoomSettingsPanel(props: RoomSettingsPanelProps) {
               <div>
                 <div className="rooms-member-row-title">
                   <strong>{member.name}</strong>
-                  {member.id === ROOM_OWNER_MEMBER.id ? <span>群主</span> : null}
+                  {member.id === ROOM_OWNER_MEMBER.id ? <span>群主</span> : <span>{roomMemberSourceLabel(member)}</span>}
                 </div>
                 <p>{member.role}</p>
-                <small>{member.kernel} / {memberModelLabel(member)} · {statusLabel(member.status)}</small>
+                <small>{roomMemberSourceDetail(member)} · {statusLabel(member.status)}</small>
               </div>
             </div>
           )) : <div className="rooms-empty-row">没有匹配成员</div>}

@@ -355,6 +355,16 @@ export function App() {
   } = useBridgeQueries();
 
   const inventory = inventoryQuery.data;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("employeeLink")) {
+      setView("contacts");
+    } else if (params.get("view") === "rooms" || params.get("roomInvite") || params.get("relayInviteToken")) {
+      setView("rooms");
+    }
+  }, [setView]);
+
   const approvals = approvalsQuery.data?.approvals ?? [];
   const pendingApprovals = useMemo(
     () => approvals.filter((approval) => approval?.status === "pending"),
@@ -592,6 +602,7 @@ export function App() {
       providerHttpCaptureEnabled?: boolean;
       codexRawEventCaptureEnabled?: boolean;
       kernelProxy?: BridgeSettings["kernelProxy"];
+      relay?: BridgeSettings["relay"];
       kernelPathOverrides?: BridgeSettings["kernelPathOverrides"];
       kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
       kernelProviderBindings?: Record<string, string>;
@@ -1773,11 +1784,9 @@ export function App() {
     />
   );
 
-  const renderSharedComposer = (options: { messagesEmpty: boolean; showSuggestions?: boolean }) => (
+  const renderSharedComposer = () => (
     <ChatComposer
       sending={activeThreadIsRunning}
-      messagesEmpty={options.messagesEmpty}
-      showSuggestions={options.showSuggestions}
       contextText={contextText}
       attachments={attachments}
       contextArtifacts={contextArtifacts}
@@ -1820,11 +1829,6 @@ export function App() {
         setComposerSkillInvocation(null);
         setActiveSlashIndex(0);
         requestAnimationFrame(() => composerInputRef.current?.focus());
-      }}
-      onUseSuggestion={(suggestion) => {
-        setComposerSkillInvocation(null);
-        setActiveSlashIndex(0);
-        setQuestion(suggestion);
       }}
       skillMenu={showSlashPalette ? (
         <SlashCommandMenu
@@ -2106,7 +2110,7 @@ export function App() {
                   {renderSharedThreadShell()}
                 </section>
 
-                {renderSharedComposer({ messagesEmpty: messages.length === 0 })}
+                {renderSharedComposer()}
               </section>
 
               {inspectorOpen ? (
@@ -2264,7 +2268,7 @@ export function App() {
                 <section ref={libraryAiScrollRef} className="library-ai-thread chat-thread-scroll" aria-live="polite">
                   {renderSharedThreadShell()}
                 </section>
-                {renderSharedComposer({ messagesEmpty: messages.length === 0, showSuggestions: false })}
+                {renderSharedComposer()}
               </aside>
               </>
             ) : null}

@@ -4,7 +4,6 @@ import {
   ClipboardPlus,
   FileText,
   Image as ImageIcon,
-  MessageSquare,
   Package,
   Plus,
   Shield,
@@ -97,8 +96,6 @@ function speedOptionsForRuntime(t: TranslationFn, runtimeControls?: RuntimeContr
 
 export interface ChatComposerProps {
   sending: boolean;
-  messagesEmpty: boolean;
-  showSuggestions?: boolean;
   contextText: string;
   attachments: AttachmentPayload[];
   contextArtifacts: ContextArtifactPayload[];
@@ -134,7 +131,6 @@ export interface ChatComposerProps {
   onSetAccessMode(mode: RuntimeAccessMode): void;
   onSubmitOrStop(): void;
   onRemoveSkillInvocation(): void;
-  onUseSuggestion(prompt: string): void;
   skillMenu?: ReactNode;
 }
 
@@ -242,22 +238,6 @@ export function ChatComposer(props: ChatComposerProps) {
         </div>
       </div>
 
-      {(props.showSuggestions ?? true) && props.messagesEmpty ? (
-        <div className="empty-suggestions" aria-label={t("composer.suggestions")}>
-          <button type="button" onClick={() => props.onUseSuggestion("把当前目标拆成下一步可以执行的计划")}>
-            <MessageSquare size={15} />
-            {t("composer.suggestionPlan")}
-          </button>
-          <button type="button" onClick={() => props.onUseSuggestion("整理一下当前项目里的关键记忆和资料")}>
-            <MessageSquare size={15} />
-            {t("composer.suggestionMemory")}
-          </button>
-          <button type="button" onClick={() => props.onUseSuggestion("看看最近产物、待确认事项和运行状态")}>
-            <MessageSquare size={15} />
-            {t("composer.suggestionStatus")}
-          </button>
-        </div>
-      ) : null}
     </section>
   );
 }

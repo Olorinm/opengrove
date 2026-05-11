@@ -33,3 +33,6 @@ export * from "./tools/skill.js";
 export * from "./storage/json-state-store.js";
 export * from "./routines/routine-runner.js";
 export * from "./evals/run-evals.js";
+export * from "./relay/protocol.js";
+export * from "./relay/in-memory-relay.js";
+export * from "./relay/http-relay-server.js";

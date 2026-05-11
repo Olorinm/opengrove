@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { packageRoot } from "./package-root.js";
 import { startLocalBridgeServer } from "./server/local-bridge.js";
+import { startRelayHttpServer } from "./relay/http-relay-server.js";
 
 type PackageInfo = {
   name: string;
@@ -15,11 +16,13 @@ const USAGE = `OpenGrove
 Usage:
   opengrove start [--host HOST] [--port PORT]
   opengrove bridge [--host HOST] [--port PORT]
+  opengrove relay [--host HOST] [--port PORT]
   opengrove update
   opengrove version
 
 Commands:
   start, bridge   Start the local OpenGrove bridge and UI.
+  relay           Start the OpenGrove room relay HTTP/SSE server.
   update          Upgrade the npm global installation to the latest version.
   version         Print the installed OpenGrove version.
 `;
@@ -42,6 +45,12 @@ async function main(): Promise<void> {
   if (command === "start" || command === "bridge") {
     const options = parseStartOptions(command === args[0] ? args.slice(1) : args);
     startLocalBridgeServer(options);
+    return;
+  }
+
+  if (command === "relay") {
+    const options = parseStartOptions(args.slice(1));
+    startRelayHttpServer(options);
     return;
   }
 

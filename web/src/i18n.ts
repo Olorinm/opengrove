@@ -91,10 +91,6 @@ export type TranslationKey =
   | "composer.removeSkill"
   | "composer.send"
   | "composer.stop"
-  | "composer.suggestions"
-  | "composer.suggestionPlan"
-  | "composer.suggestionMemory"
-  | "composer.suggestionStatus"
   | "composer.selectedText"
   | "composer.artifact"
   | "composer.removeContext"
@@ -119,6 +115,7 @@ export type TranslationKey =
   | "composer.effortXHigh"
   | "settings.kernels"
   | "settings.providers"
+  | "settings.relay"
   | "settings.network"
   | "settings.diagnostics"
   | "settings.appearance"
@@ -127,7 +124,21 @@ export type TranslationKey =
   | "settings.general"
   | "settings.kernelsDescription"
   | "settings.providersDescription"
+  | "settings.relayDescription"
   | "settings.networkDescription"
+  | "settings.relayServer"
+  | "settings.relayReady"
+  | "settings.relayMissing"
+  | "settings.relayEnabled"
+  | "settings.relayEnabledCopy"
+  | "settings.relayBaseUrl"
+  | "settings.relayBaseUrlCopy"
+  | "settings.relayToken"
+  | "settings.relayTokenCopy"
+  | "settings.relayTokenPlaceholder"
+  | "settings.relayWorkspace"
+  | "settings.relayWorkspaceCopy"
+  | "settings.relayWorkspacePending"
   | "settings.providerList"
   | "settings.providerBindings"
   | "settings.providerBindingsCopy"
@@ -371,10 +382,6 @@ const ZH_CN: Dictionary = {
   "composer.removeSkill": "移除技能 {name}",
   "composer.send": "发送消息",
   "composer.stop": "停止运行",
-  "composer.suggestions": "建议",
-  "composer.suggestionPlan": "把当前目标拆成下一步",
-  "composer.suggestionMemory": "整理当前记忆和资料",
-  "composer.suggestionStatus": "查看最近产物和待确认",
   "composer.selectedText": "已选文本片段",
   "composer.artifact": "产物",
   "composer.removeContext": "移除上下文",
@@ -399,6 +406,7 @@ const ZH_CN: Dictionary = {
   "composer.effortXHigh": "超高",
   "settings.kernels": "内核与知识",
   "settings.providers": "模型提供方",
+  "settings.relay": "Relay",
   "settings.network": "网络代理",
   "settings.diagnostics": "抓包与诊断",
   "settings.appearance": "外观",
@@ -407,7 +415,21 @@ const ZH_CN: Dictionary = {
   "settings.general": "常规",
   "settings.kernelsDescription": "选择默认内核，并管理它们暴露给资料库的本机知识来源。",
   "settings.providersDescription": "管理可绑定到不同内核的模型网关和 coding plan。",
+  "settings.relayDescription": "配置远程员工加入群聊时使用的公共 Relay。",
   "settings.networkDescription": "配置内核和安装命令使用的代理；未开启时会继承终端环境代理。",
+  "settings.relayServer": "Relay 服务器",
+  "settings.relayReady": "已配置",
+  "settings.relayMissing": "未配置",
+  "settings.relayEnabled": "启用 Relay",
+  "settings.relayEnabledCopy": "群聊邀请、远程员工入群和跨设备消息都通过这个公共 Relay 交换。",
+  "settings.relayBaseUrl": "公共地址",
+  "settings.relayBaseUrlCopy": "必须是朋友电脑也能访问到的地址，不能填 localhost 或 127.0.0.1。",
+  "settings.relayToken": "访问 token",
+  "settings.relayTokenCopy": "Relay 有鉴权时填写；公开邀请接受不需要这个 token。",
+  "settings.relayTokenPlaceholder": "可选",
+  "settings.relayWorkspace": "工作区",
+  "settings.relayWorkspaceCopy": "第一次生成邀请时会自动在 Relay 上创建。",
+  "settings.relayWorkspacePending": "尚未创建",
   "settings.providerList": "供应商列表",
   "settings.providerBindings": "内核绑定",
   "settings.providerBindingsCopy": "给每个内核选择默认 provider。未选择时使用该内核自己的原生登录或配置。",
@@ -649,10 +671,6 @@ const EN: Dictionary = {
   "composer.removeSkill": "Remove skill {name}",
   "composer.send": "Send message",
   "composer.stop": "Stop running",
-  "composer.suggestions": "Suggestions",
-  "composer.suggestionPlan": "Break the current goal into next steps",
-  "composer.suggestionMemory": "Organize current memory and materials",
-  "composer.suggestionStatus": "Review recent artifacts and pending items",
   "composer.selectedText": "Selected text",
   "composer.artifact": "Artifact",
   "composer.removeContext": "Remove context",
@@ -677,6 +695,7 @@ const EN: Dictionary = {
   "composer.effortXHigh": "Extra high",
   "settings.kernels": "Kernels & Knowledge",
   "settings.providers": "Providers",
+  "settings.relay": "Relay",
   "settings.network": "Network proxy",
   "settings.diagnostics": "Capture & Diagnostics",
   "settings.appearance": "Appearance",
@@ -685,7 +704,21 @@ const EN: Dictionary = {
   "settings.general": "General",
   "settings.kernelsDescription": "Choose the default kernel and manage the local knowledge sources it exposes to the library.",
   "settings.providersDescription": "Manage model gateways and coding plans that can be bound to different kernels.",
+  "settings.relayDescription": "Configure the public Relay used when remote employees join rooms.",
   "settings.networkDescription": "Configure the proxy used by kernels and install commands. When disabled, terminal proxy environment variables are inherited.",
+  "settings.relayServer": "Relay server",
+  "settings.relayReady": "Configured",
+  "settings.relayMissing": "Not configured",
+  "settings.relayEnabled": "Enable Relay",
+  "settings.relayEnabledCopy": "Room invites, remote employee joins, and cross-device messages are exchanged through this public Relay.",
+  "settings.relayBaseUrl": "Public URL",
+  "settings.relayBaseUrlCopy": "This must be reachable from your friend's computer. Do not use localhost or 127.0.0.1.",
+  "settings.relayToken": "Access token",
+  "settings.relayTokenCopy": "Fill this when the Relay requires authentication. Public invite acceptance does not need this token.",
+  "settings.relayTokenPlaceholder": "Optional",
+  "settings.relayWorkspace": "Workspace",
+  "settings.relayWorkspaceCopy": "Created automatically on the Relay the first time you generate an invite.",
+  "settings.relayWorkspacePending": "Not created yet",
   "settings.providerList": "Provider list",
   "settings.providerBindings": "Kernel bindings",
   "settings.providerBindingsCopy": "Choose the default provider for each kernel. Empty means the kernel keeps using its native login/config.",

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { Camera, Check, MessageCircle, Pencil, Search, UserPlus, UsersRound, X } from "lucide-react";
+import { Camera, Check, Copy, MessageCircle, Pencil, Search, UserPlus, UsersRound, X } from "lucide-react";
 import type { KernelOption, ModelId, RuntimeControls } from "../../bridge";
 import { modelLabel, modelOptionsForKernel, resolveDefaultModelForKernel, runtimeControlsForKernel } from "../../runtime/kernel-models";
 import { ThemedPixelIcon } from "../sidebar/app-navigation";
 import { KernelIcon } from "../ui/entity-icons";
 import { EmployeeDialog } from "./employee-dialog";
+import { clearEmployeeLinkFromLocation, createEmployeeLink, employeeLinkCode, employeeLinkPreview, readEmployeeLinkFromLocation } from "./employee-links";
 import { RoomMemberAvatar } from "./member-avatar";
 import { RoomInlineSelect } from "./room-inline-select";
 import {
@@ -16,6 +17,8 @@ import {
   memberModelLabel,
   nowIso,
   readStoredState,
+  roomMemberSourceDetail,
+  roomMemberSourceLabel,
   selectableKernelOptions,
   statusLabel,
   writeRoomsState,
@@ -46,8 +49,10 @@ export function ContactsView(props: {
   const [activeSection, setActiveSection] = useState<"employees" | "groups">("employees");
   const [selectedMemberId, setSelectedMemberId] = useState(state.members[0]?.id || "");
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
+  const [incomingEmployeeLink, setIncomingEmployeeLink] = useState(() => readEmployeeLinkFromLocation() || "");
   const [editingMemberId, setEditingMemberId] = useState("");
   const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
+  const [employeeLinkCopyState, setEmployeeLinkCopyState] = useState("");
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -71,6 +76,14 @@ export function ContactsView(props: {
     setSelectedMemberId(state.members[0]?.id || "");
   }, [selectedMemberId, state.members]);
 
+  useEffect(() => {
+    setEmployeeLinkCopyState("");
+  }, [selectedMemberId]);
+
+  useEffect(() => {
+    if (incomingEmployeeLink) setEmployeeDialogOpen(true);
+  }, [incomingEmployeeLink]);
+
   const filteredMembers = useMemo(() => {
     const value = query.trim().toLowerCase();
     if (!value) return state.members;
@@ -79,11 +92,16 @@ export function ContactsView(props: {
       || member.role.toLowerCase().includes(value)
       || member.kernel.toLowerCase().includes(value)
       || member.model.toLowerCase().includes(value)
+      || roomMemberSourceLabel(member).toLowerCase().includes(value)
+      || roomMemberSourceDetail(member).toLowerCase().includes(value)
     ));
   }, [query, state.members]);
 
   const groupRooms = useMemo(() => state.rooms.filter((room) => room.kind === "group"), [state.rooms]);
   const selectedMember = state.members.find((member) => member.id === selectedMemberId) ?? filteredMembers[0] ?? state.members[0];
+  const selectedEmployeeLinkCode = selectedMember && selectedMember.source !== "human"
+    ? employeeLinkCode(createEmployeeLink(selectedMember))
+    : "";
   const editingSelectedMember = Boolean(selectedMember && editingMemberId === selectedMember.id && editDraft);
   const availableKernels = useMemo(() => selectableKernelOptions(props.kernelOptions, props.activeKernel), [props.activeKernel, props.kernelOptions]);
   const selectedDraftRuntimeControls = runtimeControlsForKernel(editDraft?.kernel || selectedMember?.kernel || "", props.runtimeControls, props.runtimeControlsByKernel);
@@ -105,10 +123,22 @@ export function ContactsView(props: {
   function createEmployee(member: RoomMember) {
     const nextState = persist({
       ...state,
-      members: [...state.members, member],
+      members: state.members.some((item) => item.id === member.id) ? state.members : [...state.members, member],
     });
     setSelectedMemberId(member.id);
+    clearIncomingEmployeeLink();
     return nextState;
+  }
+
+  function updateEmployeeDialogOpen(open: boolean) {
+    setEmployeeDialogOpen(open);
+    if (!open) clearIncomingEmployeeLink();
+  }
+
+  function clearIncomingEmployeeLink() {
+    if (!incomingEmployeeLink) return;
+    setIncomingEmployeeLink("");
+    clearEmployeeLinkFromLocation();
   }
 
   function saveEmployee(member: RoomMember) {
@@ -166,16 +196,26 @@ export function ContactsView(props: {
 
   function saveInlineEmployee() {
     if (!selectedMember || !editDraft) return;
+    const canEditRuntime = !selectedMember.source || selectedMember.source === "local";
     const nextMember: RoomMember = {
       ...selectedMember,
       name: editDraft.name.trim() || selectedMember.name,
       role: editDraft.role.trim() || "员工",
-      kernel: editDraft.kernel,
-      model: editDraft.model || selectedMember.model,
-      color: KERNEL_COLORS[editDraft.kernel] || selectedMember.color,
+      kernel: canEditRuntime ? editDraft.kernel : selectedMember.kernel,
+      model: canEditRuntime ? editDraft.model || selectedMember.model : selectedMember.model,
+      color: canEditRuntime ? KERNEL_COLORS[editDraft.kernel] || selectedMember.color : selectedMember.color,
       avatarDataUrl: editDraft.avatarDataUrl,
     };
     saveEmployee(nextMember);
+  }
+
+  async function copyEmployeeLink(member: RoomMember) {
+    const link = employeeLinkCode(createEmployeeLink(member));
+    if (await writeClipboardText(link)) {
+      setEmployeeLinkCopyState("已复制");
+      return;
+    }
+    setEmployeeLinkCopyState("复制失败");
   }
 
   function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
@@ -234,7 +274,7 @@ export function ContactsView(props: {
       <aside className="contacts-nav-panel">
         <header className="contacts-nav-header">
           <h1>通讯录</h1>
-          <button className="rooms-icon-button" type="button" onClick={() => setEmployeeDialogOpen(true)} aria-label="招聘员工" title="招聘员工">
+          <button className="rooms-icon-button" type="button" onClick={() => setEmployeeDialogOpen(true)} aria-label="添加员工" title="添加员工">
             <ThemedPixelIcon pixelIcon="plus" professionalIcon={UserPlus} professionalSize={16} pixelSize={17} />
           </button>
         </header>
@@ -284,7 +324,7 @@ export function ContactsView(props: {
                     <RoomMemberAvatar member={member} />
                     <span>
                       <strong>{member.name}</strong>
-                      <small>{member.role}</small>
+                      <small>{roomMemberSourceLabel(member)} · {member.role}</small>
                     </span>
                   </button>
                 ))}
@@ -311,7 +351,7 @@ export function ContactsView(props: {
                     </div>
                     <div>
                       <h3>{editingSelectedMember && editDraft ? editDraft.name || selectedMember.name : selectedMember.name}</h3>
-                      <p>{editingSelectedMember && editDraft ? editDraft.role || "员工" : selectedMember.role}</p>
+                      <p>{roomMemberSourceLabel(selectedMember)} · {editingSelectedMember && editDraft ? editDraft.role || "员工" : selectedMember.role}</p>
                     </div>
                     <div className="contacts-detail-actions">
                       {editingSelectedMember ? (
@@ -341,6 +381,10 @@ export function ContactsView(props: {
                   </div>
                   <dl className="contacts-detail-list">
                     <div>
+                      <dt>来源</dt>
+                      <dd>{roomMemberSourceLabel(selectedMember)} · {roomMemberSourceDetail(selectedMember)}</dd>
+                    </div>
+                    <div>
                       <dt>显示名称</dt>
                       <dd>{editingSelectedMember && editDraft ? (
                         <input
@@ -363,7 +407,7 @@ export function ContactsView(props: {
                     </div>
                     <div>
                       <dt>Kernel</dt>
-                      <dd>{editingSelectedMember && editDraft ? (
+                      <dd>{editingSelectedMember && editDraft && (!selectedMember.source || selectedMember.source === "local") ? (
                         <RoomInlineSelect
                           value={editDraft.kernel}
                           options={availableKernels.map((kernel) => ({
@@ -382,7 +426,7 @@ export function ContactsView(props: {
                     </div>
                     <div>
                       <dt>模型 / 版本</dt>
-                      <dd>{editingSelectedMember && editDraft ? (
+                      <dd>{editingSelectedMember && editDraft && (!selectedMember.source || selectedMember.source === "local") ? (
                         <RoomInlineSelect
                           value={editDraft.model}
                           options={selectedDraftModelOptions.map((option) => ({ id: option.id, label: modelLabel(option) }))}
@@ -402,6 +446,22 @@ export function ContactsView(props: {
                       <dt>员工 ID</dt>
                       <dd>{selectedMember.id}</dd>
                     </div>
+                    {selectedMember.source !== "human" ? (
+                      <div>
+                        <dt>员工链接</dt>
+                        <dd>
+                          <button
+                            className="contacts-message-button"
+                            type="button"
+                            onClick={() => void copyEmployeeLink(selectedMember)}
+                            title={selectedEmployeeLinkCode}
+                          >
+                            <Copy size={15} />
+                            <span>{employeeLinkCopyState || employeeLinkPreview(selectedEmployeeLinkCode)}</span>
+                          </button>
+                        </dd>
+                      </div>
+                    ) : null}
                   </dl>
                 </>
               ) : (
@@ -434,11 +494,31 @@ export function ContactsView(props: {
         runtimeControls={props.runtimeControls}
         runtimeControlsByKernel={props.runtimeControlsByKernel}
         kernelOptions={props.kernelOptions}
-        onOpenChange={setEmployeeDialogOpen}
+        initialEmployeeLink={incomingEmployeeLink}
+        onOpenChange={updateEmployeeDialogOpen}
         onCreate={createEmployee}
       />
     </section>
   );
+}
+
+async function writeClipboardText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.readOnly = true;
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    textarea.remove();
+    return copied;
+  }
 }
 
 function resolveDefaultModel(

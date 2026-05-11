@@ -1,18 +1,26 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bug, Check, ChevronDown, Cpu, Globe2, Palette, PlugZap, Plus, Trash2 } from "lucide-react";
 import { useIconStylePreference, type IconStylePreference } from "../../appearance";
-import type { BridgeSettings, KernelOption, KernelPathOverride, KernelPreference, KernelProxySettings, ProviderProfile } from "../../bridge";
+import type { BridgeSettings, KernelOption, KernelPathOverride, KernelPreference, KernelProxySettings, ProviderProfile, RelaySettings } from "../../bridge";
 import { useI18n, type LanguagePreference, type TranslationFn } from "../../i18n";
 import { useThemePreference, type ThemePreference } from "../../theme";
 import { renderContextRecordCard } from "../system/system-views";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { KernelIcon, ProviderIcon } from "../ui/entity-icons";
 
-type SettingsSectionId = "kernels" | "providers" | "network" | "diagnostics" | "appearance";
+type SettingsSectionId = "kernels" | "providers" | "relay" | "network" | "diagnostics" | "appearance";
+type SettingsSectionLabelKey =
+  | "settings.kernels"
+  | "settings.providers"
+  | "settings.relay"
+  | "settings.network"
+  | "settings.diagnostics"
+  | "settings.appearance";
 
-const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; labelKey: "settings.kernels" | "settings.providers" | "settings.network" | "settings.diagnostics" | "settings.appearance"; icon: typeof Cpu }> = [
+const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; labelKey: SettingsSectionLabelKey; icon: typeof Cpu }> = [
   { id: "kernels", labelKey: "settings.kernels", icon: Cpu },
   { id: "providers", labelKey: "settings.providers", icon: PlugZap },
+  { id: "relay", labelKey: "settings.relay", icon: Globe2 },
   { id: "network", labelKey: "settings.network", icon: Globe2 },
   { id: "diagnostics", labelKey: "settings.diagnostics", icon: Bug },
   { id: "appearance", labelKey: "settings.appearance", icon: Palette },
@@ -59,6 +67,7 @@ export function SettingsDialog(props: {
     providerHttpCaptureEnabled: boolean;
     codexRawEventCaptureEnabled: boolean;
     kernelProxy: KernelProxySettings;
+    relay: RelaySettings;
     kernelPathOverrides: Record<string, KernelPathOverride>;
     kernelKnowledgeSourceEnabled: Record<string, Record<string, boolean>>;
     kernelProviderBindings: Record<string, string>;
@@ -76,6 +85,7 @@ export function SettingsDialog(props: {
   const [providerHttpCaptureEnabled, setProviderHttpCaptureEnabled] = useState(false);
   const [codexRawEventCaptureEnabled, setCodexRawEventCaptureEnabled] = useState(false);
   const [kernelProxy, setKernelProxy] = useState<KernelProxySettings>(emptyKernelProxySettings());
+  const [relaySettings, setRelaySettings] = useState<RelaySettings>(emptyRelaySettings());
   const [kernelPathOverrides, setKernelPathOverrides] = useState<Record<string, KernelPathOverride>>({});
   const [sourceEnabled, setSourceEnabled] = useState<Record<string, Record<string, boolean>>>({});
   const [providerBindings, setProviderBindings] = useState<Record<string, string>>({});
@@ -96,6 +106,7 @@ export function SettingsDialog(props: {
     setProviderHttpCaptureEnabled(Boolean(props.settings.providerHttpCapture?.enabled));
     setCodexRawEventCaptureEnabled(Boolean(props.settings.codexRawEventCaptureEnabled));
     setKernelProxy(normalizeKernelProxySettings(props.settings.kernelProxy));
+    setRelaySettings(normalizeRelaySettings(props.settings.relay));
     setKernelPathOverrides(props.settings.kernelPathOverrides ?? {});
     setSourceEnabled(buildSourceEnabledState(props.settings));
     setProviderBindings(sanitizeProviderBindings(props.settings.kernelProviderBindings ?? {}, props.settings.providers ?? []));
@@ -149,6 +160,7 @@ export function SettingsDialog(props: {
     providerHttpCaptureEnabled?: boolean;
     codexRawEventCaptureEnabled?: boolean;
     kernelProxy?: KernelProxySettings;
+    relay?: RelaySettings;
     kernelPathOverrides?: Record<string, KernelPathOverride>;
     kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
     kernelProviderBindings?: Record<string, string>;
@@ -159,6 +171,7 @@ export function SettingsDialog(props: {
       providerHttpCaptureEnabled: next.providerHttpCaptureEnabled ?? providerHttpCaptureEnabled,
       codexRawEventCaptureEnabled: next.codexRawEventCaptureEnabled ?? codexRawEventCaptureEnabled,
       kernelProxy: next.kernelProxy ?? kernelProxy,
+      relay: next.relay ?? relaySettings,
       kernelPathOverrides: next.kernelPathOverrides ?? kernelPathOverrides,
       kernelKnowledgeSourceEnabled: next.kernelKnowledgeSourceEnabled ?? sourceEnabled,
       kernelProviderBindings: next.kernelProviderBindings ?? providerBindings,
@@ -194,6 +207,16 @@ export function SettingsDialog(props: {
     const next = normalizeKernelProxySettings({ ...kernelProxy, ...patch });
     setKernelProxy(next);
     saveSettings({ kernelProxy: next });
+  };
+
+  const setRelayDraft = (patch: Partial<RelaySettings>) => {
+    setRelaySettings((current) => ({ ...current, ...patch }));
+  };
+
+  const saveRelay = (patch: Partial<RelaySettings> = {}) => {
+    const next = normalizeRelaySettings({ ...relaySettings, ...patch });
+    setRelaySettings(next);
+    saveSettings({ relay: next });
   };
 
   const setKernelPathDraft = (kernelId: string, key: keyof KernelPathOverride, value: string) => {
@@ -905,6 +928,77 @@ export function SettingsDialog(props: {
             </div>
           ) : null}
 
+          {activeSection === "relay" ? (
+            <div className="settings-page-stack">
+              <section className="settings-list-section">
+                <div className="settings-list-section-heading">
+                  <h2>{t("settings.relayServer")}</h2>
+                  <span className={relaySettings.enabled && relaySettings.baseUrl ? "settings-status-pill" : "settings-status-pill muted"}>
+                    {relaySettings.enabled && relaySettings.baseUrl ? t("settings.relayReady") : t("settings.relayMissing")}
+                  </span>
+                </div>
+                <div className="settings-list">
+                  <label className="settings-list-row">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.relayEnabled")}</strong>
+                      <small>{t("settings.relayEnabledCopy")}</small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={relaySettings.enabled}
+                      disabled={props.loading || props.saving}
+                      onChange={(event) => saveRelay({ enabled: event.target.checked })}
+                    />
+                  </label>
+                  <label className="settings-list-row settings-list-row-field">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.relayBaseUrl")}</strong>
+                      <small>{t("settings.relayBaseUrlCopy")}</small>
+                    </span>
+                    <input
+                      value={relaySettings.baseUrl}
+                      disabled={props.loading || props.saving}
+                      placeholder="https://relay.example.com"
+                      onBlur={() => saveRelay()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                      onChange={(event) => setRelayDraft({ baseUrl: event.target.value })}
+                    />
+                  </label>
+                  <label className="settings-list-row settings-list-row-field">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.relayToken")}</strong>
+                      <small>{t("settings.relayTokenCopy")}</small>
+                    </span>
+                    <input
+                      type="password"
+                      value={relaySettings.authToken ?? ""}
+                      disabled={props.loading || props.saving}
+                      placeholder={t("settings.relayTokenPlaceholder")}
+                      onBlur={() => saveRelay()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                      onChange={(event) => setRelayDraft({ authToken: event.target.value })}
+                    />
+                  </label>
+                  <div className="settings-list-row">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.relayWorkspace")}</strong>
+                      <small>{t("settings.relayWorkspaceCopy")}</small>
+                    </span>
+                    <code>{relaySettings.workspaceId || t("settings.relayWorkspacePending")}</code>
+                  </div>
+                </div>
+              </section>
+            </div>
+          ) : null}
+
           {activeSection === "network" ? (
             <div className="settings-page-stack">
               <section className="settings-list-section">
@@ -1305,6 +1399,29 @@ function normalizeKernelProxySettings(input: Partial<KernelProxySettings> | unde
   };
 }
 
+function emptyRelaySettings(): RelaySettings {
+  return {
+    enabled: false,
+    baseUrl: "",
+    authToken: "",
+    workspaceId: "",
+    roomBindings: {},
+  };
+}
+
+function normalizeRelaySettings(input: Partial<RelaySettings> | undefined): RelaySettings {
+  const defaults = emptyRelaySettings();
+  return {
+    ...defaults,
+    ...input,
+    enabled: Boolean(input?.enabled),
+    baseUrl: input?.baseUrl?.trim() || "",
+    authToken: input?.authToken?.trim() || undefined,
+    workspaceId: input?.workspaceId?.trim() || undefined,
+    roomBindings: input?.roomBindings ?? {},
+  };
+}
+
 function effectiveProxyValue(proxy: KernelProxySettings, t: TranslationFn): string {
   if (proxy.enabled) return proxy.proxyUrl || t("settings.proxySourceNone");
   return proxy.environmentProxyUrl || t("settings.proxySourceNone");
@@ -1504,6 +1621,7 @@ function sectionTitle(value: SettingsSectionId, t: TranslationFn): string {
 function sectionDescription(value: SettingsSectionId, t: TranslationFn): string {
   if (value === "kernels") return t("settings.kernelsDescription");
   if (value === "providers") return t("settings.providersDescription");
+  if (value === "relay") return t("settings.relayDescription");
   if (value === "network") return t("settings.networkDescription");
   if (value === "diagnostics") return t("settings.diagnosticsDescription");
   if (value === "appearance") return t("settings.appearanceDescription");

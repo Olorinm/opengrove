@@ -9,6 +9,7 @@ import { EmployeeDialog } from "./employee-dialog";
 import { RoomMemberAvatar } from "./member-avatar";
 import { RoomComposer, type MentionOption } from "./room-composer";
 import { RoomGroupAvatar } from "./room-group-avatar";
+import { RemoteInviteDialog } from "./remote-invite-dialog";
 import {
   applyAgentEventToRoomMessage,
   failRoomMessage,
@@ -20,7 +21,26 @@ import {
   roomMessageText,
   type RoomRunPromptResult,
 } from "./room-message-model";
+import {
+  clearRemoteRoomInviteFromLocation,
+  createRemoteRoomInvite,
+  readRemoteRoomInviteFromLocation,
+  type RemoteRoomInvitePayload,
+  type RemoteRoomInviteResult,
+} from "./room-invites";
 import { RoomMessageStream } from "./room-message-stream";
+import {
+  acceptRelayInvite,
+  connectRelayRoom,
+  publishRelayMessage,
+  publishRelayTurnFinal,
+  roomFromAcceptedRelayInvite,
+  roomMemberFromRelayJoin,
+  type RelayEventEnvelope,
+  type RelayMessagePayload,
+  type RelayTurnFinalPayload,
+} from "./room-relay";
+import { runRemoteRoomAgent } from "./room-remote-agent";
 import { roomThreadId } from "./room-runtime";
 import { RoomSettingsPanel } from "./room-settings-panel";
 import { RoomSidebar } from "./room-sidebar";
@@ -30,6 +50,7 @@ import {
   createId,
   directRoomId,
   nowIso,
+  roomMemberSourceLabel,
   statusLabel,
   type MemberStatus,
   type MessageStatus,
@@ -158,6 +179,98 @@ function canSendRoomDraft(rawText: string, attachmentCount: number): boolean {
   return !/^@\S*$/.test(text);
 }
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function shouldRunLocally(member: RoomMember): boolean {
+  return !member.source || member.source === "local";
+}
+
+function buildPassiveMemberAnswer(member: RoomMember): string {
+  if (member.disabled) {
+    return `${member.name} 已被禁用，不能参与这次对话。`;
+  }
+  if (member.source === "human") {
+    return `${member.name} 是人类成员，不会自动执行 agent 回复。`;
+  }
+  return "";
+}
+
+function remoteMemberFromInvite(member: RoomMember, invite: RemoteRoomInvitePayload): RoomMember {
+  return {
+    id: `remote_${invite.token}_${member.id}`.replace(/[^A-Za-z0-9_-]/g, "_"),
+    name: member.name,
+    kernel: "remote-agent",
+    model: "OpenGrove Relay",
+    role: member.role,
+    status: "waiting",
+    color: member.color,
+    lastActive: "刚刚",
+    avatarDataUrl: member.avatarDataUrl,
+    source: "remote",
+    sourceLabel: "远程",
+    inviteStatus: "accepted",
+    homeNodeLabel: member.kernel,
+    relayMemberId: invite.relayRoomId ? member.id : undefined,
+  };
+}
+
+function remoteInviteJoinedMessage(memberName: string, createdAt: string): RoomMessage {
+  return {
+    id: createId("message"),
+    senderId: "system",
+    senderName: "系统",
+    senderType: "system",
+    text: `${memberName} 已通过邀请加入。`,
+    targetIds: [],
+    status: "done",
+    createdAt,
+  };
+}
+
+function remoteInviteErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("relay_not_configured")) {
+    return "还没有配置 Relay，暂时不能生成远程员工邀请链接。请先到设置里填写公共 Relay 地址。";
+  }
+  return `生成远程员工邀请链接失败：${message}`;
+}
+
+function patchRelayFinalMessages(
+  messages: RoomMessage[],
+  event: RelayEventEnvelope,
+  payload: RelayTurnFinalPayload,
+  relayMember: RoomMember | undefined,
+  answer: string,
+): RoomMessage[] {
+  let patched = false;
+  const next = messages.map((message) => {
+    if (message.runId && event.turnId && message.runId === event.turnId) {
+      patched = true;
+      return finalizeRoomMessage(message, {
+        answer,
+        duration: payload.duration,
+        events: payload.events,
+      });
+    }
+    return message;
+  });
+  if (patched || !relayMember) return next;
+  return [...next, {
+    id: createId("message"),
+    senderId: relayMember.id,
+    senderName: payload.memberName || relayMember.name,
+    senderType: "agent",
+    text: answer,
+    targetIds: [relayMember.id],
+    status: "done",
+    createdAt: event.createdAt || nowIso(),
+    duration: payload.duration,
+    parts: [],
+  }];
+}
+
 function findMentionContext(value: string, cursor: number): Pick<MentionMenuState, "query" | "start" | "end"> | null {
   const beforeCursor = value.slice(0, cursor);
   const match = beforeCursor.match(/(^|\s)@([^\s@]*)$/);
@@ -194,6 +307,9 @@ export function RoomsView(props: {
   const suppressNextEnterRef = useRef(false);
   const attachedRoomRunIdsRef = useRef(new Set<string>());
   const localRoomRunIdsRef = useRef(new Set<string>());
+  const relayEventIdsRef = useRef(new Set<string>());
+  const roomsRef = useRef<Room[]>([]);
+  const membersRef = useRef<RoomMember[]>([]);
   const { rooms, setRooms, members, setMembers, activeRoomId, setActiveRoomId, storageWarning } = useRoomsStorage({
     activeKernel: props.activeKernel,
     activeModel: props.activeModel,
@@ -210,6 +326,7 @@ export function RoomsView(props: {
   const [roomMenuOpen, setRoomMenuOpen] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
+  const [remoteInvite, setRemoteInvite] = useState<RemoteRoomInvitePayload | null>(() => readRemoteRoomInviteFromLocation());
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupDraftTitle, setGroupDraftTitle] = useState("");
   const [groupDraftMemberIds, setGroupDraftMemberIds] = useState<string[]>([]);
@@ -225,6 +342,23 @@ export function RoomsView(props: {
     () => rooms.find((room) => room.id === activeRoomId) ?? rooms[0],
     [activeRoomId, rooms],
   );
+
+  useEffect(() => {
+    roomsRef.current = rooms;
+  }, [rooms]);
+
+  useEffect(() => {
+    membersRef.current = members;
+  }, [members]);
+
+  useEffect(() => {
+    function syncRemoteInviteFromLocation() {
+      setRemoteInvite(readRemoteRoomInviteFromLocation());
+    }
+    window.addEventListener("popstate", syncRemoteInviteFromLocation);
+    return () => window.removeEventListener("popstate", syncRemoteInviteFromLocation);
+  }, []);
+
   const roomMembers = useMemo(
     () => activeRoom ? activeRoom.memberIds.map((id) => members.find((member) => member.id === id)).filter((member): member is RoomMember => Boolean(member)) : [],
     [activeRoom, members],
@@ -277,7 +411,7 @@ export function RoomsView(props: {
         id: member.id,
         kind: "member",
         label: member.name,
-        detail: `${member.role} · ${statusLabel(member.status)}`,
+        detail: `${roomMemberSourceLabel(member)} · ${member.role} · ${statusLabel(member.status)}`,
         member,
       }));
     return [...(includeAll ? [allOption] : []), ...memberOptions];
@@ -340,6 +474,32 @@ export function RoomsView(props: {
     return runIds;
   }, [props.runs]);
   const messageCount = activeRoom?.messages.length ?? 0;
+  const relayConnectionKey = useMemo(
+    () => rooms
+      .filter((room) => room.relay?.baseUrl && room.relay.roomId && room.relay.memberId)
+      .map((room) => [
+        room.id,
+        room.relay?.baseUrl,
+        room.relay?.roomId,
+        room.relay?.memberId,
+        room.relay?.memberToken,
+      ].join(":"))
+      .sort()
+      .join("|"),
+    [rooms],
+  );
+
+  useEffect(() => {
+    const sources: EventSource[] = [];
+    for (const room of roomsRef.current) {
+      if (!room.relay?.baseUrl || !room.relay.roomId || !room.relay.memberId) continue;
+      const source = connectRelayRoom(room.relay, (event) => handleRelayRoomEvent(room.id, event));
+      if (source) sources.push(source);
+    }
+    return () => {
+      for (const source of sources) source.close();
+    };
+  }, [relayConnectionKey]);
 
   useEffect(() => {
     if (!props.onAttachRun || activeRunIds.size === 0) return;
@@ -583,10 +743,180 @@ export function RoomsView(props: {
     }));
   }
 
+  function appendSystemMessageToRoom(roomId: string, text: string) {
+    const createdAt = nowIso();
+    updateRoom(roomId, (room) => ({
+      ...room,
+      messages: [
+        ...room.messages,
+        {
+          id: createId("message"),
+          senderId: "system",
+          senderName: "系统",
+          senderType: "system",
+          text,
+          targetIds: [],
+          status: "done",
+          createdAt,
+        },
+      ],
+      updatedAt: createdAt,
+    }));
+  }
+
   function updateMemberStatus(memberIds: string[], status: MemberStatus) {
     if (!memberIds.length) return;
     const targetIds = new Set(memberIds);
     setMembers((current) => current.map((member) => (targetIds.has(member.id) ? { ...member, status, lastActive: "刚刚" } : member)));
+  }
+
+  function handleRelayRoomEvent(localRoomId: string, event: RelayEventEnvelope) {
+    if (relayEventIdsRef.current.has(event.id)) return;
+    relayEventIdsRef.current.add(event.id);
+    const room = roomsRef.current.find((item) => item.id === localRoomId);
+    const binding = room?.relay;
+    if (!room || !binding) return;
+    if (event.actorMemberId === binding.memberId) return;
+
+    if (event.type === "member.joined") {
+      const payload = event.payload as { memberId?: string; displayName?: string; kind?: string };
+      const relayMemberId = payload.memberId || event.actorMemberId;
+      if (relayMemberId === binding.memberId) return;
+      const member = roomMemberFromRelayJoin({
+        relayMemberId,
+        displayName: payload.displayName || "远程员工",
+      });
+      setMembers((current) => current.some((item) => item.id === member.id) ? current : [...current, member]);
+      updateRoom(localRoomId, (currentRoom) => ({
+        ...currentRoom,
+        memberIds: currentRoom.memberIds.includes(member.id)
+          ? currentRoom.memberIds
+          : [...currentRoom.memberIds, member.id],
+        updatedAt: event.createdAt || nowIso(),
+      }));
+      return;
+    }
+
+    if (event.type === "room.message.created") {
+      const payload = event.payload as RelayMessagePayload;
+      if (!event.targetMemberIds?.includes(binding.memberId)) return;
+      void runRelayLocalReply(localRoomId, event, payload);
+      return;
+    }
+
+    if (event.type === "room.turn.final") {
+      const payload = event.payload as RelayTurnFinalPayload;
+      finalizeRelayRemoteReply(localRoomId, event, payload);
+    }
+  }
+
+  async function runRelayLocalReply(
+    localRoomId: string,
+    event: RelayEventEnvelope,
+    payload: RelayMessagePayload,
+  ) {
+    const room = roomsRef.current.find((item) => item.id === localRoomId);
+    const binding = room?.relay;
+    if (!room || !binding?.localMemberId) return;
+    const member = membersRef.current.find((item) => item.id === binding.localMemberId);
+    if (!member) return;
+    const prompt = String(payload.text || "").trim();
+    if (!prompt) return;
+    const createdAt = event.createdAt || nowIso();
+    const userMessage: RoomMessage = {
+      id: payload.messageId || event.id,
+      senderId: `relay_actor_${event.actorMemberId}`,
+      senderName: payload.senderName || "远程成员",
+      senderType: "user",
+      text: prompt,
+      targetIds: [member.id],
+      status: "sent",
+      createdAt,
+      attachments: payload.attachments,
+    };
+    const assistantMessage: RoomMessage = {
+      id: createId("message"),
+      senderId: member.id,
+      senderName: member.name,
+      senderType: "agent",
+      text: "",
+      targetIds: [member.id],
+      status: "running",
+      createdAt,
+      startedAt: createdAt,
+      runId: event.turnId || event.id,
+    };
+    updateRoom(localRoomId, (currentRoom) => {
+      if (currentRoom.messages.some((message) => message.id === userMessage.id)) return currentRoom;
+      return {
+        ...currentRoom,
+        messages: [...currentRoom.messages, userMessage, assistantMessage],
+        updatedAt: createdAt,
+      };
+    });
+    updateMemberStatus([member.id], "running");
+    try {
+      const result = await props.onRunPrompt({
+        roomId: localRoomId,
+        targetId: member.id,
+        targetName: member.name,
+        targetKernel: member.kernel,
+        targetModel: member.model,
+        targetRole: member.role,
+        prompt,
+        attachments: payload.attachments ?? [],
+        onRunId(runId) {
+          updateRoomMessage(localRoomId, assistantMessage.id, (message) => ({ ...message, runId }));
+        },
+        onAgentEvent(agentEvent) {
+          updateRoomMessage(localRoomId, assistantMessage.id, (message) => applyAgentEventToRoomMessage(message, agentEvent));
+        },
+      });
+      updateRoomMessage(localRoomId, assistantMessage.id, (message) => ({
+        ...finalizeRoomMessage(message, result),
+        duration: result.duration,
+      }));
+      updateMemberStatus([member.id], "done");
+      await publishRelayTurnFinal({
+        binding,
+        turnId: event.turnId || event.id,
+        targetMemberIds: [event.actorMemberId],
+        answer: result.answer ?? "",
+        duration: result.duration,
+        events: result.events,
+        memberName: member.name,
+      });
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      updateRoomMessage(localRoomId, assistantMessage.id, (message) => failRoomMessage(message, messageText));
+      updateMemberStatus([member.id], "idle");
+      await publishRelayTurnFinal({
+        binding,
+        turnId: event.turnId || event.id,
+        targetMemberIds: [event.actorMemberId],
+        answer: `执行失败：${messageText}`,
+        memberName: member.name,
+      }).catch(() => undefined);
+    }
+  }
+
+  function finalizeRelayRemoteReply(
+    localRoomId: string,
+    event: RelayEventEnvelope,
+    payload: RelayTurnFinalPayload,
+  ) {
+    const room = roomsRef.current.find((item) => item.id === localRoomId);
+    if (!room) return;
+    const relayMember = membersRef.current.find((member) => member.relayMemberId === event.actorMemberId);
+    const answer = payload.answer || "";
+    updateRoom(localRoomId, (currentRoom) => ({
+      ...currentRoom,
+      messages: patchRelayFinalMessages(currentRoom.messages, event, payload, relayMember, answer),
+      updatedAt: event.createdAt || nowIso(),
+    }));
+    if (relayMember) {
+      updateMemberStatus([relayMember.id], "done");
+    }
   }
 
   function insertPrompt(prompt: string) {
@@ -649,6 +979,103 @@ export function RoomsView(props: {
 
   function addEmployee(member: RoomMember) {
     setMembers((current) => current.some((item) => item.id === member.id) ? current : [...current, member]);
+  }
+
+  async function createRemoteInviteLink(): Promise<RemoteRoomInviteResult | null> {
+    if (!activeRoom) return null;
+    try {
+      const result = await createRemoteRoomInvite(activeRoom);
+      if (
+        result.invite.relayBaseUrl &&
+        result.invite.relayWorkspaceId &&
+        result.invite.relayRoomId &&
+        result.invite.ownerMemberId
+      ) {
+        updateRoom(activeRoom.id, (room) => ({
+          ...room,
+          relay: {
+            baseUrl: result.invite.relayBaseUrl!,
+            workspaceId: result.invite.relayWorkspaceId!,
+            roomId: result.invite.relayRoomId!,
+            memberId: result.invite.ownerMemberId!,
+            memberToken: result.invite.ownerMemberToken,
+            mode: "host",
+          },
+        }));
+      }
+      appendSystemMessageToRoom(activeRoom.id, "群聊邀请链接已通过 Relay 生成。朋友打开链接后会在自己的 OpenGrove 里选择员工加入。");
+      return result;
+    } catch (error) {
+      appendSystemMessageToRoom(activeRoom.id, remoteInviteErrorMessage(error));
+      throw error;
+    }
+  }
+
+  function closeRemoteInviteDialog() {
+    clearRemoteRoomInviteFromLocation();
+    setRemoteInvite(null);
+  }
+
+  function createEmployeeForRemoteInvite() {
+    setEmployeeDialogOpen(true);
+  }
+
+  async function acceptRemoteInviteWithMember(member: RoomMember) {
+    if (!remoteInvite) return;
+    if (remoteInvite.relayBaseUrl) {
+      try {
+        const accepted = await acceptRelayInvite({ invite: remoteInvite, member });
+        const relayRoom = roomFromAcceptedRelayInvite({
+          invite: remoteInvite,
+          accepted,
+          localMember: member,
+        });
+        setRooms((current) => {
+          const existing = current.find((room) => room.id === relayRoom.id);
+          if (!existing) return [relayRoom, ...current];
+          return current.map((room) => room.id === relayRoom.id ? {
+            ...room,
+            title: relayRoom.title,
+            relay: relayRoom.relay,
+            memberIds: room.memberIds.includes(member.id) ? room.memberIds : [...room.memberIds, member.id],
+            messages: [...room.messages, ...relayRoom.messages],
+            updatedAt: nowIso(),
+          } : room);
+        });
+        setActiveRoomId(relayRoom.id);
+        closeRemoteInviteDialog();
+      } catch (error) {
+        appendSystemMessageToRoom(activeRoom?.id || rooms[0]?.id || "room-open-group", `接受 Relay 邀请失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+      return;
+    }
+    const remoteMember = remoteMemberFromInvite(member, remoteInvite);
+    const joinedAt = nowIso();
+    setMembers((current) => current.some((item) => item.id === remoteMember.id) ? current : [...current, remoteMember]);
+    setRooms((current) => {
+      const existing = current.find((room) => room.id === remoteInvite.roomId);
+      if (!existing) {
+        return [{
+          id: remoteInvite.roomId,
+          kind: "group",
+          title: remoteInvite.roomTitle,
+          badge: "远程",
+          memberIds: [remoteMember.id],
+          pinned: false,
+          unread: 0,
+          updatedAt: joinedAt,
+          messages: [remoteInviteJoinedMessage(member.name, joinedAt)],
+        }, ...current];
+      }
+      return current.map((room) => room.id === remoteInvite.roomId ? {
+        ...room,
+        memberIds: room.memberIds.includes(remoteMember.id) ? room.memberIds : [...room.memberIds, remoteMember.id],
+        messages: [...room.messages, remoteInviteJoinedMessage(member.name, joinedAt)],
+        updatedAt: joinedAt,
+      } : room);
+    });
+    setActiveRoomId(remoteInvite.roomId);
+    closeRemoteInviteDialog();
   }
 
   function toggleGroupDraftMember(memberId: string) {
@@ -1035,6 +1462,16 @@ export function RoomsView(props: {
     prompt: string,
     outgoingAttachments: AttachmentPayload[],
   ) {
+    if (target.source === "remote") {
+      await runRemoteTargetReply(roomId, messageId, target, prompt, outgoingAttachments);
+      return;
+    }
+
+    if (!shouldRunLocally(target)) {
+      await runPassiveTargetReply(roomId, messageId, target);
+      return;
+    }
+
     let currentRunId = "";
     try {
       const result = await props.onRunPrompt({
@@ -1070,6 +1507,84 @@ export function RoomsView(props: {
         localRoomRunIdsRef.current.delete(currentRunId);
       }
     }
+  }
+
+  async function runRemoteTargetReply(
+    roomId: string,
+    messageId: string,
+    target: RoomMember,
+    prompt: string,
+    outgoingAttachments: AttachmentPayload[],
+  ) {
+    const runId = createId("room_run");
+    updateRoomMessage(roomId, messageId, (message) => ({ ...message, runId }));
+    const relayRoom = roomsRef.current.find((room) => room.id === roomId);
+    if (relayRoom?.relay && target.relayMemberId) {
+      try {
+        await publishRelayMessage({
+          binding: relayRoom.relay,
+          targetMemberId: target.relayMemberId,
+          turnId: runId,
+          text: prompt,
+          attachments: outgoingAttachments,
+        });
+        setMembers((current) => current.map((member) => (
+          member.id === target.id
+            ? { ...member, inviteStatus: "accepted", status: "running", lastActive: "刚刚" }
+            : member
+        )));
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : String(error);
+        updateRoomMessage(roomId, messageId, (message) => failRoomMessage(message, messageText));
+        updateMemberStatus([target.id], "idle");
+      }
+      return;
+    }
+
+    try {
+      const result = await runRemoteRoomAgent({
+        roomId,
+        memberId: target.id,
+        memberName: target.name,
+        prompt,
+        attachments: outgoingAttachments,
+      });
+      if (!result.ok) {
+        throw new Error(result.error || "remote_agent_failed");
+      }
+      updateRoomMessage(roomId, messageId, (message) => ({
+        ...finalizeRoomMessage(message, {
+          answer: result.answer,
+          duration: result.duration,
+          events: result.events,
+        }),
+        duration: result.duration,
+      }));
+      setMembers((current) => current.map((member) => (
+        member.id === target.id
+          ? { ...member, inviteStatus: "accepted", status: "done", lastActive: "刚刚" }
+          : member
+      )));
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      updateRoomMessage(roomId, messageId, (message) => failRoomMessage(message, messageText));
+      updateMemberStatus([target.id], "idle");
+    }
+  }
+
+  async function runPassiveTargetReply(
+    roomId: string,
+    messageId: string,
+    target: RoomMember,
+  ) {
+    const runId = createId("room_run");
+    updateRoomMessage(roomId, messageId, (message) => ({ ...message, runId }));
+    await wait(160);
+    updateRoomMessage(roomId, messageId, (message) => finalizeRoomMessage(message, {
+      answer: buildPassiveMemberAnswer(target),
+      duration: "0.1s",
+    }));
+    updateMemberStatus([target.id], "done");
   }
 
   if (!activeRoom) {
@@ -1260,8 +1775,17 @@ export function RoomsView(props: {
         runtimeControls={props.runtimeControls}
         runtimeControlsByKernel={props.runtimeControlsByKernel}
         kernelOptions={props.kernelOptions}
+        allowRemoteInvite
         onOpenChange={setEmployeeDialogOpen}
         onCreate={addEmployee}
+        onCreateRemoteInvite={createRemoteInviteLink}
+      />
+      <RemoteInviteDialog
+        invite={remoteInvite}
+        members={members}
+        onAccept={acceptRemoteInviteWithMember}
+        onClose={closeRemoteInviteDialog}
+        onCreateEmployee={createEmployeeForRemoteInvite}
       />
     </section>
   );

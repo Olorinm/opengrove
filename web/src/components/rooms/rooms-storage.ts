@@ -2,6 +2,8 @@ import type { AttachmentPayload, KernelOption, MessagePart, ModelId } from "../.
 
 export type MemberStatus = "idle" | "running" | "done" | "waiting" | "offline";
 export type MessageStatus = "sent" | "running" | "done" | "failed" | "interrupted";
+export type RoomMemberSource = "local" | "remote" | "human";
+export type RoomInviteStatus = "none" | "pending" | "accepted" | "revoked" | "expired";
 
 export type RoomMember = {
   id: string;
@@ -13,6 +15,12 @@ export type RoomMember = {
   color: string;
   lastActive: string;
   avatarDataUrl?: string;
+  source?: RoomMemberSource;
+  sourceLabel?: string;
+  inviteStatus?: RoomInviteStatus;
+  homeNodeLabel?: string;
+  relayMemberId?: string;
+  disabled?: boolean;
 };
 
 export type RoomMessage = {
@@ -43,6 +51,17 @@ export type Room = {
   messages: RoomMessage[];
   updatedAt: string;
   unread: number;
+  relay?: RoomRelayBinding;
+};
+
+export type RoomRelayBinding = {
+  baseUrl: string;
+  workspaceId: string;
+  roomId: string;
+  memberId: string;
+  memberToken?: string;
+  localMemberId?: string;
+  mode: "host" | "guest";
 };
 
 export type RoomsState = {
@@ -126,6 +145,9 @@ export const ROOM_OWNER_MEMBER: RoomMember = {
   status: "idle",
   color: "#64748b",
   lastActive: "当前",
+  source: "human",
+  sourceLabel: "人类",
+  inviteStatus: "none",
 };
 
 const KERNEL_MEMBER_FALLBACKS: Record<string, Partial<RoomMember>> = Object.fromEntries(
@@ -134,6 +156,36 @@ const KERNEL_MEMBER_FALLBACKS: Record<string, Partial<RoomMember>> = Object.from
 
 export function createId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2)}`;
+}
+
+export function roomMemberSourceLabel(member: Pick<RoomMember, "source" | "sourceLabel">): string {
+  if (member.sourceLabel?.trim()) return member.sourceLabel.trim();
+  return {
+    local: "本机",
+    remote: "远程",
+    human: "人类",
+  }[member.source || "local"];
+}
+
+export function roomMemberSourceDetail(member: Pick<RoomMember, "source" | "kernel" | "model" | "homeNodeLabel" | "inviteStatus">): string {
+  if (member.source === "remote") {
+    const status = member.inviteStatus && member.inviteStatus !== "none" ? inviteStatusLabel(member.inviteStatus) : "已连接";
+    return `${member.homeNodeLabel || "OpenGrove Node"} · ${status}`;
+  }
+  if (member.source === "human") {
+    return "人类成员";
+  }
+  return `${member.kernel} / ${member.model}`;
+}
+
+export function inviteStatusLabel(status: RoomInviteStatus | undefined): string {
+  return {
+    none: "无需邀请",
+    pending: "等待接受",
+    accepted: "已接受",
+    revoked: "已撤销",
+    expired: "已过期",
+  }[status || "none"];
 }
 
 export function defaultMemberIdForKernel(kernelId: string): string {
@@ -189,6 +241,7 @@ export function selectableKernelOptions(kernelOptions: KernelOption[], activeKer
 
 export function roomMemberFromKernel(kernel: KernelOption, activeKernel: string | undefined, activeModel: ModelId): RoomMember {
   const fallback = KERNEL_MEMBER_FALLBACKS[kernel.id] ?? {};
+  const source: RoomMemberSource = "local";
   return {
     id: fallback.id || defaultMemberIdForKernel(kernel.id),
     name: kernel.label || fallback.name || kernel.id,
@@ -198,6 +251,9 @@ export function roomMemberFromKernel(kernel: KernelOption, activeKernel: string 
     status: kernel.id === activeKernel ? "idle" : "waiting",
     color: fallback.color || KERNEL_COLORS[kernel.id] || "#64748b",
     lastActive: kernel.id === activeKernel ? "刚刚" : "待命",
+    source,
+    sourceLabel: roomMemberSourceLabel({ source }),
+    inviteStatus: "none",
   };
 }
 
@@ -298,6 +354,7 @@ export function normalizeStoredRoomsState(
       id: migrateRoomId(String(room.id || ""), memberIdMigrations),
       kind: room.kind ?? (room.directMemberId ? "direct" : "group"),
       directMemberId: room.directMemberId ? migrateMemberId(room.directMemberId, memberIdMigrations) : undefined,
+      relay: normalizeRoomRelayBinding(room.relay),
       pinned: Boolean(room.pinned),
       memberIds: Array.isArray(room.memberIds)
         ? room.memberIds.map((memberId) => migrateMemberId(memberId, memberIdMigrations)).filter((memberId) => memberIds.has(memberId))
@@ -423,6 +480,7 @@ function normalizeRoomMember(input: Partial<RoomMember>, fallback?: RoomMember):
   const status = normalizeMemberStatus(input.status || fallback?.status || "waiting");
   const model = normalizeMemberModelForKernel(kernel, String(input.model || fallback?.model || "native").trim());
   const role = normalizeMemberRole(String(input.role || fallback?.role || "员工").trim(), fallback);
+  const source = normalizeRoomMemberSource(input.source || fallback?.source || "local");
   return {
     id,
     name: String(input.name || fallback?.name || id).trim() || id,
@@ -433,6 +491,31 @@ function normalizeRoomMember(input: Partial<RoomMember>, fallback?: RoomMember):
     color: String(input.color || fallback?.color || KERNEL_COLORS[kernel] || "#64748b"),
     lastActive: String(input.lastActive || fallback?.lastActive || "待命"),
     avatarDataUrl: normalizeAvatarDataUrl(input.avatarDataUrl ?? fallback?.avatarDataUrl),
+    source,
+    sourceLabel: String(input.sourceLabel || fallback?.sourceLabel || roomMemberSourceLabel({ source })).trim(),
+    inviteStatus: normalizeInviteStatus(input.inviteStatus || fallback?.inviteStatus || (source === "remote" ? "pending" : "none")),
+    homeNodeLabel: stringOrUndefined(input.homeNodeLabel ?? fallback?.homeNodeLabel),
+    relayMemberId: stringOrUndefined(input.relayMemberId ?? fallback?.relayMemberId),
+    disabled: Boolean(input.disabled ?? fallback?.disabled ?? false),
+  };
+}
+
+function normalizeRoomRelayBinding(input: unknown): RoomRelayBinding | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
+  const source = input as Partial<RoomRelayBinding>;
+  const baseUrl = stringOrUndefined(source.baseUrl);
+  const workspaceId = stringOrUndefined(source.workspaceId);
+  const roomId = stringOrUndefined(source.roomId);
+  const memberId = stringOrUndefined(source.memberId);
+  if (!baseUrl || !workspaceId || !roomId || !memberId) return undefined;
+  return {
+    baseUrl,
+    workspaceId,
+    roomId,
+    memberId,
+    memberToken: stringOrUndefined(source.memberToken),
+    localMemberId: stringOrUndefined(source.localMemberId),
+    mode: source.mode === "guest" ? "guest" : "host",
   };
 }
 
@@ -490,6 +573,23 @@ function migrateRoomMessage(message: RoomMessage, migrations: Map<string, string
 
 function normalizeAvatarDataUrl(value: unknown): string | undefined {
   return typeof value === "string" && value.startsWith("data:image/") ? value : undefined;
+}
+
+function normalizeRoomMemberSource(source: unknown): RoomMemberSource {
+  return ["local", "remote", "human"].includes(String(source))
+    ? String(source) as RoomMemberSource
+    : "local";
+}
+
+function normalizeInviteStatus(status: unknown): RoomInviteStatus {
+  return ["none", "pending", "accepted", "revoked", "expired"].includes(String(status))
+    ? String(status) as RoomInviteStatus
+    : "none";
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  const text = String(value ?? "").trim();
+  return text || undefined;
 }
 
 function normalizeMemberRole(role: string, fallback?: RoomMember): string {

@@ -215,6 +215,7 @@ function MentionMenu(props: {
               <RoomMemberAvatar member={option.member} />
               <span>
                 <strong>{option.label}</strong>
+                <small>{option.detail}</small>
               </span>
             </button>
           );

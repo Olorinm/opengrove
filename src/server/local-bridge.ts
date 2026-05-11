@@ -22,6 +22,8 @@ import { buildProviderHttpCaptureDiagnostics } from "./provider-http-captures.js
 import { listKnowledgeInventoryDocuments, listKnowledgeVaultFolders, resolveKnowledgeVaultFilePath, syncKnowledgeVaultFiles } from "./knowledge-files.js";
 import { serveStaticRoute } from "./routes/static.js";
 import { handleKnowledgeRoute } from "./routes/knowledge.js";
+import { handleRelayInviteRoute } from "./routes/relay-invites.js";
+import { handleRemoteAgentRoute } from "./routes/remote-agents.js";
 import { handleSettingsRoute } from "./routes/settings.js";
 import { handleWorkspaceRoute } from "./routes/workspace.js";
 import {
@@ -347,6 +349,14 @@ export function startLocalBridgeServer(options: LocalBridgeServerOptions = {}) {
 
       if (request.method === "GET" && url.pathname === "/events") {
         sendJson(response, 200, { ok: true, events: state.app.events.list() });
+        return;
+      }
+
+      if (await handleRelayInviteRoute({ request, response, url, state, sendJson, readJsonBody })) {
+        return;
+      }
+
+      if (await handleRemoteAgentRoute({ request, response, url, sendJson, readJsonBody })) {
         return;
       }
 

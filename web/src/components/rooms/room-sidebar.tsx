@@ -4,7 +4,7 @@ import { ThemedPixelIcon } from "../sidebar/app-navigation";
 import { KernelIcon } from "../ui/entity-icons";
 import { RoomGroupAvatar } from "./room-group-avatar";
 import { formatRoomPreview, formatShortTime } from "./room-message-model";
-import { statusLabel, type Room, type RoomMember } from "./rooms-storage";
+import { roomMemberSourceDetail, roomMemberSourceLabel, statusLabel, type Room, type RoomMember } from "./rooms-storage";
 
 type RoomSidebarProps = {
   activeRoom: Room;
@@ -35,7 +35,8 @@ export function RoomSidebar(props: RoomSidebarProps) {
   const kernelSearchResults = query
     ? props.members.filter((member) => {
         const text = `${member.name} ${member.kernel} ${member.role} ${member.model}`.toLowerCase();
-        return text.includes(query);
+        const sourceText = `${roomMemberSourceLabel(member)} ${roomMemberSourceDetail(member)}`.toLowerCase();
+        return `${text} ${sourceText}`.includes(query);
       })
     : [];
   const hasSearchResults = kernelSearchResults.length > 0 || roomSearchResults.length > 0;
@@ -71,7 +72,7 @@ export function RoomSidebar(props: RoomSidebarProps) {
               </button>
               <button type="button" role="menuitem" onClick={props.onRecruitEmployee}>
                 <ThemedPixelIcon pixelIcon="user" professionalIcon={UserPlus} professionalSize={17} pixelSize={18} />
-                <span>招聘员工</span>
+                <span>添加员工</span>
               </button>
             </div>
           ) : null}
@@ -102,7 +103,7 @@ export function RoomSidebar(props: RoomSidebarProps) {
                       </span>
                       <span className="rooms-list-copy">
                         <span className="rooms-list-name">{member.name}</span>
-                        <span className="rooms-list-preview">{member.kernel} · {statusLabel(member.status)}</span>
+                        <span className="rooms-list-preview">{roomMemberSourceLabel(member)} · {statusLabel(member.status)}</span>
                       </span>
                       <span className="rooms-room-badge">私聊</span>
                     </button>

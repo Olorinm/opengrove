@@ -1835,38 +1835,6 @@ body[data-sidebar-resizing="true"] * {
   border-radius: 0 0 15px 15px;
 }
 
-.empty-suggestions {
-  display: grid;
-  width: min(720px, calc(100% - 72px));
-  margin: 18px auto 0;
-}
-
-.empty-suggestions button {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 46px;
-  border: 0;
-  border-top: 1px solid rgba(0, 0, 0, 0.05);
-  background: transparent;
-  color: var(--c-muted);
-  cursor: pointer;
-  font: inherit;
-  padding: 0 14px;
-  font-size: 13px;
-  text-align: left;
-}
-
-.empty-suggestions button svg {
-  flex: 0 0 auto;
-  color: #999b92;
-}
-
-.empty-suggestions button:hover {
-  color: var(--c-text-2);
-  background: var(--c-surface);
-}
-
 /* ChatGPT / Claude inspired UI pass: content first, helpers quiet. */
 .app-shell {
   grid-template-columns: 52px var(--opengrove-sidebar-width, 284px) minmax(0, 1fr);
@@ -2227,18 +2195,6 @@ body[data-sidebar-resizing="true"] * {
   max-width: 100%;
 }
 
-.empty-suggestions {
-  width: min(720px, calc(100% - 56px));
-  margin: 14px auto 0;
-  border-top: 1px solid var(--c-border);
-}
-
-.empty-suggestions button {
-  min-height: 40px;
-  padding: 0 8px;
-  font-size: 13px;
-}
-
 .inspector {
   position: absolute;
   top: 14px;
@@ -2585,9 +2541,9 @@ body[data-sidebar-resizing="true"] * {
 }
 
 :root[data-resolved-theme="dark"] .app-rail-brand {
-  border-color: rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.82);
+  background: #fbfbfa;
+  box-shadow: none;
 }
 
 .app-rail-nav {
@@ -3326,33 +3282,6 @@ body[data-sidebar-resizing="true"] * {
   color: #ffffff;
 }
 
-:root[data-resolved-theme="dark"] .empty-suggestions {
-  display: flex;
-  width: auto;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 24px;
-}
-
-:root[data-resolved-theme="dark"] .empty-suggestions button {
-  min-height: 42px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: var(--r-pill);
-  background: transparent;
-  color: #d7d7d7;
-  padding: 0 16px;
-}
-
-:root[data-resolved-theme="dark"] .empty-suggestions button svg {
-  color: #f4f4f4;
-}
-
-:root[data-resolved-theme="dark"] .empty-suggestions button:hover {
-  border-color: rgba(255, 255, 255, 0.28);
-  background: #1f1f1f;
-  color: #ffffff;
-}
-
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"]:not([data-resolved-theme]) .app-shell,
   :root[data-theme="system"]:not([data-resolved-theme]) .app-sidebar-header,
@@ -3488,36 +3417,6 @@ body[data-sidebar-resizing="true"] * {
     color: #ffffff;
   }
 
-  :root[data-theme="system"]:not([data-resolved-theme]) .empty-suggestions,
-  :root:not([data-theme]):not([data-resolved-theme]) .empty-suggestions {
-    display: flex;
-    width: auto;
-    justify-content: center;
-    gap: 12px;
-    margin-top: 24px;
-  }
-
-  :root[data-theme="system"]:not([data-resolved-theme]) .empty-suggestions button,
-  :root:not([data-theme]):not([data-resolved-theme]) .empty-suggestions button {
-    min-height: 42px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: var(--r-pill);
-    background: transparent;
-    color: #d7d7d7;
-    padding: 0 16px;
-  }
-
-  :root[data-theme="system"]:not([data-resolved-theme]) .empty-suggestions button svg,
-  :root:not([data-theme]):not([data-resolved-theme]) .empty-suggestions button svg {
-    color: #f4f4f4;
-  }
-
-  :root[data-theme="system"]:not([data-resolved-theme]) .empty-suggestions button:hover,
-  :root:not([data-theme]):not([data-resolved-theme]) .empty-suggestions button:hover {
-    border-color: rgba(255, 255, 255, 0.28);
-    background: #1f1f1f;
-    color: #ffffff;
-  }
 }
 
 .mobile-nav {
@@ -8518,24 +8417,4 @@ body[data-sidebar-resizing="true"] * {
 :root[data-resolved-theme="dark"] .rooms-member-picker-option .rooms-avatar::after,
 :root[data-resolved-theme="dark"] .contacts-person-row .rooms-avatar::after {
   border-color: var(--og-sidebar-bg);
-}
-
-:root[data-resolved-theme="dark"] .empty-suggestions {
-  border-color: var(--og-border);
-  background: transparent;
-}
-
-:root[data-resolved-theme="dark"] .empty-suggestions button {
-  border-color: var(--og-border);
-  background: rgba(236, 232, 221, 0.045);
-  color: var(--og-text);
-}
-
-:root[data-resolved-theme="dark"] .empty-suggestions button svg {
-  color: var(--og-text-muted);
-}
-
-:root[data-resolved-theme="dark"] .empty-suggestions button:hover {
-  background: var(--og-surface-subtle);
-  color: var(--og-text-strong);
 }

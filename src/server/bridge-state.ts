@@ -12,6 +12,8 @@ import {
 import { createJsonStateStore } from "../storage/json-state-store.js";
 import type {
   BridgeKernelProxySettings,
+  BridgeRelayRoomBinding,
+  BridgeRelaySettings,
   BridgeSettings,
   BridgeState,
   LocalBridgeServerOptions,
@@ -57,6 +59,7 @@ export function createBridgeState(options: LocalBridgeServerOptions): BridgeStat
       providerHttpCaptureEnabled: false,
       codexRawEventCaptureEnabled: false,
       kernelProxy: defaultKernelProxySettings(),
+      relay: defaultRelaySettings(),
       kernelPathOverrides: {},
       kernelKnowledgeSourceEnabled: {},
       kernelProviderBindings: {},
@@ -112,6 +115,7 @@ export function getBridgeSettingsSnapshot(state: BridgeState): JsonObject {
     ) as unknown as JsonObject[],
     kernelKnowledgeSourceEnabled: state.settings.kernelKnowledgeSourceEnabled,
     kernelProxy: kernelProxySummary(resolveKernelProxySettings(state.settings.kernelProxy, process.env)),
+    relay: state.settings.relay as unknown as JsonObject,
     providerHttpCapture: getProviderHttpCaptureSnapshot(state),
     codexRawEventCaptureEnabled: state.settings.providerHttpCaptureEnabled && state.settings.codexRawEventCaptureEnabled,
     settingsPath: bridgeSettingsPath(state),
@@ -138,6 +142,7 @@ export function normalizeBridgeSettingsPatch(input: unknown, base: BridgeSetting
         : base.codexRawEventCaptureEnabled,
     ),
     kernelProxy: normalizeKernelProxySettings(source.kernelProxy, base.kernelProxy),
+    relay: normalizeRelaySettings(source.relay, base.relay),
     kernelPathOverrides: normalizeKernelPathOverrides(
       source.kernelPathOverrides,
       base.kernelPathOverrides,
@@ -171,6 +176,7 @@ export function loadBridgeSettings(state: BridgeState): BridgeSettings {
           ? parsed.codexRawEventCaptureEnabled
           : defaults.codexRawEventCaptureEnabled,
       kernelProxy: normalizeKernelProxySettings(parsed.kernelProxy, defaults.kernelProxy),
+      relay: normalizeRelaySettings(parsed.relay, defaults.relay),
       kernelPathOverrides: normalizeKernelPathOverrides(
         parsed.kernelPathOverrides,
         defaults.kernelPathOverrides,
@@ -206,6 +212,7 @@ function defaultBridgeSettings(): BridgeSettings {
     ),
     codexRawEventCaptureEnabled: isEnabledEnvFlag(readAppEnv("CODEX_RAW_EVENT_CAPTURE")),
     kernelProxy: defaultKernelProxySettings(),
+    relay: defaultRelaySettings(),
     kernelPathOverrides: {},
     kernelKnowledgeSourceEnabled: {},
     kernelProviderBindings: {},
@@ -222,6 +229,17 @@ function defaultKernelProxySettings(): BridgeKernelProxySettings {
   };
 }
 
+function defaultRelaySettings(): BridgeRelaySettings {
+  const baseUrl = readAppEnv("OPENGROVE_RELAY_URL") || readAppEnv("RELAY_URL") || "";
+  return {
+    enabled: isEnabledEnvFlag(readAppEnv("OPENGROVE_RELAY_ENABLED")) || Boolean(baseUrl),
+    baseUrl,
+    authToken: readAppEnv("OPENGROVE_RELAY_TOKEN") || readAppEnv("RELAY_TOKEN") || undefined,
+    workspaceId: readAppEnv("OPENGROVE_RELAY_WORKSPACE_ID") || undefined,
+    roomBindings: {},
+  };
+}
+
 function bridgeSettingsPath(state: BridgeState): string {
   const explicit = readAppEnv("BRIDGE_SETTINGS_PATH");
   if (explicit) return resolve(explicit);
@@ -231,6 +249,52 @@ function bridgeSettingsPath(state: BridgeState): string {
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function normalizeRelaySettings(
+  input: unknown,
+  fallback: BridgeRelaySettings,
+): BridgeRelaySettings {
+  const source = record(input);
+  return {
+    enabled: typeof source.enabled === "boolean" ? source.enabled : fallback.enabled,
+    baseUrl: typeof source.baseUrl === "string" ? source.baseUrl.trim() : fallback.baseUrl,
+    authToken: Object.prototype.hasOwnProperty.call(source, "authToken")
+      ? stringOrUndefined(source.authToken)
+      : fallback.authToken,
+    workspaceId: Object.prototype.hasOwnProperty.call(source, "workspaceId")
+      ? stringOrUndefined(source.workspaceId)
+      : fallback.workspaceId,
+    roomBindings: normalizeRelayRoomBindings(source.roomBindings, fallback.roomBindings),
+  };
+}
+
+function normalizeRelayRoomBindings(
+  input: unknown,
+  fallback: Record<string, BridgeRelayRoomBinding>,
+): Record<string, BridgeRelayRoomBinding> {
+  if (input === undefined || input === null) {
+    return { ...fallback };
+  }
+  const source = record(input);
+  const bindings: Record<string, BridgeRelayRoomBinding> = {};
+  for (const [localRoomId, value] of Object.entries(source)) {
+    const item = record(value);
+    const relayRoomId = stringOrUndefined(item.relayRoomId);
+    const ownerMemberId = stringOrUndefined(item.ownerMemberId);
+    if (!localRoomId.trim() || !relayRoomId || !ownerMemberId) {
+      continue;
+    }
+    bindings[localRoomId] = {
+      relayRoomId,
+      ownerMemberId,
+      ownerMemberToken: stringOrUndefined(item.ownerMemberToken),
+      workspaceId: stringOrUndefined(item.workspaceId),
+      title: stringOrUndefined(item.title) ?? "群聊",
+      createdAt: stringOrUndefined(item.createdAt) ?? new Date(0).toISOString(),
+    };
+  }
+  return bindings;
 }
 
 function normalizeKernelSourceSettings(
@@ -291,6 +355,10 @@ function normalizeKernelProxySettings(
 }
 
 function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 

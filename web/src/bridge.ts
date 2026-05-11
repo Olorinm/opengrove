@@ -408,6 +408,21 @@ export interface KernelProxySettings {
   source?: string;
 }
 
+export interface RelaySettings {
+  enabled: boolean;
+  baseUrl: string;
+  authToken?: string;
+  workspaceId?: string;
+  roomBindings?: Record<string, RelayRoomBinding>;
+}
+
+export interface RelayRoomBinding {
+  relayRoomId: string;
+  ownerMemberId: string;
+  title: string;
+  createdAt: string;
+}
+
 export interface BridgeSettings {
   kernel: KernelPreference;
   workspaceRoot?: string;
@@ -422,6 +437,7 @@ export interface BridgeSettings {
   kernelPathOverrides?: Record<string, KernelPathOverride>;
   kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
   kernelProxy: KernelProxySettings;
+  relay?: RelaySettings;
   providerHttpCapture: ProviderHttpCaptureSettings;
   codexRawEventCaptureEnabled?: boolean;
   settingsPath?: string;
