@@ -98,11 +98,52 @@ Modern agent tools are powerful, but their context, memory, generated files, pro
 - Talk to an agent through the local OpenGrove UI.
 - Switch between installed kernels from settings or environment variables.
 - Use Rooms for direct or group kernel conversations, including `@` mentions that route one prompt to one or more installed kernels.
+- Invite a remote agent employee into a Room through a public Relay, so another OpenGrove node can choose one of its local employees to join and respond.
 - Index native knowledge sources such as `AGENTS.md`, `CLAUDE.md`, skills, configs, and local vault files.
 - Use a browser extension to send page context and selections into the bridge.
 - Track sessions, runs, executions, approvals, memory, artifacts, routines, and provider capture diagnostics.
 - Publish OpenGrove skills into kernels that support native skill loading.
 - Keep provider credentials out of tracked repository files.
+
+## Remote Agent Employees
+
+OpenGrove can bridge Room messages through an OpenGrove Relay. This is meant for the case where you invite a friend's local agent into one of your Rooms without exposing either local bridge to the public internet.
+
+The Relay is only a routing boundary. Local OpenGrove nodes still choose and run their own employees locally.
+
+Typical flow:
+
+1. The Room owner configures a public Relay in Settings.
+2. The owner opens a Room and creates an employee invite link.
+3. The friend opens the invite link in their browser.
+4. The friend's OpenGrove opens the Rooms view and asks which local employee should join.
+5. Room messages and final replies move through the Relay with per-room member tokens.
+
+Friends accepting an invite do not need the Relay admin token. They only receive an invite token and, after accepting, a per-room member token stored in their local OpenGrove state.
+
+Start a Relay server:
+
+```bash
+OPENGROVE_RELAY_TOKEN=replace-with-random-admin-token \
+OPENGROVE_RELAY_STATE_PATH=/var/lib/opengrove-relay/state.json \
+opengrove relay --host 0.0.0.0 --port 37372
+```
+
+For production-like use, put the Relay behind HTTPS and configure:
+
+```bash
+OPENGROVE_RELAY_ENABLED=1
+OPENGROVE_RELAY_URL=https://relay.example.com
+OPENGROVE_RELAY_TOKEN=replace-with-random-admin-token
+```
+
+Security boundaries:
+
+- The Relay URL can be public.
+- The Relay admin token must stay private to the node that creates workspaces, rooms, and invites.
+- Invite links should only be sent to the intended person.
+- Member tokens are scoped to a room member and are stored locally after invite acceptance.
+- Use HTTPS for any Relay used across untrusted networks.
 
 ## Kernels
 
@@ -259,6 +300,7 @@ Common endpoints:
 | `/artifacts` | `GET` / `POST` | list or create artifacts |
 | `/routines` | `GET` | list routines |
 | `/context-records` | `GET` | recent prompt/context diagnostics |
+| `/rooms/relay-invites` | `POST` | create a Relay-backed Room invite when Relay is configured |
 
 When `OPENGROVE_BRIDGE_TOKEN` is set, non-health endpoints require the `x-opengrove-token` header.
 
@@ -308,6 +350,7 @@ src/app/               OpenGrove composition root and app wiring
 src/kernel/            Kernel contracts, discovery, tool bridge, and adapters
 src/runtime/           Codex, Claude Code, Hermes, Pi, HTTP, generic CLI, proxy, capture, transports, and projectors
 src/server/            Local bridge, settings, kernel selection, routes, approvals, artifacts
+src/relay/             Relay protocol, HTTP/SSE server, file-backed Relay state
 src/knowledge/         Knowledge store views, organizer helpers, feedback, and vault logic
 src/skills/            Skill catalog, runtime, and native publication helpers
 src/tests/             Harness tests for skills, kernels, runtimes, and bridge selection
