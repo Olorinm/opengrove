@@ -1,10 +1,10 @@
 <h1 align="center">
   <img src="assets/brand/opengrove-sapling.png" alt="OpenGrove logo" width="34" align="absmiddle" />
-  OpenGrove — 本地优先 Agent Host
+  OpenGrove — 本地优先 Agent 工作空间
 </h1>
 
 <p align="center">
-  <strong>一个本地优先的 agent host，让工作更安静、更有组织。</strong>
+  <strong>让人和 agent 在本地优先的工作台里对话、记忆和协作。</strong>
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
   <a href="#开发">开发</a>
 </p>
 
-OpenGrove 为 AI 编程 agent 和个人知识 agent 提供一个稳定的本地工作空间：安静的 UI、可沉淀的本地知识文件、可见的工具活动、审批、产物、设置，以及一层可以承载多个原生 agent 内核的 bridge。
+OpenGrove 为人、AI 编程 agent 和个人知识 agent 提供一个稳定的本地工作空间：Rooms、通讯录、资料库、可沉淀的本地知识文件、可见的工具活动、审批、产物、设置，以及一层可以承载多个原生 agent 内核并通过 Relay 邀请远程员工的 bridge。
 
 它不是要替代 Codex、Claude Code、Hermes、Pi、OpenClaw、OpenCode 或其他 CLI。OpenGrove 更像它们外面的一层 host：保留本地状态的可检查性，把原生事件映射进统一界面，同时让每个内核继续掌管自己擅长的模型循环、原生工具、会话和提示词规则。
 

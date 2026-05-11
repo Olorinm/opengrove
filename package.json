@@ -2,7 +2,7 @@
   "name": "opengrove",
   "version": "0.1.0",
   "type": "module",
-  "description": "Open-source personal knowledge agent for calm, organized work.",
+  "description": "Local-first workspace where people and agents talk, remember, and collaborate.",
   "license": "Apache-2.0",
   "homepage": "https://github.com/Olorinm/opengrove#readme",
   "repository": {

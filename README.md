@@ -1,10 +1,10 @@
 <h1 align="center">
   <img src="assets/brand/opengrove-sapling.png" alt="OpenGrove logo" width="34" align="absmiddle" />
-  OpenGrove — Local-first Agent Host
+  OpenGrove — Local-first Agent Workspace
 </h1>
 
 <p align="center">
-  <strong>A local-first agent host for calm, organized work.</strong>
+  <strong>A local-first workspace where people and agents talk, remember, and collaborate.</strong>
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
   <a href="#development">Development</a>
 </p>
 
-OpenGrove gives AI coding and knowledge agents a stable local workspace: a quiet UI, durable knowledge files, visible tool activity, approvals, artifacts, settings, and a bridge layer that can host multiple native agent kernels without flattening them into one generic chat loop.
+OpenGrove gives people and AI coding or knowledge agents a stable local workspace: Rooms, contacts, durable knowledge files, visible tool activity, approvals, artifacts, settings, and a bridge layer that can host multiple native agent kernels and relay invited remote employees without flattening them into one generic chat loop.
 
 It is not trying to replace Codex, Claude Code, Hermes, Pi, OpenClaw, OpenCode, or other CLIs. OpenGrove sits around them as the host: it keeps local state inspectable, maps native events into a shared UI, and lets each kernel keep the model loop, native tools, sessions, and prompting rules it already does well.
 

@@ -1,6 +1,6 @@
 # OpenGrove Project Overview
 
-OpenGrove is a local-first agent host for calm, organized work. It provides a stable workspace around native agent kernels, local knowledge files, tool boundaries, artifacts, settings, approvals, and diagnostics.
+OpenGrove is a local-first agent workspace where people and agents talk, remember, and collaborate. It provides a stable workspace around Rooms, contacts, native agent kernels, local knowledge files, tool boundaries, artifacts, settings, approvals, Relay-backed remote employees, and diagnostics.
 
 OpenGrove is not a replacement model loop or a generic chat wrapper. The current design keeps native kernels in charge of their own reasoning, tools, session semantics, compaction, and provider behavior where possible. OpenGrove owns the host layer around them.
 
@@ -305,4 +305,4 @@ http://127.0.0.1:37371/ui/
 
 ## One-Sentence Summary
 
-OpenGrove is a local-first agent host: it lets different AI kernels work inside one calm workspace with explicit context, visible tools, durable knowledge, first-class artifacts, provider-aware routing, and inspectable local state.
+OpenGrove is a local-first agent workspace: it lets people, local agents, and invited remote employees work inside one calm workspace with explicit context, visible tools, durable knowledge, first-class artifacts, provider-aware routing, and inspectable local state.
