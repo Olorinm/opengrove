@@ -1,22 +1,37 @@
 import { createOpenGrove } from "../app/create-opengrove.js";
-import { createScriptedCompanionSession } from "../runtime/scripted-session.js";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+const cwd = mkdtempSync(join(tmpdir(), "opengrove-smoke-"));
 const app = createOpenGrove({
+  cwd,
   readPage: () => ({
     title: "微信读书测试页",
     url: "https://weread.qq.com/web/reader/example",
     selection: "浏览器其实也是一种操作系统，agent 可以长在它的活动空间里。",
     locator: "demo-selection",
   }),
-  createSession: () => createScriptedCompanionSession({ saveCandidateNote: true }),
-  policy: [
-    {
-      id: "smoke.allow-reading-note",
-      toolId: "memory.proposeReadingNote",
-      mode: "allow",
-      reason: "Smoke test uses an explicit local allow rule.",
+  runtime: {
+    async *runTurn(request) {
+      const runId = request.runId ?? "smoke-run";
+      yield { type: "turn.started", runId, at: new Date().toISOString() };
+      yield {
+        type: "model.requested",
+        runId,
+        request: {
+          systemPrompt: "",
+          userInput: request.input,
+          tools: request.tools.map((tool) => tool.spec),
+          skills: request.skills ?? [],
+          packs: request.packs ?? [],
+          capabilities: request.capabilities ?? [],
+        },
+      };
+      yield { type: "assistant.delta", runId, text: "OpenGrove smoke runtime is alive." };
+      yield { type: "turn.finished", runId, at: new Date().toISOString() };
     },
-  ],
+  },
   sessionId: "smoke",
   userId: "local-user",
 });
@@ -42,13 +57,13 @@ const noteDraft = app.artifacts.create({
 });
 app.workingState.update({
   sessionId: "smoke",
-  taskSummary: "围绕当前划线形成一条可持续编辑的伴读笔记。",
-  activeGoal: "验证页面选区通过工具读取，workingState 里的产物不会被隐式注入。",
+  taskSummary: "验证 OpenGrove host、artifact 和 workingState 的最小链路。",
+  activeGoal: "确认默认工具面保持精简。",
   pinnedArtifactIds: [readingSelection.id],
   workingArtifactIds: [noteDraft.id],
 });
 
-for await (const event of app.runTurn("我读到这里，想保存一个伴读笔记，你怎么看？")) {
+for await (const event of app.runTurn("smoke")) {
   console.log(JSON.stringify(event));
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import clsx from "clsx";
 import {
   Bot,
+  Image as ImageIcon,
   LoaderCircle,
   ShieldAlert,
   X,
@@ -86,7 +87,8 @@ function ThreadMessage(props: {
 }) {
   const { message } = props;
   const hasParts = hasRenderableMessageParts(message);
-  const roleMeta = messageRoleMeta(message.role, message.pending);
+  const messagePending = isMessageEffectivelyPending(message, props.runtimeEvents, props.runs, props.precedingUserText);
+  const roleMeta = messageRoleMeta(message.role, messagePending);
 
   return (
     <article className={clsx("thread-message", `role-${message.role}`)} data-role={message.role}>
@@ -97,7 +99,7 @@ function ThreadMessage(props: {
         <div className="thread-message-meta">
           <div className="thread-message-role-row">
             <span className="thread-message-role">{roleMeta.title}</span>
-            {message.pending ? (
+            {messagePending ? (
               <span className="thread-inline-status">
                 <LoaderCircle size={12} className="spin" />
                 working
@@ -127,7 +129,7 @@ function ThreadMessage(props: {
             onPreviewImage={props.onPreviewImage}
             onSaveImageArtifact={props.onSaveImageArtifact}
           />
-        ) : message.role === "assistant" && message.pending ? (
+        ) : message.role === "assistant" && messagePending ? (
           <AssistantPendingBody
             message={message}
             runtimeEvents={props.runtimeEvents}
@@ -183,11 +185,27 @@ function UserMessageBody(props: { message: StoredMessage }) {
       ) : null}
       {attachments.length ? (
         <div className="thread-context-files">
-          {attachments.map((attachment) => (
-            <span className="thread-context-file" key={attachment.id || attachment.name}>
-              {attachment.kind === "image" ? "图片" : attachment.kind === "text" ? "文本" : "文件"} · {attachment.name}
-            </span>
-          ))}
+          {attachments.map((attachment) => {
+            if (attachment.kind === "image") {
+              const previewUrl = attachment.thumbnailUrl || attachment.dataUrl;
+              return (
+                <span className="thread-context-file thread-context-file-image" key={attachment.id || attachment.name} title={attachment.name}>
+                  {previewUrl ? (
+                    <img className="thread-context-file-thumb" src={previewUrl} alt="" />
+                  ) : (
+                    <span className="thread-context-file-image-fallback" aria-hidden="true">
+                      <ImageIcon size={18} />
+                    </span>
+                  )}
+                </span>
+              );
+            }
+            return (
+              <span className="thread-context-file" key={attachment.id || attachment.name}>
+                {attachment.kind === "text" ? "文本" : "文件"} · {attachment.name}
+              </span>
+            );
+          })}
         </div>
       ) : null}
     </div>
@@ -303,6 +321,27 @@ function normalizePromptForTiming(value: unknown): string {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 }
 
+function isMessageEffectivelyPending(
+  message: StoredMessage,
+  runtimeEvents: AgentEventRecord[] = [],
+  runs: RunRecord[] = [],
+  inputHint = "",
+): boolean {
+  if (!message.pending || hasTerminalMessageNote(message)) {
+    return false;
+  }
+  return !messageTiming(message, runtimeEvents, runs, inputHint).finishedAt;
+}
+
+function hasTerminalMessageNote(message: StoredMessage): boolean {
+  return (message.parts || []).some(
+    (part) =>
+      part.type === "note" &&
+      part.tone === "error" &&
+      Boolean(part.text),
+  );
+}
+
 function AssistantMessageBody(props: {
   message: StoredMessage;
   skills?: SkillRecord[];
@@ -378,7 +417,13 @@ function AssistantMessageBody(props: {
         }
         return null;
       })}
-      <AssistantTailThinking message={props.message} groups={groups} />
+      <AssistantTailThinking
+        message={props.message}
+        groups={groups}
+        runtimeEvents={props.runtimeEvents}
+        runs={props.runs}
+        inputHint={props.precedingUserText}
+      />
     </div>
   );
 }
@@ -410,7 +455,13 @@ function AssistantPendingBody(props: {
         runs={props.runs}
         inputHint={props.precedingUserText}
       />
-      <AssistantTailThinking message={props.message} groups={[]} />
+      <AssistantTailThinking
+        message={props.message}
+        groups={[]}
+        runtimeEvents={props.runtimeEvents}
+        runs={props.runs}
+        inputHint={props.precedingUserText}
+      />
     </div>
   );
 }
@@ -459,7 +510,8 @@ function AssistantTurnStatus(props: {
     (item) => item.type === "approval" && item.part.approvalStatus === "pending" && item.part.approvalId,
   );
   const hasRunningItem = items.some((item) => activityItemStatus(item) === "running");
-  const isActive = props.message.pending || hasRunningItem;
+  const messagePending = isMessageEffectivelyPending(props.message, props.runtimeEvents, props.runs, props.inputHint);
+  const isActive = messagePending || hasRunningItem;
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -491,15 +543,19 @@ function AssistantTurnStatus(props: {
 function AssistantTailThinking(props: {
   message: StoredMessage;
   groups: AssistantPartGroup[];
+  runtimeEvents?: AgentEventRecord[];
+  runs?: RunRecord[];
+  inputHint?: string;
 }) {
-  const hasRecentTextOutput = useHasRecentAssistantTextOutput(props.message, props.groups);
+  const messagePending = isMessageEffectivelyPending(props.message, props.runtimeEvents, props.runs, props.inputHint);
+  const hasRecentTextOutput = useHasRecentAssistantTextOutput(props.message, props.groups, messagePending);
   const items = props.groups.flatMap((group) => (group.type === "activity" ? buildActivityItems(group.parts) : []));
   const hasRunningItem = items.some((item) => activityItemStatus(item) === "running");
   const hasPendingApproval = items.some(
     (item) => item.type === "approval" && item.part.approvalStatus === "pending" && item.part.approvalId,
   );
 
-  if (!props.message.pending || hasRunningItem || hasPendingApproval || hasRecentTextOutput) {
+  if (!messagePending || hasRunningItem || hasPendingApproval || hasRecentTextOutput) {
     return null;
   }
 
@@ -510,7 +566,7 @@ function AssistantTailThinking(props: {
   );
 }
 
-function useHasRecentAssistantTextOutput(message: StoredMessage, groups: AssistantPartGroup[]): boolean {
+function useHasRecentAssistantTextOutput(message: StoredMessage, groups: AssistantPartGroup[], active: boolean): boolean {
   const text = assistantTextSnapshot(message, groups);
   const [textState, setTextState] = useState(() => ({ text, changedAt: Date.now() }));
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -525,12 +581,12 @@ function useHasRecentAssistantTextOutput(message: StoredMessage, groups: Assista
   }, [text]);
 
   useEffect(() => {
-    if (!message.pending) {
+    if (!active) {
       return undefined;
     }
     const timer = window.setInterval(() => setNowMs(Date.now()), 300);
     return () => window.clearInterval(timer);
-  }, [message.pending]);
+  }, [active]);
 
   const changedThisRender = text !== textState.text;
   const changedAt = changedThisRender ? nowMs : textState.changedAt;

@@ -3,11 +3,13 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./styles.css";
 import { App } from "./app";
+import { applyDocumentIconStyle } from "./appearance";
 import { applyDocumentLanguage } from "./i18n";
-import { applyDocumentTheme } from "./theme";
+import { startDocumentThemeSync } from "./theme";
 
 applyDocumentLanguage();
-applyDocumentTheme();
+startDocumentThemeSync();
+applyDocumentIconStyle();
 
 const queryClient = new QueryClient({
   defaultOptions: {

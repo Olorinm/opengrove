@@ -4,6 +4,40 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>OpenGrove</title>
+    <script>
+      (() => {
+        try {
+          const key = "opengroveTheme";
+          const stored = localStorage.getItem(key);
+          const preference = stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+          const resolved = preference === "system"
+            ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+            : preference;
+          document.documentElement.dataset.theme = preference;
+          document.documentElement.dataset.resolvedTheme = resolved;
+          document.documentElement.style.colorScheme = resolved;
+        } catch {
+          if (matchMedia("(prefers-color-scheme: dark)").matches) {
+            document.documentElement.dataset.theme = "system";
+            document.documentElement.dataset.resolvedTheme = "dark";
+            document.documentElement.style.colorScheme = "dark";
+          }
+        }
+      })();
+    </script>
+    <style>
+      html,
+      body,
+      #root {
+        background: #fbfbfa;
+      }
+
+      html[data-resolved-theme="dark"],
+      html[data-resolved-theme="dark"] body,
+      html[data-resolved-theme="dark"] #root {
+        background: #1f1f1d;
+      }
+    </style>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' shape-rendering='crispEdges'%3E%3Crect width='32' height='32' rx='8' fill='%23fbfbfa'/%3E%3Crect x='7' y='7' width='6' height='6' fill='%237bcb57'/%3E%3Crect x='10' y='10' width='6' height='6' fill='%235fb24a'/%3E%3Crect x='21' y='7' width='6' height='6' fill='%237bcb57'/%3E%3Crect x='18' y='10' width='6' height='6' fill='%235fb24a'/%3E%3Crect x='14' y='16' width='4' height='10' fill='%23202424'/%3E%3Crect x='11' y='26' width='12' height='3' fill='%23202424'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./assets/app.css" />
   </head>

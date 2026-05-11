@@ -45,6 +45,8 @@ export interface RuntimeControls {
 }
 export type ViewId =
   | "chat"
+  | "rooms"
+  | "contacts"
   | "library"
   | "settings";
 
@@ -116,6 +118,7 @@ export interface AttachmentPayload {
   size: number;
   text?: string;
   dataUrl?: string;
+  thumbnailUrl?: string;
   error?: string;
 }
 
@@ -420,6 +423,7 @@ export interface BridgeSettings {
   kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
   kernelProxy: KernelProxySettings;
   providerHttpCapture: ProviderHttpCaptureSettings;
+  codexRawEventCaptureEnabled?: boolean;
   settingsPath?: string;
 }
 
@@ -495,6 +499,7 @@ export interface HealthResponse {
   kernel?: string;
   settings?: BridgeSettings;
   runtimeControls?: RuntimeControls;
+  runtimeControlsByKernel?: Record<string, RuntimeControls>;
   tokenRequired: boolean;
   error?: string;
 }
@@ -529,6 +534,12 @@ export function modelLabel(modelId: string): string {
 }
 
 export function supportedView(value: string): ViewId {
+  if (value === "rooms" || value === "team" || value === "team-chat" || value === "collaboration") {
+    return "rooms";
+  }
+  if (value === "contacts" || value === "address-book" || value === "people") {
+    return "contacts";
+  }
   if (value === "library" || value === "inbox" || value === "artifacts") {
     return "library";
   }
@@ -542,6 +553,8 @@ export function viewTitle(view: ViewId): string {
   return (
     {
       chat: "新线程",
+      rooms: "消息",
+      contacts: "通讯录",
       library: "资料库",
       settings: "设置",
     }[view] ?? "新线程"
@@ -598,6 +611,7 @@ export async function runAskStream(
   payload: {
     question: string;
     model: string;
+    kernel?: string;
     effort?: ReasoningEffort;
     responseSpeed?: ResponseSpeed;
     accessMode?: RuntimeAccessMode;
@@ -620,6 +634,33 @@ export async function runAskStream(
     body: JSON.stringify(payload),
     signal: options.signal,
   });
+  return readAskStreamResponse(response, onChunk);
+}
+
+export async function attachAskStream(
+  query: { runId?: string; threadId?: string },
+  onChunk: (chunk: BridgeStreamChunk) => void,
+  options: { signal?: AbortSignal } = {},
+): Promise<AskFinalPayload> {
+  const params = new URLSearchParams();
+  if (query.runId) params.set("runId", query.runId);
+  if (query.threadId) params.set("threadId", query.threadId);
+  const response = await fetch(`/ask/stream?${params.toString()}`, {
+    method: "GET",
+    headers: bridgeHeaders(),
+    signal: options.signal,
+  });
+  return readAskStreamResponse(response, onChunk);
+}
+
+export async function cancelAskStream(query: { runId?: string; threadId?: string }): Promise<{ ok: boolean; cancelled: boolean }> {
+  return postJson("/ask/cancel", query);
+}
+
+async function readAskStreamResponse(
+  response: Response,
+  onChunk: (chunk: BridgeStreamChunk) => void,
+): Promise<AskFinalPayload> {
   if (!response.ok) {
     throw new Error(await readBridgeError(response));
   }

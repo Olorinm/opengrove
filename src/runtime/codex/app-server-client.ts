@@ -91,6 +91,14 @@ export class CodexAppServerClient {
       },
       capabilities: {
         experimentalApi: true,
+        optOutNotificationMethods: [
+          "command/exec/outputDelta",
+          "item/agentMessage/delta",
+          "item/plan/delta",
+          "item/fileChange/outputDelta",
+          "item/reasoning/summaryTextDelta",
+          "item/reasoning/textDelta",
+        ],
       },
     });
     assertSupportedCodexAppServerVersion(response);

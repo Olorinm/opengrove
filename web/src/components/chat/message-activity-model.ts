@@ -312,20 +312,50 @@ function statusAwareTitle(status: string, runningPrefix: string, completedPrefix
 }
 
 export function activityItemDetail(item: ActivityItem): string {
+  return activityItemDetailDisplay(item)?.label || "";
+}
+
+export function activityItemDetailDisplay(item: ActivityItem): { label: string; title?: string } | null {
   if (item.type === "skill") {
-    return summarize(item.part.description || item.part.contentPreview || item.part.source || "", 150);
+    const label = summarize(item.part.description || item.part.contentPreview || item.part.source || "", 150);
+    return label ? { label } : null;
   }
   if (item.type === "approval") {
-    return summarize(item.part.approvalReason || formatMessageValue(item.part.input), 150);
+    const label = summarize(item.part.approvalReason || formatMessageValue(item.part.input), 150);
+    return label ? { label } : null;
   }
 
   const kind = activityItemKind(item);
   const readable = activityItemReadableDetail(item);
   if (["command", "search", "read", "browser"].includes(kind)) {
-    return summarize(readable, 160);
+    const label = summarize(compactActivityDetailPaths(readable), 160);
+    return label ? { label, title: readable === label ? undefined : readable } : null;
   }
   const text = readable || activityItemRawText(item);
-  return summarize(text, 160);
+  const label = summarize(text, 160);
+  return label ? { label } : null;
+}
+
+export function activityItemTitleTooltip(item: ActivityItem): string {
+  if (item.type === "skill") {
+    return item.part.source || item.part.skillId || item.part.skillName || "";
+  }
+  if (item.type === "approval") {
+    return formatMessageValue(item.part.input);
+  }
+  const fileHints = activityItemFileHints(item);
+  if (fileHints.length) {
+    return fileHints.join("\n");
+  }
+  const tool = item.call || item.result;
+  if (!tool) {
+    return "";
+  }
+  const structured = structuredTargetLabel(tool);
+  if (structured) {
+    return structured;
+  }
+  return commandText(tool);
 }
 
 function activityItemReadableDetail(item: ActivityItem): string {
@@ -635,6 +665,33 @@ function displayPathTarget(path: string): string {
     return base;
   }
   return normalized;
+}
+
+function compactActivityDetailPaths(detail: string): string {
+  return detail
+    .split(" · ")
+    .map((segment) => {
+      const cwdMatch = segment.match(/^cwd:\s*(.+)$/);
+      if (cwdMatch?.[1]) {
+        return `cwd: ${compactPathLabel(cwdMatch[1])}`;
+      }
+      return segment;
+    })
+    .join(" · ");
+}
+
+function compactPathLabel(path: string): string {
+  const cleaned = cleanPathToken(path).replace(/[\\/]+$/g, "");
+  if (!cleaned) {
+    return path;
+  }
+  if (cleaned === ".") {
+    return "当前目录";
+  }
+  if (cleaned === "..") {
+    return "上级目录";
+  }
+  return pathBaseName(cleaned) || cleaned;
 }
 
 function commandActivityKind(tool: ToolPart | undefined): string {

@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { APP_CONFIG_DIR, APP_ENV_PREFIX } from "../identity.js";
+import { packageRoot } from "../package-root.js";
 import type {
   ActivitySpace,
   JsonObject,
@@ -223,7 +224,7 @@ function collectSkillRoots(cwd: string, options: { workspaceRoot: string; includ
     }
   }
 
-  const bundledPackRoot = resolve(cwd, "src", "packs", "bundled");
+  const bundledPackRoot = resolve(packageRoot(), "src", "packs", "bundled");
   if (existsSync(bundledPackRoot)) {
     const packDirs = readdirSync(bundledPackRoot, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
@@ -240,7 +241,7 @@ function collectSkillRoots(cwd: string, options: { workspaceRoot: string; includ
   }
 
   roots.push({
-    dir: resolve(cwd, "src", "skills", "bundled"),
+    dir: resolve(packageRoot(), "src", "skills", "bundled"),
     source: "bundled",
     trust: "trusted",
   });

@@ -17,6 +17,7 @@ export type UiRuntimeEvent =
       type: "run.start";
       raw: BridgeStreamChunk;
       threadId?: string;
+      runId?: string;
     }
   | {
       type: "run.finish";
@@ -43,6 +44,7 @@ export function normalizeBridgeStreamChunk(chunk: BridgeStreamChunk): UiRuntimeE
       type: "run.start",
       raw: chunk,
       threadId: typeof chunk.threadId === "string" ? chunk.threadId : undefined,
+      runId: typeof chunk.runId === "string" ? chunk.runId : undefined,
     };
   }
   if (type === "final") {

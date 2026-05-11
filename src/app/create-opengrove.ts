@@ -25,33 +25,16 @@ import {
   type SkillManifest,
 } from "../core.js";
 import {
-  browserActCapability,
-  createBrowserActTools,
-} from "../capabilities/browser-act/index.js";
-import {
-  computerUseCapability,
-  createComputerUseTools,
-} from "../capabilities/computer-use/index.js";
-import {
-  createWereadCompanionTools,
-  wereadCompanionCapability,
-} from "../capabilities/weread-companion/index.js";
-import {
   createDefaultContextAssembler,
   type ContextAssembler,
 } from "../context/context-assembler.js";
+import type { BrowserPageReader, BrowserPageSnapshot } from "../environment/browser-adapter.js";
 import {
-  createReadOnlyBrowserAdapter,
-  type BrowserEnvironmentAdapter,
-} from "../environment/browser-adapter.js";
-import {
-  createStagedComputerAdapter,
   hasComputerState,
   normalizeComputerSnapshot,
-  type ComputerEnvironmentAdapter,
+  type ComputerStateReader,
+  type ComputerStateSnapshot,
 } from "../environment/computer-adapter.js";
-import type { BrowserPageReader, BrowserPageSnapshot } from "../tools/browser.js";
-import type { ComputerStateReader, ComputerStateSnapshot } from "../tools/computer.js";
 import { createRequestChoicesTool } from "../tools/host-ui.js";
 import { createSkillInvokeTool } from "../tools/skill.js";
 import { createPackRegistry } from "../packs/catalog.js";
@@ -112,6 +95,7 @@ export interface OpenGroveApp {
 
 export interface AgentTurnOptions {
   sessionId?: string;
+  runId?: string;
   requestedModelId?: string;
   requestedEffort?: string;
   requestedSkillName?: string;
@@ -131,8 +115,6 @@ export interface RecordEventOptions {
 export interface CreateOpenGroveOptions {
   readPage: BrowserPageReader;
   readComputer?: ComputerStateReader;
-  browserAdapter?: BrowserEnvironmentAdapter;
-  computerAdapter?: ComputerEnvironmentAdapter;
   createSession?: PiAgentRuntimeOptions["createSession"];
   runtime?: AgentRuntime;
   kernel?: KernelAdapter;
@@ -149,10 +131,7 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
   const workspaceRoot = options.workspaceRoot ?? options.cwd;
   const events = new EventLog();
   const approvals = new ApprovalInbox();
-  const capabilities = new CapabilityRegistry()
-    .register(wereadCompanionCapability)
-    .register(browserActCapability)
-    .register(computerUseCapability);
+  const capabilities = new CapabilityRegistry();
   const knowledge = createKnowledgeStore();
   const knowledgeOrganizer = createKnowledgeOrganizer({ store: knowledge });
   const knowledgeFeedbackScorer = createKnowledgeFeedbackScorer({ store: knowledge });
@@ -192,17 +171,6 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
   const workingState = new WorkingStateStore();
   const routines = new RoutineRegistry();
   const tools = new ToolRegistry();
-  const browserAdapter = options.browserAdapter ?? createReadOnlyBrowserAdapter(options.readPage);
-  const computerAdapter = options.computerAdapter ?? createStagedComputerAdapter(options.readComputer ?? (() => ({})));
-  for (const tool of createWereadCompanionTools(options.readPage)) {
-    tools.register(tool);
-  }
-  for (const tool of createBrowserActTools(browserAdapter)) {
-    tools.register(tool);
-  }
-  for (const tool of createComputerUseTools(computerAdapter)) {
-    tools.register(tool);
-  }
   if (shouldExposeSkillTool(options.kernel)) {
     tools.register(
       createSkillInvokeTool({
@@ -323,8 +291,8 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
       const page = await options.readPage();
       const computer = await (options.readComputer?.() ?? Promise.resolve({} as ComputerStateSnapshot));
       const sessionId = turnOptions.sessionId ?? options.sessionId ?? "local";
-      const activity: ActivitySpace = hasComputerState(computer) ? "computer" : browserAdapter.kind;
-      const runId = createRunId();
+      const activity: ActivitySpace = hasComputerState(computer) ? "computer" : "browser";
+      const runId = turnOptions.runId ?? createRunId();
       const availableSkills = skills.list();
       const discoveryPatch = {
         discoveredSkillIds: availableSkills.map((skill) => skill.id),

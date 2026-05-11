@@ -7,11 +7,13 @@ import type {
   WorkingStateRecord,
 } from "../core.js";
 import { normalizeComputerSnapshot } from "../environment/computer-adapter.js";
-import type { BrowserPageAttachmentSnapshot, BrowserPageSnapshot } from "../tools/browser.js";
-import type { ComputerStateSnapshot } from "../tools/computer.js";
+import type { BrowserPageAttachmentSnapshot, BrowserPageSnapshot } from "../environment/browser-adapter.js";
+import type { ComputerStateSnapshot } from "../environment/computer-adapter.js";
 import {
+  BRIDGE_KERNEL_IDS,
   DEFAULT_BRIDGE_MODEL_ID,
   type BridgeAskPayload,
+  type BridgeKernelId,
   type BridgeModelId,
 } from "./bridge-types.js";
 import {
@@ -41,6 +43,7 @@ export function normalizeAskPayload(input: unknown): BridgeAskPayload {
   return {
     question: stringValue(object.question) || "Please help me understand this passage.",
     model: normalizeBridgeModelId(object.model),
+    kernel: normalizeBridgeKernelId(object.kernel),
     effort: normalizeReasoningEffort(object.effort),
     responseSpeed: normalizeResponseSpeed(object.responseSpeed),
     accessMode: normalizeRuntimeAccessMode(object.accessMode),
@@ -51,6 +54,11 @@ export function normalizeAskPayload(input: unknown): BridgeAskPayload {
     snapshot: normalizedSnapshot,
     computerSnapshot: normalizedComputerSnapshot,
   };
+}
+
+function normalizeBridgeKernelId(input: unknown): BridgeKernelId | undefined {
+  const value = stringValue(input);
+  return BRIDGE_KERNEL_IDS.includes(value as BridgeKernelId) ? value as BridgeKernelId : undefined;
 }
 
 function normalizeRequestedSkill(input: unknown): BridgeAskPayload["requestedSkill"] {

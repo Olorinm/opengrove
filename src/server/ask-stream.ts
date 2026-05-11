@@ -3,14 +3,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { AgentEvent, PolicyRule } from "../core.js";
 import { hasComputerState } from "../environment/computer-adapter.js";
-import type { BrowserPageAttachmentSnapshot, BrowserPageSnapshot } from "../tools/browser.js";
+import type { BrowserPageAttachmentSnapshot, BrowserPageSnapshot } from "../environment/browser-adapter.js";
 import type {
   BridgeAskPayload,
   BridgeAskResult,
   BridgeState,
 } from "./bridge-types.js";
 import { KNOWLEDGE_INVENTORY_LIMIT } from "./bridge-types.js";
-import { getBridgeSettingsSnapshot } from "./bridge-state.js";
+import { getBridgeSettingsSnapshot, recreateBridgeApp } from "./bridge-state.js";
 import { extractMediaArtifactsFromEvents } from "./media-artifacts.js";
 import { buildProviderHttpCaptureDiagnostics } from "./provider-http-captures.js";
 import { filterEnabledKnowledgeDocuments } from "./knowledge-files.js";
@@ -22,11 +22,165 @@ import {
 import { syncBridgeWorkingState } from "./bridge-working-state.js";
 import { runWithBridgeTurnContext, type BridgeTurnContext } from "./bridge-turn-context.js";
 
+type AskStreamChunk =
+  | { type: "start"; ok: true; threadId: string; runId: string }
+  | { type: "event"; event: AgentEvent }
+  | { type: "final"; data: BridgeAskResult }
+  | { type: "fatal"; error: string };
+
+interface BackgroundAskRun {
+  runId: string;
+  threadId: string;
+  payload: BridgeAskPayload;
+  controller: AbortController;
+  chunks: AskStreamChunk[];
+  done: boolean;
+  subscribers: Set<(chunk: AskStreamChunk) => void>;
+}
+
+const askRunRegistries = new WeakMap<BridgeState, Map<string, BackgroundAskRun>>();
+
 export async function streamAskResponse(
   state: BridgeState,
   payload: BridgeAskPayload,
   response: ServerResponse,
 ): Promise<void> {
+  const run = startBackgroundAskRun(state, payload);
+  await streamBackgroundAskRun(run, response);
+}
+
+export async function streamExistingAskResponse(
+  state: BridgeState,
+  query: { runId?: string; threadId?: string },
+  response: ServerResponse,
+): Promise<void> {
+  const run = findBackgroundAskRun(state, query);
+  if (!run) {
+    response.writeHead(404, {
+      "content-type": "application/json; charset=utf-8",
+    });
+    response.end(JSON.stringify({ ok: false, error: "run_not_found" }));
+    return;
+  }
+  await streamBackgroundAskRun(run, response);
+}
+
+export function cancelBackgroundAskRun(
+  state: BridgeState,
+  query: { runId?: string; threadId?: string },
+): boolean {
+  const run = findBackgroundAskRun(state, query);
+  if (!run || run.done) {
+    return false;
+  }
+  run.controller.abort();
+  return true;
+}
+
+function startBackgroundAskRun(state: BridgeState, payload: BridgeAskPayload): BackgroundAskRun {
+  const runId = createBackgroundRunId();
+  const run: BackgroundAskRun = {
+    runId,
+    threadId: payload.threadId,
+    payload,
+    controller: new AbortController(),
+    chunks: [],
+    done: false,
+    subscribers: new Set(),
+  };
+  registryForState(state).set(runId, run);
+  void executeBackgroundAskRun(state, run);
+  return run;
+}
+
+async function executeBackgroundAskRun(state: BridgeState, run: BackgroundAskRun): Promise<void> {
+  const payload = run.payload;
+  let executionState = state;
+  let turnContext: BridgeTurnContext | undefined;
+  const events: AgentEvent[] = [];
+
+  try {
+    executionState = askExecutionState(state, payload);
+    turnContext = prepareAskState(executionState, payload);
+    const policyOverrides = turnContext.policyOverrides;
+    emitAskRunChunk(run, { type: "start", ok: true, threadId: payload.threadId, runId: run.runId });
+
+    await runWithBridgeTurnContext(turnContext, async () => {
+      for await (const event of executionState.app.runTurn(payload.question, {
+        sessionId: payload.threadId,
+        runId: run.runId,
+        requestedModelId: payload.model,
+        requestedEffort: payload.effort,
+        responseSpeed: payload.responseSpeed,
+        accessMode: payload.accessMode,
+        requestedSkillName: payload.requestedSkill?.name,
+        requestedSkillArgs: payload.requestedSkill?.args,
+        policy: policyOverrides,
+        signal: run.controller.signal,
+      })) {
+        attachModelId([event], payload.model);
+        events.push(event);
+        emitAskRunChunk(run, { type: "event", event });
+      }
+    });
+
+    emitAskRunChunk(run, {
+      type: "final",
+      data: finalizeAskResponse(executionState, payload, events, turnContext),
+    });
+  } catch (error) {
+    if (turnContext) {
+      const message = run.controller.signal.aborted
+        ? "stopped"
+        : error instanceof Error
+          ? error.message
+          : String(error);
+      const errorEvent: AgentEvent = {
+        type: "error",
+        runId: run.runId,
+        message,
+      };
+      executionState.app.recordEvent(errorEvent, {
+        sessionId: payload.threadId,
+        input: payload.question,
+      });
+      events.push(errorEvent);
+      emitAskRunChunk(run, { type: "event", event: errorEvent });
+      emitAskRunChunk(run, {
+        type: "final",
+        data: finalizeAskResponse(executionState, payload, events, turnContext),
+      });
+    } else {
+      emitAskRunChunk(run, {
+        type: "fatal",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  } finally {
+    run.done = true;
+    windowlessDelay(() => {
+      registryForState(state).delete(run.runId);
+    }, 10 * 60 * 1000);
+  }
+}
+
+function askExecutionState(state: BridgeState, payload: BridgeAskPayload): BridgeState {
+  if (!payload.kernel || payload.kernel === state.kernel) {
+    return state;
+  }
+  const scopedState = {
+    ...state,
+    settings: {
+      ...state.settings,
+      kernel: payload.kernel,
+    },
+    kernel: payload.kernel,
+  } satisfies BridgeState;
+  recreateBridgeApp(scopedState);
+  return scopedState;
+}
+
+function streamBackgroundAskRun(run: BackgroundAskRun, response: ServerResponse): Promise<void> {
   response.writeHead(200, {
     "cache-control": "no-store, no-transform",
     connection: "keep-alive",
@@ -35,50 +189,75 @@ export async function streamAskResponse(
   response.flushHeaders?.();
   response.socket?.setNoDelay(true);
 
-  const sendChunk = (chunk: unknown) => {
-    response.write(`${JSON.stringify(chunk)}\n`);
-    (response as ServerResponse & { flush?: () => void }).flush?.();
-  };
-  const abortController = new AbortController();
-  const abortRun = () => abortController.abort();
-  response.once("close", abortRun);
-
-  try {
-    const turnContext = prepareAskState(state, payload);
-    sendChunk({ type: "start", ok: true, threadId: payload.threadId });
-
-    const events: AgentEvent[] = [];
-    await runWithBridgeTurnContext(turnContext, async () => {
-      for await (const event of state.app.runTurn(payload.question, {
-        sessionId: payload.threadId,
-        requestedModelId: payload.model,
-        requestedEffort: payload.effort,
-        responseSpeed: payload.responseSpeed,
-        accessMode: payload.accessMode,
-        requestedSkillName: payload.requestedSkill?.name,
-        requestedSkillArgs: payload.requestedSkill?.args,
-        policy: turnContext.policyOverrides,
-        signal: abortController.signal,
-      })) {
-        attachModelId([event], payload.model);
-        events.push(event);
-        sendChunk({ type: "event", event });
+  return new Promise((resolve) => {
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      run.subscribers.delete(sendChunk);
+      response.end();
+      resolve();
+    };
+    const sendChunk = (chunk: AskStreamChunk) => {
+      if (closed) return;
+      response.write(`${JSON.stringify(chunk)}\n`);
+      (response as ServerResponse & { flush?: () => void }).flush?.();
+      if (chunk.type === "final" || chunk.type === "fatal") {
+        queueMicrotask(close);
       }
-    });
+    };
+    response.once("close", close);
 
-    sendChunk({
-      type: "final",
-      data: finalizeAskResponse(state, payload, events, turnContext),
-    });
-  } catch (error) {
-    sendChunk({
-      type: "fatal",
-      error: error instanceof Error ? error.message : String(error),
-    });
-  } finally {
-    response.off?.("close", abortRun);
-    response.end();
+    for (const chunk of run.chunks) {
+      if (closed) break;
+      sendChunk(chunk);
+    }
+    if (run.done) {
+      close();
+      return;
+    }
+    run.subscribers.add(sendChunk);
+  });
+}
+
+function emitAskRunChunk(run: BackgroundAskRun, chunk: AskStreamChunk): void {
+  run.chunks.push(chunk);
+  for (const subscriber of run.subscribers) {
+    subscriber(chunk);
   }
+}
+
+function findBackgroundAskRun(
+  state: BridgeState,
+  query: { runId?: string; threadId?: string },
+): BackgroundAskRun | undefined {
+  const registry = registryForState(state);
+  if (query.runId) {
+    return registry.get(query.runId);
+  }
+  if (!query.threadId) {
+    return undefined;
+  }
+  return [...registry.values()]
+    .filter((run) => run.threadId === query.threadId && !run.done)
+    .sort((left, right) => right.runId.localeCompare(left.runId))[0];
+}
+
+function registryForState(state: BridgeState): Map<string, BackgroundAskRun> {
+  let registry = askRunRegistries.get(state);
+  if (!registry) {
+    registry = new Map();
+    askRunRegistries.set(state, registry);
+  }
+  return registry;
+}
+
+function createBackgroundRunId(): string {
+  return `run_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function windowlessDelay(callback: () => void, delayMs: number): void {
+  setTimeout(callback, delayMs).unref?.();
 }
 
 export function persistSnapshotAttachments(snapshot: BrowserPageSnapshot, state: BridgeState): void {
@@ -138,14 +317,6 @@ function prepareAskState(state: BridgeState, payload: BridgeAskPayload): BridgeT
 
 function buildAskPolicyOverrides(payload: BridgeAskPayload): PolicyRule[] {
   const policyOverrides: PolicyRule[] = [];
-  if (payload.allowMemory) {
-    policyOverrides.push({
-      id: "bridge.allow-reading-note",
-      toolId: "memory.proposeReadingNote",
-      mode: "allow",
-      reason: "Local bridge request explicitly allowed memory writes.",
-    });
-  }
   return policyOverrides;
 }
 

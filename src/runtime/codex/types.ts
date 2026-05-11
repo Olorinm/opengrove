@@ -30,6 +30,7 @@ export interface CodexRuntimeOptions {
   env?: NodeJS.ProcessEnv;
   rpcCapture?: CodexRpcCaptureOptions;
   providerHttpCapture?: ProviderHttpCaptureOptions;
+  rawEventCapture?: boolean;
 }
 
 export type CodexModelProviderRuntimeConfig = {
@@ -129,7 +130,21 @@ export type ServerNotificationHandler = (notification: {
 export const DEFAULT_CODEX_MODEL = "gpt-5.4";
 export const MIN_CODEX_APP_SERVER_VERSION = "0.125.0";
 export const CODEX_NATIVE_APPROVAL_TIMEOUT_MS = 120_000;
+export const DEFAULT_CODEX_APP_SERVER_ARGS = [
+  "app-server",
+  "--disable",
+  "responses_websockets",
+  "--disable",
+  "responses_websockets_v2",
+  "--disable",
+  "responses_websocket_response_processed",
+  "--listen",
+  "stdio://",
+];
 export const CODEX_THREAD_CONFIG_OVERRIDES: JsonObject = {
+  "features.responses_websockets": false,
+  "features.responses_websockets_v2": false,
+  "features.responses_websocket_response_processed": false,
   "features.image_generation": true,
   suppress_unstable_features_warning: true,
 };

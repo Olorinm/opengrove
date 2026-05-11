@@ -226,10 +226,19 @@ function renderInlineMarkdown(text: string): ReactNode[] {
     const value = match[0];
     const key = `${match.index}-${value}`;
     if (value.startsWith("`")) {
+      const codeText = value.slice(1, -1);
+      const fileLink = fileLinkDisplay(codeText, codeText);
       nodes.push(
-        <code className="thread-md-inline-code" key={key}>
-          {value.slice(1, -1)}
-        </code>,
+        fileLink ? (
+          <span className="thread-md-file-link" title={fileLink.title} aria-label={fileLink.title} key={key}>
+            <span className="thread-md-file-name">{fileLink.name}</span>
+            {fileLink.line ? <span className="thread-md-file-line">(line {fileLink.line})</span> : null}
+          </span>
+        ) : (
+          <code className="thread-md-inline-code" key={key}>
+            {codeText}
+          </code>
+        ),
       );
     } else if (value.startsWith("**")) {
       nodes.push(
@@ -259,11 +268,80 @@ function renderMarkdownLink(label: string, href: string, key: string): ReactNode
       </a>
     );
   }
+  const fileLink = fileLinkDisplay(label, href);
+  if (fileLink) {
+    return (
+      <span className="thread-md-file-link" title={fileLink.title} aria-label={fileLink.title} key={key}>
+        <span className="thread-md-file-name">{fileLink.name}</span>
+        {fileLink.line ? <span className="thread-md-file-line">(line {fileLink.line})</span> : null}
+      </span>
+    );
+  }
   return (
     <span className="thread-md-file-link" title={href} key={key}>
       {label}
     </span>
   );
+}
+
+type FileLinkDisplay = {
+  name: string;
+  line: string;
+  title: string;
+};
+
+function fileLinkDisplay(label: string, href: string): FileLinkDisplay | null {
+  const rawHref = href.trim().replace(/^<(.+)>$/, "$1");
+  const decodedHref = decodeSafe(rawHref);
+  const labelLine = label.match(/\b(?:line|行)\s*(\d+)\b/i)?.[1] || "";
+  const hrefLine = decodedHref.match(/(?::|#L)(\d+)(?::\d+)?$/i)?.[1] || "";
+  const line = labelLine || hrefLine;
+  const hrefPath = decodedHref
+    .replace(/#L\d+(?::\d+)?$/i, "")
+    .replace(/:\d+(?::\d+)?$/, "");
+  const cleanLabel = label
+    .replace(/\s*\((?:line|行)\s*\d+\)\s*$/i, "")
+    .replace(/\s*[-–—]\s*(?:line|行)\s*\d+\s*$/i, "")
+    .replace(/:\d+(?::\d+)?$/, "")
+    .trim();
+  const name = fileBasename(cleanLabel) || fileBasename(hrefPath);
+  if (!name || !looksLikeFileLink(name, hrefPath)) {
+    return null;
+  }
+  return {
+    name,
+    line,
+    title: line ? `${hrefPath || cleanLabel}:${line}` : hrefPath || cleanLabel || name,
+  };
+}
+
+function fileBasename(value: string): string {
+  const normalized = value.trim().replace(/^<(.+)>$/, "$1").replace(/\\/g, "/");
+  const withoutQuery = normalized.split(/[?#]/)[0] || normalized;
+  return withoutQuery.split("/").filter(Boolean).at(-1) || "";
+}
+
+function fileExtension(name: string): string {
+  const match = name.match(/\.([A-Za-z][A-Za-z0-9]{0,7})$/);
+  return match?.[1]?.toLowerCase() || "";
+}
+
+function looksLikeFileLink(name: string, hrefPath: string): boolean {
+  return Boolean(
+    fileExtension(name)
+    || hrefPath.startsWith("/")
+    || hrefPath.startsWith(".")
+    || hrefPath.includes("/")
+    || hrefPath.includes("\\"),
+  );
+}
+
+function decodeSafe(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 function isListLine(line: string): boolean {

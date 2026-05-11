@@ -6,6 +6,7 @@ export type ResolvedLanguage = "zh-CN" | "en";
 
 export type TranslationKey =
   | "app.chat"
+  | "app.rooms"
   | "app.library"
   | "app.settings"
   | "app.mainNav"
@@ -65,6 +66,7 @@ export type TranslationKey =
   | "vault.collapseAll"
   | "vault.actions"
   | "vault.searchClose"
+  | "vault.importLocalFolder"
   | "vault.newNoteInRoot"
   | "vault.newFolderInRoot"
   | "layout.sidebar"
@@ -184,6 +186,8 @@ export type TranslationKey =
   | "settings.noSources"
   | "settings.httpsCapture"
   | "settings.httpsCaptureCopy"
+  | "settings.codexRawCapture"
+  | "settings.codexRawCaptureCopy"
   | "settings.kernelProxy"
   | "settings.kernelProxyCopy"
   | "settings.proxy"
@@ -220,6 +224,10 @@ export type TranslationKey =
   | "settings.themeSystem"
   | "settings.themeLight"
   | "settings.themeDark"
+  | "settings.iconStyle"
+  | "settings.iconStyleCopy"
+  | "settings.iconStyleProfessional"
+  | "settings.iconStylePixel"
   | "settings.language"
   | "settings.languageCopy"
   | "settings.languageSystem"
@@ -278,6 +286,7 @@ export type TranslationFn = (key: TranslationKey, replacements?: Record<string, 
 
 const ZH_CN: Dictionary = {
   "app.chat": "对话",
+  "app.rooms": "消息",
   "app.library": "资料库",
   "app.settings": "设置",
   "app.mainNav": "主导航",
@@ -337,6 +346,7 @@ const ZH_CN: Dictionary = {
   "vault.collapseAll": "全部收起",
   "vault.actions": "资料库操作",
   "vault.searchClose": "关闭文件搜索",
+  "vault.importLocalFolder": "导入本地文件夹",
   "vault.newNoteInRoot": "在 {root} 根目录新建笔记",
   "vault.newFolderInRoot": "在 {root} 根目录新建文件夹",
   "layout.sidebar": "侧边栏",
@@ -456,6 +466,8 @@ const ZH_CN: Dictionary = {
   "settings.noSources": "暂无可同步来源。",
   "settings.httpsCapture": "HTTPS 抓包模式",
   "settings.httpsCaptureCopy": "开启后会自动启动 mitmproxy 并重建内核；只有代理服务启动成功且内核支持时，OpenGrove 才把代理和 CA 注入子进程。",
+  "settings.codexRawCapture": "Codex 原始事件",
+  "settings.codexRawCaptureCopy": "高级选项。仅在 HTTPS 抓包开启时生效，会保留 Codex raw events 和扩展历史，可能包含完整提示词、工具参数和敏感上下文。",
   "settings.kernelProxy": "内核代理转发",
   "settings.kernelProxyCopy": "开启后，内核子进程和安装命令会使用这里的 HTTP/HTTPS 代理。",
   "settings.proxy": "代理",
@@ -492,6 +504,10 @@ const ZH_CN: Dictionary = {
   "settings.themeSystem": "跟随系统",
   "settings.themeLight": "浅色",
   "settings.themeDark": "深色",
+  "settings.iconStyle": "图标风格",
+  "settings.iconStyleCopy": "专业线性图标，或带 OpenGrove 绿色点缀的像素图标",
+  "settings.iconStyleProfessional": "专业风格",
+  "settings.iconStylePixel": "像素风格",
   "settings.language": "语言",
   "settings.languageCopy": "应用 UI 语言",
   "settings.languageSystem": "跟随系统",
@@ -548,6 +564,7 @@ const ZH_CN: Dictionary = {
 
 const EN: Dictionary = {
   "app.chat": "Chat",
+  "app.rooms": "Messages",
   "app.library": "Library",
   "app.settings": "Settings",
   "app.mainNav": "Main navigation",
@@ -607,6 +624,7 @@ const EN: Dictionary = {
   "vault.collapseAll": "Collapse all",
   "vault.actions": "Library actions",
   "vault.searchClose": "Close file search",
+  "vault.importLocalFolder": "Import local folder",
   "vault.newNoteInRoot": "Create a note in the {root} root",
   "vault.newFolderInRoot": "Create a folder in the {root} root",
   "layout.sidebar": "Sidebar",
@@ -726,6 +744,8 @@ const EN: Dictionary = {
   "settings.noSources": "No syncable sources yet.",
   "settings.httpsCapture": "HTTPS capture mode",
   "settings.httpsCaptureCopy": "When enabled, OpenGrove starts mitmproxy and rebuilds the kernel. Proxy and CA settings are injected only when capture is running and the kernel supports it.",
+  "settings.codexRawCapture": "Codex raw events",
+  "settings.codexRawCaptureCopy": "Advanced. Effective only while HTTPS capture is enabled. Stores Codex raw events and extended history, which may include full prompts, tool arguments, and sensitive context.",
   "settings.kernelProxy": "Kernel proxy forwarding",
   "settings.kernelProxyCopy": "When enabled, kernel child processes and install commands use this HTTP/HTTPS proxy.",
   "settings.proxy": "Proxy",
@@ -762,6 +782,10 @@ const EN: Dictionary = {
   "settings.themeSystem": "System",
   "settings.themeLight": "Light",
   "settings.themeDark": "Dark",
+  "settings.iconStyle": "Icon style",
+  "settings.iconStyleCopy": "Professional line icons, or pixel icons with OpenGrove green accents.",
+  "settings.iconStyleProfessional": "Professional",
+  "settings.iconStylePixel": "Pixel",
   "settings.language": "Language",
   "settings.languageCopy": "App UI language",
   "settings.languageSystem": "System",

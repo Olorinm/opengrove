@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bug, Check, ChevronDown, Cpu, Globe2, Palette, PlugZap, Plus, Trash2 } from "lucide-react";
+import { useIconStylePreference, type IconStylePreference } from "../../appearance";
 import type { BridgeSettings, KernelOption, KernelPathOverride, KernelPreference, KernelProxySettings, ProviderProfile } from "../../bridge";
 import { useI18n, type LanguagePreference, type TranslationFn } from "../../i18n";
 import { useThemePreference, type ThemePreference } from "../../theme";
@@ -35,6 +36,14 @@ const THEME_OPTIONS: Array<{
   { id: "dark", labelKey: "settings.themeDark" },
 ];
 
+const ICON_STYLE_OPTIONS: Array<{
+  id: IconStylePreference;
+  labelKey: "settings.iconStyleProfessional" | "settings.iconStylePixel";
+}> = [
+  { id: "professional", labelKey: "settings.iconStyleProfessional" },
+  { id: "pixel", labelKey: "settings.iconStylePixel" },
+];
+
 export function SettingsDialog(props: {
   settings?: BridgeSettings;
   contextRecords?: Record<string, unknown>[];
@@ -48,6 +57,7 @@ export function SettingsDialog(props: {
   onSave(payload: {
     kernel: KernelPreference;
     providerHttpCaptureEnabled: boolean;
+    codexRawEventCaptureEnabled: boolean;
     kernelProxy: KernelProxySettings;
     kernelPathOverrides: Record<string, KernelPathOverride>;
     kernelKnowledgeSourceEnabled: Record<string, Record<string, boolean>>;
@@ -57,11 +67,14 @@ export function SettingsDialog(props: {
 }) {
   const { t, preference: languagePreference, setLanguagePreference } = useI18n();
   const { preference: themePreference, setThemePreference } = useThemePreference();
+  const { preference: iconStylePreference, setIconStylePreference } = useIconStylePreference();
   const themeSelectOptions = THEME_OPTIONS.map((option) => ({ id: option.id, label: t(option.labelKey) }));
+  const iconStyleSelectOptions = ICON_STYLE_OPTIONS.map((option) => ({ id: option.id, label: t(option.labelKey) }));
   const languageSelectOptions = LANGUAGE_OPTIONS.map((option) => ({ id: option.id, label: t(option.labelKey) }));
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("kernels");
   const [kernel, setKernel] = useState<KernelPreference>("auto");
   const [providerHttpCaptureEnabled, setProviderHttpCaptureEnabled] = useState(false);
+  const [codexRawEventCaptureEnabled, setCodexRawEventCaptureEnabled] = useState(false);
   const [kernelProxy, setKernelProxy] = useState<KernelProxySettings>(emptyKernelProxySettings());
   const [kernelPathOverrides, setKernelPathOverrides] = useState<Record<string, KernelPathOverride>>({});
   const [sourceEnabled, setSourceEnabled] = useState<Record<string, Record<string, boolean>>>({});
@@ -81,6 +94,7 @@ export function SettingsDialog(props: {
     }
     setKernel(props.settings.kernel);
     setProviderHttpCaptureEnabled(Boolean(props.settings.providerHttpCapture?.enabled));
+    setCodexRawEventCaptureEnabled(Boolean(props.settings.codexRawEventCaptureEnabled));
     setKernelProxy(normalizeKernelProxySettings(props.settings.kernelProxy));
     setKernelPathOverrides(props.settings.kernelPathOverrides ?? {});
     setSourceEnabled(buildSourceEnabledState(props.settings));
@@ -133,6 +147,7 @@ export function SettingsDialog(props: {
   const saveSettings = (next: {
     kernel?: KernelPreference;
     providerHttpCaptureEnabled?: boolean;
+    codexRawEventCaptureEnabled?: boolean;
     kernelProxy?: KernelProxySettings;
     kernelPathOverrides?: Record<string, KernelPathOverride>;
     kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
@@ -142,6 +157,7 @@ export function SettingsDialog(props: {
     props.onSave({
       kernel: next.kernel ?? kernel,
       providerHttpCaptureEnabled: next.providerHttpCaptureEnabled ?? providerHttpCaptureEnabled,
+      codexRawEventCaptureEnabled: next.codexRawEventCaptureEnabled ?? codexRawEventCaptureEnabled,
       kernelProxy: next.kernelProxy ?? kernelProxy,
       kernelPathOverrides: next.kernelPathOverrides ?? kernelPathOverrides,
       kernelKnowledgeSourceEnabled: next.kernelKnowledgeSourceEnabled ?? sourceEnabled,
@@ -157,7 +173,17 @@ export function SettingsDialog(props: {
 
   const setCaptureEnabled = (enabled: boolean) => {
     setProviderHttpCaptureEnabled(enabled);
-    saveSettings({ providerHttpCaptureEnabled: enabled });
+    const rawEnabled = enabled ? codexRawEventCaptureEnabled : false;
+    if (!enabled) {
+      setCodexRawEventCaptureEnabled(false);
+    }
+    saveSettings({ providerHttpCaptureEnabled: enabled, codexRawEventCaptureEnabled: rawEnabled });
+  };
+
+  const setCodexRawCaptureEnabled = (enabled: boolean) => {
+    const nextEnabled = providerHttpCaptureEnabled && enabled;
+    setCodexRawEventCaptureEnabled(nextEnabled);
+    saveSettings({ codexRawEventCaptureEnabled: nextEnabled });
   };
 
   const setKernelProxyDraft = (patch: Partial<KernelProxySettings>) => {
@@ -975,6 +1001,18 @@ export function SettingsDialog(props: {
                       onChange={(event) => setCaptureEnabled(event.target.checked)}
                     />
                   </label>
+                  <label className="settings-list-row">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.codexRawCapture")}</strong>
+                      <small>{t("settings.codexRawCaptureCopy")}</small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={providerHttpCaptureEnabled && codexRawEventCaptureEnabled}
+                      disabled={props.loading || props.saving || !providerHttpCaptureEnabled}
+                      onChange={(event) => setCodexRawCaptureEnabled(event.target.checked)}
+                    />
+                  </label>
                   <div className="settings-list-row">
                     <span className="settings-list-row-main"><strong>{t("settings.proxy")}</strong></span>
                     <code>{capture?.proxyUrl || "http://127.0.0.1:9080"}</code>
@@ -1042,6 +1080,19 @@ export function SettingsDialog(props: {
                         value={themePreference}
                         options={themeSelectOptions}
                         onChange={(value) => setThemePreference(value as ThemePreference)}
+                      />
+                    </span>
+                  </div>
+                  <div className="settings-list-row settings-preference-row">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.iconStyle")}</strong>
+                      <small>{t("settings.iconStyleCopy")}</small>
+                    </span>
+                    <span className="settings-list-row-control wide">
+                      <InlineSelect
+                        value={iconStylePreference}
+                        options={iconStyleSelectOptions}
+                        onChange={(value) => setIconStylePreference(value as IconStylePreference)}
                       />
                     </span>
                   </div>

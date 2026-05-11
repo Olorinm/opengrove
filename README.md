@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="#development"><img alt="Build" src="https://img.shields.io/badge/build-local-555555?style=for-the-badge" /></a>
-  <img alt="Release" src="https://img.shields.io/badge/release-source--only-0b8ec2?style=for-the-badge" />
+  <img alt="Release" src="https://img.shields.io/badge/release-npm--ready-0b8ec2?style=for-the-badge" />
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-0b8ec2?style=for-the-badge" /></a>
 </p>
 
@@ -33,14 +33,27 @@ It is not trying to replace Codex, Claude Code, Hermes, Pi, OpenClaw, OpenCode, 
 
 OpenGrove is an early local development project.
 
-- Source checkout only; the package is currently marked `private`.
+- The package has a CLI entrypoint for npm installation; source checkout development is still supported.
 - APIs, state files, and adapter contracts may change.
 - The bridge is local-first and binds to `127.0.0.1` by default.
 - Node.js `>=20` is required.
 
 ## Quickstart
 
-Install dependencies and start the local bridge:
+Install the CLI and start the local bridge:
+
+```bash
+npm install -g opengrove
+opengrove start
+```
+
+Upgrade a global npm installation:
+
+```bash
+opengrove update
+```
+
+For source checkout development:
 
 ```bash
 npm install
@@ -303,6 +316,16 @@ npm run bridge
 ```
 
 The bridge command builds both server and web assets before starting `dist/server/local-bridge.js`.
+
+The npm CLI exposes the same bridge with:
+
+```bash
+opengrove start
+opengrove update
+opengrove --version
+```
+
+When `opengrove update` detects a source checkout, it prints the `git pull`, `npm install`, and `npm run build` flow instead of modifying the checkout.
 
 ## Design Principles
 

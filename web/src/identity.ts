@@ -17,6 +17,8 @@ export const APP_STORAGE_KEYS = {
   accessMode: `${APP_PROTOCOL_ID}AccessMode`,
   language: `${APP_PROTOCOL_ID}Language`,
   theme: `${APP_PROTOCOL_ID}Theme`,
+  iconStyle: `${APP_PROTOCOL_ID}IconStyle`,
+  railExpanded: `${APP_PROTOCOL_ID}RailExpanded`,
   sidebarWidth: `${APP_PROTOCOL_ID}SidebarWidth`,
   sidebarCollapsed: `${APP_PROTOCOL_ID}SidebarCollapsed`,
   libraryAiPanelWidth: `${APP_PROTOCOL_ID}LibraryAiPanelWidth`,

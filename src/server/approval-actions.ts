@@ -11,12 +11,10 @@ import type {
   ToolResult,
   WorkingStateRecord,
 } from "../core.js";
-import { normalizeComputerSnapshot } from "../environment/computer-adapter.js";
 import {
   resumeRoutineAfterApproval,
   type RoutineRunResult,
 } from "../routines/routine-runner.js";
-import type { ComputerStateSnapshot } from "../tools/computer.js";
 import type { BridgeState } from "./bridge-types.js";
 import { syncBridgeWorkingState } from "./bridge-working-state.js";
 import { asJsonObject } from "./http-utils.js";
@@ -56,7 +54,11 @@ export async function resolveApproval(
   const runId = approval.resume?.runId ?? `approval_${approvalId}`;
   const sessionId = app.workingState.get().sessionId ?? "browser-bridge";
 
-  if (approval.resume?.type === "codex.native" || approval.resume?.type === "claude.native") {
+  if (
+    approval.resume?.type === "codex.native" ||
+    approval.resume?.type === "claude.native" ||
+    approval.resume?.type === "hermes.native"
+  ) {
     const resolved = app.approvals.decide(approvalId, status, approvalResponse);
     syncBridgeWorkingState(app);
     state.store.saveFrom(app);
@@ -148,21 +150,18 @@ async function replayApprovedTool(state: BridgeState, approval: ApprovalRequest)
     activity: "browser",
     input: approval.title,
   });
-  const preflight = preflightApprovedToolReplay(state, approval, runId);
-  const result =
-    preflight ??
-    (await tool.execute(input, {
-      runId,
-      capabilityId: approval.capabilityId,
-      skillId: approval.skillId,
-      memory: app.memory,
-      artifacts: app.artifacts,
-      workingState: app.workingState,
-      approvals: app.approvals,
-      skills: app.skills,
-      packs: app.packs,
-      policy,
-    }));
+  const result = await tool.execute(input, {
+    runId,
+    capabilityId: approval.capabilityId,
+    skillId: approval.skillId,
+    memory: app.memory,
+    artifacts: app.artifacts,
+    workingState: app.workingState,
+    approvals: app.approvals,
+    skills: app.skills,
+    packs: app.packs,
+    policy,
+  });
   app.recordEvent({ type: "tool.finished", runId, toolId: approval.toolId, result }, {
     sessionId,
     activity: "browser",
@@ -180,87 +179,6 @@ async function replayApprovedTool(state: BridgeState, approval: ApprovalRequest)
     });
   }
   return result;
-}
-
-function preflightApprovedToolReplay(
-  state: BridgeState,
-  approval: ApprovalRequest,
-  runId: string,
-): ToolResult | undefined {
-  if (approval.toolId !== "computer.requestAction") {
-    return undefined;
-  }
-
-  const observed = latestComputerObservationForRun(state.app, runId);
-  const current = normalizeComputerSnapshot(state.computerSnapshot);
-  if (!observed || !current.app && !current.windowTitle && !current.url) {
-    return undefined;
-  }
-
-  if (!hasComputerSnapshotDrift(observed, current)) {
-    return undefined;
-  }
-
-  return {
-    ok: false,
-    error: "environment_blocked",
-    value: {
-      status: "blocked",
-      needsReobserve: true,
-      message: "Computer state changed since the last observe step. Re-observe before replaying this approval.",
-      expectedApp: observed.app ?? "",
-      expectedWindowTitle: observed.windowTitle ?? "",
-      expectedUrl: observed.url ?? "",
-      expectedObservedAt: observed.observedAt ?? "",
-      currentApp: current.app ?? "",
-      currentWindowTitle: current.windowTitle ?? "",
-      currentUrl: current.url ?? "",
-      currentObservedAt: current.observedAt ?? "",
-    },
-  };
-}
-
-function latestComputerObservationForRun(
-  app: OpenGroveApp,
-  runId: string,
-): ComputerStateSnapshot | undefined {
-  const events = app.events.list();
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    if (event.runId !== runId || event.type !== "tool.finished" || event.toolId !== "computer.observe" || !event.result.ok) {
-      continue;
-    }
-
-    const value = asJsonObject(event.result.value);
-    return normalizeComputerSnapshot({
-      app: value.app,
-      windowTitle: value.windowTitle,
-      url: value.url,
-      focusedElement: value.focusedElement,
-      observation: value.observation,
-      accessibilityTree: value.accessibilityTree,
-      screenshotArtifactId: value.screenshotArtifactId,
-      observedAt: value.observedAt,
-      elements: value.elements,
-    });
-  }
-
-  return undefined;
-}
-
-function hasComputerSnapshotDrift(
-  expected: ComputerStateSnapshot,
-  current: ComputerStateSnapshot,
-): boolean {
-  if (expected.observedAt && current.observedAt && expected.observedAt !== current.observedAt) {
-    return true;
-  }
-
-  return changedNonEmpty(expected.app, current.app) || changedNonEmpty(expected.windowTitle, current.windowTitle) || changedNonEmpty(expected.url, current.url);
-}
-
-function changedNonEmpty(expected?: string, current?: string): boolean {
-  return Boolean(expected && current && expected !== current);
 }
 
 function bridgeApprovalState(

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import type { JsonObject } from "../core.js";
+import { packageRoot } from "../package-root.js";
 import {
   APP_KNOWLEDGE_SCOPE,
   APP_PRODUCT_NAME,
@@ -22,7 +23,7 @@ import {
   resolveExternalCliCommand,
 } from "../kernel/adapters/external-cli.js";
 import { createHermesKernelAdapter, discoverHermesKernel } from "../kernel/adapters/hermes.js";
-import { OpenAiHttpKernelAdapter, type OpenAiHttpKernelDefinition } from "../kernel/adapters/openai-http.js";
+import { OpenAiHttpKernelAdapter } from "../kernel/adapters/openai-http.js";
 import type { KernelAdapter, KernelDiscovery, KernelKnowledgeSource } from "../kernel/types.js";
 import { resolveClaudeCodeCliPath } from "../runtime/claude-code-runtime.js";
 import { resolveCodexCommandPath } from "../runtime/codex-runtime.js";
@@ -76,6 +77,7 @@ import {
 import {
   getBridgeKernelDescriptor,
 } from "./kernel-registry.js";
+import { resolveOpenAiHttpKernelDefinition } from "./openai-http-kernel-registry.js";
 import {
   defaultKernelConfigHome,
   existingPath,
@@ -84,44 +86,6 @@ import {
   kernelPathEnv,
 } from "./kernel-paths.js";
 import { resolveBridgeWorkspaceRoot } from "./workspace-root.js";
-
-const OPENAI_HTTP_KERNEL_DEFINITIONS: Record<string, () => OpenAiHttpKernelDefinition | undefined> = {
-  openclaw: () => {
-    const baseUrl = readAppEnv("OPENCLAW_API_URL")?.trim();
-    if (!baseUrl) return undefined;
-    return {
-      id: "openclaw",
-      title: "OpenClaw",
-      baseUrl,
-      apiKeyEnv: "OPENCLAW_API_KEY",
-      model: readAppEnv("OPENCLAW_MODEL")?.trim() || "default",
-      sessionMode: "stateless",
-      healthPath: "/models",
-      knowledgeSources: [],
-      notes: ["OpenClaw connected via OpenAI-compatible HTTP gateway."],
-    };
-  },
-  hermes: () => {
-    const baseUrl = readAppEnv("HERMES_API_URL")?.trim();
-    if (!baseUrl) return undefined;
-    return {
-      id: "hermes",
-      title: "Hermes",
-      baseUrl,
-      apiKeyEnv: "HERMES_API_KEY",
-      model: readAppEnv("HERMES_MODEL")?.trim() || "hermes-default",
-      sessionMode: "stateless",
-      healthPath: "/models",
-      knowledgeSources: [],
-      notes: ["Hermes connected via OpenAI-compatible HTTP gateway."],
-    };
-  },
-};
-
-function resolveOpenAiHttpDefinition(kernelId: BridgeKernelId): OpenAiHttpKernelDefinition | undefined {
-  const factory = OPENAI_HTTP_KERNEL_DEFINITIONS[kernelId];
-  return factory?.();
-}
 
 export function createBridgeKernel(state: BridgeState): KernelAdapter {
   const kernel = resolveBridgeKernel(state.settings.kernel, state);
@@ -138,6 +102,7 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
   const modelAliases = kernelModelAliasesForProvider(kernel, provider);
   const providerEnv = resolveKernelEnv(state, kernel, provider, selectedModel);
   const nativeProviderBinding = usesNativeProviderConfig(kernel, provider);
+  const runtimeEnv = { ...process.env, ...providerEnv };
   const descriptor = getBridgeKernelDescriptor(kernel);
   const runtimeBindingFingerprint = providerBindingFingerprint({
     kernelId: kernel,
@@ -185,12 +150,16 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
       runtimeBindingFingerprint,
       statePath: resolve(dirname(state.store.path), "codex-threads.json"),
       providerHttpCapture,
+      rawEventCapture: state.settings.providerHttpCaptureEnabled && state.settings.codexRawEventCaptureEnabled,
       env: providerEnv,
     });
   }
 
   if (kernel === "hermes") {
-    const hermesHttp = resolveOpenAiHttpDefinition("hermes");
+    const hermesHttp = resolveOpenAiHttpKernelDefinition("hermes", {
+      env: runtimeEnv,
+      providerHttpCapture,
+    });
     if (hermesHttp) {
       return new OpenAiHttpKernelAdapter(hermesHttp);
     }
@@ -204,6 +173,7 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
       cwd: workspaceRoot,
       configuredModel: hermesProviderConfig ? (kernelSelectedModel || readHermesConfiguredModel()) : readHermesConfiguredModel(),
       configuredProvider: hermesProviderConfig?.providerKey ?? readHermesConfiguredProvider(),
+      runtimeBindingFingerprint,
       providerConfig: hermesProviderConfig,
       toolsets: readHermesToolsets(),
       nativeSkillDir: defaultHermesExternalSkillDir(workspaceRoot),
@@ -212,7 +182,10 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
     });
   }
 
-  const httpDefinition = resolveOpenAiHttpDefinition(kernel);
+  const httpDefinition = resolveOpenAiHttpKernelDefinition(kernel, {
+    env: runtimeEnv,
+    providerHttpCapture,
+  });
   if (httpDefinition) {
     return new OpenAiHttpKernelAdapter(httpDefinition);
   }
@@ -278,19 +251,31 @@ export function getBridgeKernelOptions(state: BridgeState): JsonObject[] {
 
 export function getBridgeRuntimeControls(state: BridgeState): JsonObject {
   const active = resolveBridgeKernel(state.settings.kernel, state);
-  const provider = resolveProviderForKernel(active, state.settings.kernelProviderBindings, state.settings.customProviders);
-  const providerModels = providerModelsForKernel(active, provider);
+  return getBridgeRuntimeControlsForKernel(state, active);
+}
+
+export function getBridgeRuntimeControlsByKernel(state: BridgeState): JsonObject {
+  const controlsByKernel: Record<string, JsonObject> = {};
+  for (const id of BRIDGE_KERNEL_IDS) {
+    controlsByKernel[id] = getBridgeRuntimeControlsForKernel(state, id);
+  }
+  return controlsByKernel as JsonObject;
+}
+
+export function getBridgeRuntimeControlsForKernel(state: BridgeState, kernel: BridgeKernelId): JsonObject {
+  const provider = resolveProviderForKernel(kernel, state.settings.kernelProviderBindings, state.settings.customProviders);
+  const providerModels = providerModelsForKernel(kernel, provider);
   const controls =
-    active === "codex"
+    kernel === "codex"
       ? mergeProviderRuntimeControls(buildCodexRuntimeControls(state), providerModels, provider)
-      : active === "claude-code"
+      : kernel === "claude-code"
         ? providerModels.length
           ? mergeProviderRuntimeControls(buildClaudeCodeRuntimeControls(state), providerModels, provider)
           : buildClaudeCodeRuntimeControls(state)
-        : active === "hermes"
+        : kernel === "hermes"
           ? mergeProviderRuntimeControls(
               buildSingleModelRuntimeControls({
-                kernel: active,
+                kernel,
                 source: "hermes-config",
                 model: readHermesConfiguredModel() ?? "hermes-default",
                 label: readHermesConfiguredModel() ?? "Hermes 默认模型",
@@ -298,7 +283,7 @@ export function getBridgeRuntimeControls(state: BridgeState): JsonObject {
               providerModels,
               provider,
             )
-          : buildExternalRuntimeControls(active, providerModels, provider?.id);
+          : buildExternalRuntimeControls(kernel, providerModels, provider?.id);
   return stripUndefined(controls as unknown as Record<string, unknown>) as JsonObject;
 }
 
@@ -344,7 +329,7 @@ function buildClaudeCodeRuntimeControls(state: BridgeState): BridgeRuntimeContro
   const profile = readKernelNativeProviderProfile("claude-code", nativeProfileOptions(state, "claude-code"));
   const models = profile?.models.length
     ? profile.models
-    : [{ id: CLAUDE_CODE_DEFAULT_MODEL_ID, label: "Claude Code 默认" }];
+    : [{ id: CLAUDE_CODE_DEFAULT_MODEL_ID, label: "跟随 Claude Code 配置" }];
   return {
     kernel: "claude-code",
     source: profile?.source ?? "claude-code-defaults",
@@ -413,7 +398,7 @@ function mergeProviderRuntimeControls(
 }
 
 const MODEL_LABELS: Record<string, string> = {
-  "claude-code-default": "Claude Code 默认",
+  "claude-code-default": "跟随 Claude Code 配置",
   "MiMo-V2-Pro": "MiMo-V2-Pro",
   "gpt-5.5": "GPT-5.5",
   "gpt-5.4": "GPT-5.4",
@@ -537,6 +522,20 @@ function buildKernelDiscoverySnapshot(
       }, cwd),
       installed: available,
       available,
+    };
+  }
+  const httpDefinition = resolveOpenAiHttpKernelDefinition(id, {
+    env: process.env,
+    providerHttpCapture: readProviderHttpCaptureOptions(state, id),
+  });
+  if (httpDefinition) {
+    return {
+      ...createRuntimeKernelDiscovery(id, httpDefinition.title, available, cwd),
+      installed: available,
+      available,
+      knowledgeSources: httpDefinition.knowledgeSources ?? [],
+      installActions: httpDefinition.installActions ?? [],
+      notes: httpDefinition.notes ?? [],
     };
   }
   if (id === "hermes") {
@@ -781,7 +780,7 @@ export function resolveBridgeKernel(preferred: BridgeKernelPreference, state?: B
   }
   if (canUseCodexKernel(state)) return "codex";
   if (canUseClaudeKernel(state)) return "claude-code";
-  if (canUseExternalCliKernel("openclaw", state)) return "openclaw";
+  if (canUseOpenAiHttpKernel("openclaw") || canUseExternalCliKernel("openclaw", state)) return "openclaw";
   if (canUseHermesKernel(state)) return "hermes";
   if (canUsePiKernel(state)) return "pi";
   if (canUseExternalCliKernel("deepseek-tui", state)) return "deepseek-tui";
@@ -796,6 +795,7 @@ function canUseBridgeKernel(id: BridgeKernelId, state?: BridgeState): boolean {
   if (id === "claude-code") return canUseClaudeKernel(state);
   if (id === "hermes") return canUseHermesKernel(state);
   if (id === "pi") return canUsePiKernel(state);
+  if (canUseOpenAiHttpKernel(id)) return true;
   return canUseExternalCliKernel(id, state);
 }
 
@@ -823,7 +823,11 @@ function canUseCodexKernel(state?: BridgeState) {
 }
 
 function canUseHermesKernel(state?: BridgeState) {
-  return Boolean(resolveKernelCommandPath(state, "hermes"));
+  return canUseOpenAiHttpKernel("hermes") || Boolean(resolveKernelCommandPath(state, "hermes"));
+}
+
+function canUseOpenAiHttpKernel(id: BridgeKernelId): boolean {
+  return Boolean(resolveOpenAiHttpKernelDefinition(id));
 }
 
 function canUsePiKernel(state?: BridgeState) {
@@ -976,7 +980,7 @@ function ensureProviderHttpCaptureServiceRunning(state: BridgeState): { state?: 
   if (afterStop?.pid && isPidAlive(afterStop.pid)) {
     return { state: current };
   }
-  const scriptPath = resolve(process.cwd(), "scripts", "provider-http-capture.mjs");
+  const scriptPath = resolve(packageRoot(), "scripts", "provider-http-capture.mjs");
   if (!existsSync(scriptPath)) {
     return { state: current, error: `启动脚本不存在：${scriptPath}` };
   }

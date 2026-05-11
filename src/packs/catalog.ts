@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { PackRegistry, type PackManifest, type SkillSource, type SkillTrust } from "../core.js";
 import { APP_CONFIG_DIR } from "../identity.js";
+import { packageRoot } from "../package-root.js";
 
 interface CreatePackCatalogOptions {
   cwd?: string;
@@ -18,7 +19,7 @@ export function createPackRegistry(options: CreatePackCatalogOptions = {}): Pack
 
 function loadPacks(cwd: string): PackManifest[] {
   const roots = [
-    { dir: resolve(cwd, "src", "packs", "bundled"), source: "pack" as SkillSource, trust: "trusted" as SkillTrust },
+    { dir: resolve(packageRoot(), "src", "packs", "bundled"), source: "pack" as SkillSource, trust: "trusted" as SkillTrust },
     { dir: join(resolve(homedir()), APP_CONFIG_DIR, "packs"), source: "user" as SkillSource, trust: "trusted" as SkillTrust },
     { dir: resolve(cwd, APP_CONFIG_DIR, "packs"), source: "project" as SkillSource, trust: "trusted" as SkillTrust },
   ];

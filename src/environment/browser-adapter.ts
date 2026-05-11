@@ -1,11 +1,39 @@
 import type { JsonObject } from "../core.js";
-import type { BrowserPageReader, BrowserPageSnapshot } from "../tools/browser.js";
 import {
   isoTimestamp,
   type EnvironmentActionRequest,
   type EnvironmentAdapter,
   type EnvironmentObservation,
 } from "./adapter.js";
+
+export interface BrowserPageSnapshot {
+  url?: string;
+  title?: string;
+  selection?: string;
+  visibleText?: string;
+  locator?: string;
+  vaultFile?: BrowserVaultFileSnapshot;
+  attachments?: BrowserPageAttachmentSnapshot[];
+}
+
+export interface BrowserVaultFileSnapshot {
+  knowledgeId?: string;
+  vaultPath?: string;
+  filePath?: string;
+}
+
+export interface BrowserPageAttachmentSnapshot {
+  id?: string;
+  name: string;
+  kind: "image" | "text" | "file";
+  mimeType?: string;
+  size?: number;
+  text?: string;
+  dataUrl?: string;
+  localPath?: string;
+}
+
+export type BrowserPageReader = () => BrowserPageSnapshot | Promise<BrowserPageSnapshot>;
 
 export interface BrowserEnvironmentObservation extends EnvironmentObservation {
   kind: "browser";

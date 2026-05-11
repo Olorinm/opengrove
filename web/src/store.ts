@@ -9,6 +9,7 @@ import {
   APP_DEFAULT_PROJECT_TITLE,
   APP_STORAGE_KEYS,
 } from "./identity";
+import { closeDanglingMessageActivity } from "./messages";
 
 const MAX_RENDERED_MESSAGES = 80;
 const MAX_STORED_JSON_STRING = 8_000;
@@ -87,16 +88,26 @@ function trimMessages(messages: StoredMessage[]): StoredMessage[] {
 function sanitizeMessages(messages: StoredMessage[]): StoredMessage[] {
   return messages
     .filter((message): message is StoredMessage => Boolean(message && typeof message === "object"))
-    .map((message) => ({
-      ...message,
-      text: typeof message.text === "string" ? message.text : "",
-      context: message.context ? { ...message.context } : null,
-      parts: Array.isArray(message.parts) ? message.parts.map(sanitizeMessagePart) : [],
-      pending: Boolean(message.pending),
-      runId: typeof message.runId === "string" ? message.runId : "",
-      startedAt: typeof message.startedAt === "string" ? message.startedAt : undefined,
-      finishedAt: typeof message.finishedAt === "string" ? message.finishedAt : undefined,
-    }));
+    .map((message) => {
+      const sanitized = {
+        ...message,
+        text: typeof message.text === "string" ? message.text : "",
+        context: message.context ? { ...message.context } : null,
+        parts: Array.isArray(message.parts) ? message.parts.map(sanitizeMessagePart) : [],
+        pending: Boolean(message.pending),
+        runId: typeof message.runId === "string" ? message.runId : "",
+        startedAt: typeof message.startedAt === "string" ? message.startedAt : undefined,
+        finishedAt: typeof message.finishedAt === "string" ? message.finishedAt : undefined,
+      };
+      if (!sanitized.pending) {
+        const errorMessage = terminalMessageError(sanitized);
+        closeDanglingMessageActivity(sanitized, {
+          status: errorMessage ? "failed" : "complete",
+          errorMessage,
+        });
+      }
+      return sanitized;
+    });
 }
 
 function sanitizeMessagePart(part: MessagePart): MessagePart {
@@ -109,6 +120,17 @@ function sanitizeMessagePart(part: MessagePart): MessagePart {
     result: sanitizeJsonValue(part.result),
     approvalInput: sanitizeJsonValue(part.approvalInput),
   };
+}
+
+function terminalMessageError(message: StoredMessage): string {
+  const errorNote = (message.parts || []).find(
+    (part) => part.type === "note" && part.tone === "error" && part.text,
+  );
+  if (errorNote?.type === "note") {
+    return errorNote.text;
+  }
+  const text = String(message.text || "").trim();
+  return text.startsWith("模型调用出错") ? text : "";
 }
 
 function sanitizeJsonValue(value: JsonValue | undefined, key = ""): JsonValue | undefined {
@@ -179,6 +201,10 @@ function deriveThreadTitle(messages: StoredMessage[], fallback = "新线程"): s
   return singleLine.length > 28 ? `${singleLine.slice(0, 28)}...` : singleLine;
 }
 
+function hasRecordableThreadContent(messages: StoredMessage[]): boolean {
+  return messages.some((message) => message.role === "user" && Boolean(message.text.trim()));
+}
+
 function syncActiveThread(state: UiState, messages: StoredMessage[]): Pick<UiState, "messages" | "threads"> {
   return syncThreadMessages(state, state.threadId, messages, state.projectId) as Pick<UiState, "messages" | "threads">;
 }
@@ -192,6 +218,12 @@ function syncThreadMessages(
   const trimmedMessages = trimMessages(messages);
   const updatedAt = nowIso();
   const existing = state.threads.find((thread) => thread.id === threadId);
+  const withoutThread = state.threads.filter((thread) => thread.id !== threadId);
+  if (!existing && !hasRecordableThreadContent(trimmedMessages)) {
+    return threadId === state.threadId
+      ? { messages: trimmedMessages, threads: withoutThread }
+      : { threads: withoutThread };
+  }
   const projectId = targetProjectId || existing?.projectId || (threadId === state.threadId ? state.projectId : "") || DEFAULT_PROJECT_ID;
   const nextThread: UiThread = {
     id: threadId,
@@ -200,7 +232,7 @@ function syncThreadMessages(
     updatedAt,
     messages: trimmedMessages,
   };
-  const threads = [nextThread, ...state.threads.filter((thread) => thread.id !== threadId)];
+  const threads = [nextThread, ...withoutThread];
   return threadId === state.threadId ? { messages: trimmedMessages, threads } : { threads };
 }
 
@@ -237,8 +269,12 @@ function normalizeThreads(value: unknown, threadId: string, projectId: string, m
           updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : nowIso(),
           messages: trimMessages(Array.isArray(item.messages) ? item.messages : []),
         }))
+        .filter((thread) => hasRecordableThreadContent(thread.messages))
     : [];
   if (threads.some((thread) => thread.id === threadId)) {
+    return threads;
+  }
+  if (!hasRecordableThreadContent(messages)) {
     return threads;
   }
   return [createThread(threadId, projectId, messages), ...threads];
@@ -406,7 +442,7 @@ export const useUiStore = create<UiState>()(
             projectId,
             threadId: id,
             messages: [],
-            threads: [createThread(id, projectId), ...state.threads.filter((thread) => thread.id !== id)],
+            threads: state.threads.filter((thread) => thread.id !== id),
           };
         });
         return id;
@@ -422,7 +458,7 @@ export const useUiStore = create<UiState>()(
           projects: [project, ...state.projects],
           threadId,
           messages: [],
-          threads: [createThread(threadId, project.id), ...state.threads],
+          threads: state.threads,
         }));
         return project.id;
       },
@@ -501,7 +537,7 @@ export const useUiStore = create<UiState>()(
             projectId,
             threadId,
             messages: [],
-            threads: [createThread(threadId, projectId)],
+            threads: nextThreads,
           };
         });
       },
@@ -534,7 +570,6 @@ export const useUiStore = create<UiState>()(
           }
 
           const threadId = createThreadId();
-          const thread = createThread(threadId, fallbackProject.id);
           return {
             activeView: "chat",
             contextText: "",
@@ -542,7 +577,7 @@ export const useUiStore = create<UiState>()(
             projects,
             threadId,
             messages: [],
-            threads: [thread, ...nextThreads],
+            threads: nextThreads,
           };
         });
       },

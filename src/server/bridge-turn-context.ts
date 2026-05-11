@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { PolicyRule } from "../core.js";
-import type { BrowserPageSnapshot } from "../tools/browser.js";
-import type { ComputerStateSnapshot } from "../tools/computer.js";
+import type { BrowserPageSnapshot } from "../environment/browser-adapter.js";
+import type { ComputerStateSnapshot } from "../environment/computer-adapter.js";
 
 export interface BridgeTurnContext {
   threadId: string;

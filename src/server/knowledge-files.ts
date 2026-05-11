@@ -1,5 +1,5 @@
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync, type FSWatcher } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
@@ -54,6 +54,10 @@ export interface KnowledgeFileSystemRenamePayload {
 
 export interface KnowledgeFileSystemDeletePayload {
   sourcePath?: string;
+}
+
+export interface KnowledgeFileSystemImportFolderPayload {
+  folderPath?: string;
 }
 
 interface KnowledgeDirectoryTarget {
@@ -139,6 +143,13 @@ export function normalizeKnowledgeFileSystemDeletePayload(input: unknown): Knowl
   };
 }
 
+export function normalizeKnowledgeFileSystemImportFolderPayload(input: unknown): KnowledgeFileSystemImportFolderPayload {
+  const object = record(input);
+  return {
+    folderPath: typeof object.folderPath === "string" ? object.folderPath : undefined,
+  };
+}
+
 export function readKnowledgeFile(state: BridgeState, knowledgeId: string) {
   const document = requireKnowledgeDocument(state, knowledgeId);
   const descriptor = resolveKnowledgeFileDescriptor(document);
@@ -151,7 +162,8 @@ export function readKnowledgeFile(state: BridgeState, knowledgeId: string) {
 
 export function syncKnowledgeVaultFiles(state: BridgeState): void {
   ensureKnowledgeVaultRoot();
-  syncGlobalKernelKnowledgeDocuments(state);
+  syncGlobalKernelKnowledgeDocumentsIfNeeded(state);
+  syncImportedNativeFolders(state);
   for (const document of filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: 2_000 }))) {
     try {
       const descriptor = resolveKnowledgeFileDescriptor(document);
@@ -168,6 +180,8 @@ export function listKnowledgeVaultFolders(state: BridgeState): KnowledgeVaultFol
   const addFolder = (folder: KnowledgeVaultFolder) => {
     const safePath = safeVaultPath(folder.path);
     if (!safePath) return;
+    const existing = folders.get(safePath);
+    if (existing && existing.backing === "native" && folder.backing === "vault") return;
     folders.set(safePath, {
       path: safePath,
       backing: folder.backing,
@@ -176,7 +190,28 @@ export function listKnowledgeVaultFolders(state: BridgeState): KnowledgeVaultFol
   };
 
   for (const root of knowledgeWritableRootSpecs(state)) {
-    scanKnowledgeFolderRoot(root, addFolder);
+    if (root.backing === "vault") {
+      scanKnowledgeFolderRoot(root, addFolder);
+    } else {
+      addFolder({
+        path: root.vaultPath,
+        backing: "native",
+        originPath: root.originPath ?? root.path,
+      });
+    }
+  }
+
+  // Also scan vault root for user-created subdirectories
+  const vaultRoot = knowledgeVaultRoot();
+  try {
+    for (const entry of readdirSync(vaultRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || shouldIgnoreVaultDirectory(entry.name)) continue;
+      if (PROTECTED_VAULT_ROOTS.has(entry.name)) continue;
+      if (folders.has(entry.name)) continue;
+      addFolder({ path: entry.name, backing: "vault" });
+    }
+  } catch {
+    // Best-effort scan
   }
 
   for (const document of filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: 2_000 }))) {
@@ -203,8 +238,10 @@ export function createKnowledgeFileSystemEntry(
   payload: KnowledgeFileSystemCreatePayload,
 ) {
   ensureKnowledgeVaultRoot();
-  const parentPath = safeVaultPath(payload.parentPath) || APP_VAULT_ROOT_NAME;
-  const target = resolveKnowledgeDirectoryTarget(state, parentPath);
+  const parentPath = payload.parentPath === "" ? "" : (safeVaultPath(payload.parentPath) || APP_VAULT_ROOT_NAME);
+  const target = parentPath === ""
+    ? { vaultPath: "", path: knowledgeVaultRoot(), backing: "vault" as const }
+    : resolveKnowledgeDirectoryTarget(state, parentPath);
   mkdirSync(target.path, { recursive: true });
 
   if (payload.kind === "folder") {
@@ -400,19 +437,27 @@ export function deleteKnowledgeFileSystemEntry(
   if (!sourcePath) {
     throw new Error("knowledge_file_source_path_required");
   }
-  if (sourcePath.split("/").length < 2) {
+  const segments = sourcePath.split("/");
+  if (segments.length < 2 && isProtectedVaultRoot(segments[0])) {
     throw new Error("knowledge_file_root_delete_not_allowed");
   }
   const source = resolveKnowledgeDirectoryTarget(state, sourcePath);
-  if (!existsSync(source.path)) {
-    throw new Error("knowledge_file_source_not_found");
+
+  let entryKind: "folder" | "note" = "note";
+  if (existsSync(source.path)) {
+    const sourceStat = statSync(source.path);
+    entryKind = sourceStat.isDirectory() ? "folder" : "note";
+    // Only delete actual files for vault-backed entries (managed by the app).
+    // Native-backed files must NEVER be deleted from disk — only unregistered.
+    if (source.backing === "vault") {
+      rmSync(source.path, { recursive: sourceStat.isDirectory(), force: true });
+    }
   }
-  const sourceStat = statSync(source.path);
-  rmSync(source.path, { recursive: sourceStat.isDirectory(), force: true });
+
   const deletedKnowledgeIds = deleteKnowledgeDocumentsUnderVaultPath(state, sourcePath);
   return {
     entry: {
-      kind: sourceStat.isDirectory() ? "folder" : "note",
+      kind: entryKind,
       path: sourcePath,
       backing: source.backing,
       originPath: source.backing === "native" ? source.path : undefined,
@@ -477,6 +522,19 @@ export function requireKnowledgeDocument(state: BridgeState, knowledgeId: string
 
 export function resolveKnowledgeFileDescriptor(document: KnowledgeDocument): KnowledgeFileDescriptor {
   const vaultPath = knowledgeVaultPath(document);
+  const metadata = document.metadata ?? {};
+  const declaredNativePath = typeof metadata.sourceFilePath === "string"
+    ? normalizeKnowledgeLocalPath(metadata.sourceFilePath)
+    : undefined;
+  if (metadata.sourceFileBacking === "native" && declaredNativePath) {
+    return {
+      path: declaredNativePath,
+      vaultPath,
+      backing: "native",
+      format: inferKnowledgeFileFormat(declaredNativePath),
+      originPath: declaredNativePath,
+    };
+  }
   const originPath = resolveNativeKnowledgeFilePath(document);
   return {
     path: originPath ?? resolve(knowledgeVaultRoot(), vaultPath),
@@ -533,7 +591,7 @@ function knowledgeWritableRootSpecs(state?: BridgeState): KnowledgeWritableRootS
   const codexHome = state ? kernelConfigHome(state.settings, "codex") : join(home, ".codex");
   const claudeHome = state ? kernelConfigHome(state.settings, "claude-code") : join(home, ".claude");
   const hermesHome = state ? kernelConfigHome(state.settings, "hermes") : join(home, ".hermes");
-  return [
+  const specs: KnowledgeWritableRootSpec[] = [
     { vaultPath: APP_VAULT_ROOT_NAME, path: resolve(root, APP_VAULT_ROOT_NAME), backing: "vault" },
     { vaultPath: "Codex", path: codexHome, backing: "native", originPath: codexHome },
     { vaultPath: "Codex/skills", path: join(codexHome, "skills"), backing: "native", originPath: join(codexHome, "skills") },
@@ -548,6 +606,51 @@ function knowledgeWritableRootSpecs(state?: BridgeState): KnowledgeWritableRootS
     { vaultPath: "Hermes/skills", path: join(hermesHome, "skills"), backing: "native", originPath: join(hermesHome, "skills") },
     { vaultPath: "Hermes/memory", path: join(hermesHome, "memories"), backing: "native", originPath: join(hermesHome, "memories") },
   ];
+
+  // Discover imported native folder roots from knowledge documents
+  if (state) {
+    const seen = new Set(specs.map((s) => s.vaultPath));
+    for (const document of state.app.knowledge.list({ limit: 5_000 })) {
+      const metadata = document.metadata ?? {};
+      if (metadata.createdBy !== "opengrove.import-folder") continue;
+      const vaultPath = safeVaultPath(metadata.vaultPath);
+      if (!vaultPath) continue;
+      const rootName = vaultPath.split("/")[0];
+      if (!rootName || seen.has(rootName)) continue;
+      const originPath = resolveImportedRootPath(state, rootName);
+      if (originPath) {
+        specs.push({ vaultPath: rootName, path: originPath, backing: "native", originPath });
+        seen.add(rootName);
+      }
+    }
+  }
+
+  return specs;
+}
+
+function resolveImportedRootPath(state: BridgeState, rootName: string): string | undefined {
+  for (const document of state.app.knowledge.list({ limit: 5_000 })) {
+    const metadata = document.metadata ?? {};
+    if (metadata.createdBy !== "opengrove.import-folder") continue;
+    const vaultPath = safeVaultPath(metadata.vaultPath);
+    if (!vaultPath) continue;
+    const originPath = typeof metadata.sourceFileOriginPath === "string" ? metadata.sourceFileOriginPath : "";
+    if (!originPath) continue;
+    // Marker doc: vaultPath is rootName/.imported-root, originPath is the folder itself
+    if (metadata.importedFolderRoot && (vaultPath === rootName || vaultPath === `${rootName}/.imported-root`)) {
+      return originPath;
+    }
+    // File doc: vaultPath starts with rootName/
+    if (!vaultPath.startsWith(`${rootName}/`)) continue;
+    const relFromRoot = vaultPath.slice(rootName.length + 1);
+    const relSegments = relFromRoot.split("/").filter(Boolean);
+    let resolved = originPath;
+    for (let i = 0; i < relSegments.length; i++) {
+      resolved = dirname(resolved);
+    }
+    return resolved;
+  }
+  return undefined;
 }
 
 function scanKnowledgeFolderRoot(
@@ -814,6 +917,24 @@ function syncGlobalKernelKnowledgeDocuments(state: BridgeState): void {
     tags: ["hermes", "memory", "user"],
     type: "memory",
   });
+}
+
+function syncGlobalKernelKnowledgeDocumentsIfNeeded(state: BridgeState): void {
+  const syncKey = [
+    kernelConfigHome(state.settings, "codex"),
+    kernelConfigHome(state.settings, "claude-code"),
+    kernelConfigHome(state.settings, "hermes"),
+  ].join("\0");
+  const now = Date.now();
+  if (
+    syncKey === lastGlobalKernelKnowledgeSyncKey &&
+    now - lastGlobalKernelKnowledgeSyncAt < GLOBAL_KERNEL_KNOWLEDGE_SYNC_INTERVAL_MS
+  ) {
+    return;
+  }
+  lastGlobalKernelKnowledgeSyncKey = syncKey;
+  lastGlobalKernelKnowledgeSyncAt = now;
+  syncGlobalKernelKnowledgeDocuments(state);
 }
 
 function upsertSkillDirectory(
@@ -1333,6 +1454,9 @@ export function isPathInsideRoot(filePath: string, rootPath: string): boolean {
 
 function ensureKnowledgeFileExists(document: KnowledgeDocument, descriptor: KnowledgeFileDescriptor): void {
   if (!existsSync(descriptor.path)) {
+    if (descriptor.backing === "native") {
+      throw new Error("knowledge_file_source_not_found");
+    }
     ensureKnowledgeFileParent(document, descriptor.path);
     const seedContent = descriptor.originPath && existsSync(descriptor.originPath)
       ? readFileSync(descriptor.originPath, "utf8")
@@ -1468,4 +1592,326 @@ function stringValue(value: unknown): string {
 
 function stringArray(value: unknown): string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
+}
+
+const PROTECTED_VAULT_ROOTS = new Set(["OpenGrove", "Codex", "Claude", "Hermes"]);
+const IMPORTED_FOLDER_WATCH_DEBOUNCE_MS = 450;
+const IMPORTED_FOLDER_FALLBACK_POLL_MS = 5_000;
+const GLOBAL_KERNEL_KNOWLEDGE_SYNC_INTERVAL_MS = 30_000;
+
+let lastGlobalKernelKnowledgeSyncAt = 0;
+let lastGlobalKernelKnowledgeSyncKey = "";
+
+interface ImportedFolderWatcher {
+  watcher: FSWatcher;
+  state: BridgeState;
+  spec: KnowledgeWritableRootSpec;
+  timer?: ReturnType<typeof setTimeout>;
+  poller?: ReturnType<typeof setInterval>;
+}
+
+const importedFolderWatchers = new Map<string, ImportedFolderWatcher>();
+const dirtyImportedFolderRoots = new Set<string>();
+
+export function isProtectedVaultRoot(name: string): boolean {
+  return PROTECTED_VAULT_ROOTS.has(name);
+}
+
+function syncImportedNativeFolders(state: BridgeState): void {
+  const specs = importedNativeRootSpecs(state);
+  ensureImportedNativeFolderWatchers(state, specs);
+  let changed = false;
+  for (const spec of specs) {
+    const key = importedFolderWatcherKey(spec);
+    if (importedFolderWatchers.get(key)?.timer) continue;
+    if (!dirtyImportedFolderRoots.delete(key)) continue;
+    if (!isReadableDirectory(spec.path)) continue;
+    if (syncImportedNativeFolderRoot(state, spec.path, spec.vaultPath)) {
+      changed = true;
+    }
+  }
+  if (changed) {
+    state.store.saveFrom(state.app);
+  }
+}
+
+function importedNativeRootSpecs(state: BridgeState): KnowledgeWritableRootSpec[] {
+  return knowledgeWritableRootSpecs(state).filter((spec) =>
+    spec.backing === "native" &&
+    Boolean(spec.originPath) &&
+    !PROTECTED_VAULT_ROOTS.has(spec.vaultPath)
+  );
+}
+
+function ensureImportedNativeFolderWatchers(state: BridgeState, specs: KnowledgeWritableRootSpec[]): void {
+  const nextKeys = new Set<string>();
+  for (const spec of specs) {
+    if (!isReadableDirectory(spec.path)) continue;
+    const key = importedFolderWatcherKey(spec);
+    nextKeys.add(key);
+    const existing = importedFolderWatchers.get(key);
+    if (existing) {
+      existing.state = state;
+      existing.spec = spec;
+      continue;
+    }
+    try {
+      const watcher = watch(spec.path, { recursive: true }, () => {
+        scheduleImportedFolderSync(key);
+      });
+      importedFolderWatchers.set(key, { watcher, state, spec });
+      scheduleImportedFolderSync(key);
+    } catch {
+      try {
+        const watcher = watch(spec.path, () => {
+          scheduleImportedFolderSync(key);
+        });
+        const poller = setInterval(() => {
+          scheduleImportedFolderSync(key);
+        }, IMPORTED_FOLDER_FALLBACK_POLL_MS);
+        poller.unref?.();
+        importedFolderWatchers.set(key, { watcher, state, spec, poller });
+        scheduleImportedFolderSync(key);
+      } catch {
+        dirtyImportedFolderRoots.add(key);
+      }
+    }
+  }
+
+  for (const [key, entry] of importedFolderWatchers) {
+    if (nextKeys.has(key)) continue;
+    if (entry.timer) clearTimeout(entry.timer);
+    if (entry.poller) clearInterval(entry.poller);
+    entry.watcher.close();
+    importedFolderWatchers.delete(key);
+    dirtyImportedFolderRoots.delete(key);
+  }
+}
+
+function scheduleImportedFolderSync(key: string): void {
+  dirtyImportedFolderRoots.add(key);
+  const entry = importedFolderWatchers.get(key);
+  if (!entry) return;
+  if (entry.timer) clearTimeout(entry.timer);
+  entry.timer = setTimeout(() => {
+    entry.timer = undefined;
+    if (!dirtyImportedFolderRoots.delete(key)) return;
+    if (!isReadableDirectory(entry.spec.path)) return;
+    if (syncImportedNativeFolderRoot(entry.state, entry.spec.path, entry.spec.vaultPath)) {
+      entry.state.store.saveFrom(entry.state.app);
+    }
+  }, IMPORTED_FOLDER_WATCH_DEBOUNCE_MS);
+}
+
+function importedFolderWatcherKey(spec: KnowledgeWritableRootSpec): string {
+  return `${spec.vaultPath}\0${resolve(spec.path)}`;
+}
+
+function isReadableDirectory(path: string): boolean {
+  try {
+    return existsSync(path) && statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function syncImportedNativeFolderRoot(state: BridgeState, rootPath: string, vaultRoot: string): boolean {
+  const seenDocumentIds = new Set<string>();
+  let changed = syncNativeFolderFiles(state, rootPath, vaultRoot, 0, seenDocumentIds);
+  for (const document of state.app.knowledge.list({ limit: 5_000 })) {
+    const metadata = document.metadata ?? {};
+    if (metadata.createdBy !== "opengrove.import-folder" || metadata.importedFolderRoot) continue;
+    const currentVaultPath = safeVaultPath(metadata.vaultPath);
+    if (!currentVaultPath || !vaultPathContains(currentVaultPath, vaultRoot)) continue;
+    if (seenDocumentIds.has(document.id)) continue;
+    if (state.app.knowledge.delete(document.id)) {
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+function syncNativeFolderFiles(
+  state: BridgeState,
+  dirPath: string,
+  vaultPrefix: string,
+  depth: number,
+  seenDocumentIds: Set<string>,
+): boolean {
+  if (depth > 8) return false;
+  let entries;
+  try {
+    entries = readdirSync(dirPath, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  let changed = false;
+  for (const entry of entries) {
+    if (entry.name.startsWith(".") || shouldIgnoreVaultDirectory(entry.name)) continue;
+    const filePath = join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      if (syncNativeFolderFiles(state, filePath, `${vaultPrefix}/${safePathSegment(entry.name)}`, depth + 1, seenDocumentIds)) {
+        changed = true;
+      }
+      continue;
+    }
+    if (!entry.isFile() || !isVisibleKnowledgeFileName(entry.name)) continue;
+    const result = upsertImportedNativeFile(state, filePath, vaultPrefix);
+    if (result.documentId) {
+      seenDocumentIds.add(result.documentId);
+    }
+    changed = result.changed || changed;
+  }
+  return changed;
+}
+
+export function importLocalFolderToKnowledge(
+  state: BridgeState,
+  payload: KnowledgeFileSystemImportFolderPayload,
+) {
+  ensureKnowledgeVaultRoot();
+  const folderPath = payload.folderPath;
+  if (!folderPath || !existsSync(folderPath)) {
+    throw new Error("import_folder_path_required");
+  }
+  const stat = statSync(folderPath);
+  if (!stat.isDirectory()) {
+    throw new Error("import_folder_not_a_directory");
+  }
+  const resolvedFolderPath = resolve(folderPath);
+  const folderName = basename(resolvedFolderPath);
+  const vaultRoot = uniqueImportedVaultRoot(state, resolvedFolderPath);
+
+  // Always create a root marker document so the folder appears in the tree.
+  // vaultPath is just the root name so resolveImportedRootPath can find it.
+  const rootDocId = `native.import.root.${shortHash(resolvedFolderPath)}`;
+  state.app.knowledge.upsert({
+    id: rootDocId,
+    slug: rootDocId.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase(),
+    type: "source",
+    title: folderName,
+    body: "",
+    format: "markdown",
+    tags: ["imported", "folder-root"],
+    sourceRefs: [{ title: folderName, locator: resolvedFolderPath }],
+    scope: "user",
+    lifecycle: "active",
+    metadata: {
+      vaultPath: `${vaultRoot}/.imported-root`,
+      kernelId: APP_PROTOCOL_ID,
+      sourceId: `${APP_PROTOCOL_ID}.vault`,
+      sourceFilePath: resolvedFolderPath,
+      sourceFileBacking: "native",
+      sourceFileOriginPath: resolvedFolderPath,
+      nativeGlobalKnowledge: true,
+      createdBy: "opengrove.import-folder",
+      importedFolderRoot: true,
+    },
+  });
+
+  syncImportedNativeFolderRoot(state, resolvedFolderPath, vaultRoot);
+  ensureImportedNativeFolderWatchers(state, [
+    { vaultPath: vaultRoot, path: resolvedFolderPath, backing: "native", originPath: resolvedFolderPath },
+  ]);
+
+  return {
+    knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: 2_000 })),
+    knowledgeFolders: listKnowledgeVaultFolders(state),
+    knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
+  };
+}
+
+function upsertImportedNativeFile(
+  state: BridgeState,
+  filePath: string,
+  vaultPrefix: string,
+): { changed: boolean; documentId?: string } {
+  const docId = `native.import.${shortHash(filePath)}`;
+  try {
+    const fileStat = statSync(filePath);
+    if (!fileStat.isFile() || fileStat.size > KNOWLEDGE_FILE_SIZE_LIMIT) {
+      return { changed: false };
+    }
+    const existing = state.app.knowledge.get(docId);
+    const metadata = existing?.metadata ?? {};
+    const sameSnapshot =
+      existing?.lifecycle === "active" &&
+      Number(metadata.sourceFileMtimeMs) === fileStat.mtimeMs &&
+      Number(metadata.sourceFileSize) === fileStat.size;
+    if (sameSnapshot) {
+      return { changed: false, documentId: docId };
+    }
+    const fileVaultPath = `${vaultPrefix}/${safePathSegment(basename(filePath))}`;
+    const title = basename(filePath).replace(/\.(?:md|markdown|mdx|txt)$/i, "");
+    const body = readFileSync(filePath, "utf8");
+    state.app.knowledge.upsert({
+      id: docId,
+      slug: docId.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase(),
+      type: "note",
+      title,
+      body,
+      format: inferKnowledgeFileFormat(filePath),
+      tags: ["imported"],
+      sourceRefs: [{ title, locator: filePath }],
+      scope: "user",
+      lifecycle: "active",
+      metadata: {
+        vaultPath: fileVaultPath,
+        kernelId: APP_PROTOCOL_ID,
+        sourceId: `${APP_PROTOCOL_ID}.vault`,
+        sourceFilePath: filePath,
+        sourceFileBacking: "native",
+        sourceFileOriginPath: filePath,
+        sourceFileMtimeMs: fileStat.mtimeMs,
+        sourceFileSize: fileStat.size,
+        sourceFileSyncedAt: new Date().toISOString(),
+        nativeGlobalKnowledge: true,
+        createdBy: "opengrove.import-folder",
+      },
+    });
+    return { changed: true, documentId: docId };
+  } catch {
+    return { changed: false };
+  }
+}
+
+function uniqueImportedVaultRoot(state: BridgeState, folderPath: string): string {
+  const existingRoot = importedRootForFolder(state, folderPath);
+  if (existingRoot) return existingRoot;
+
+  const base = safePathSegment(basename(folderPath));
+  if (!isImportedVaultRootNameTaken(state, base, folderPath)) return base;
+
+  const hash = shortHash(folderPath).slice(0, 6);
+  let candidate = `${base}-${hash}`;
+  let index = 2;
+  while (isImportedVaultRootNameTaken(state, candidate, folderPath)) {
+    candidate = `${base}-${hash}-${index}`;
+    index += 1;
+  }
+  return candidate;
+}
+
+function importedRootForFolder(state: BridgeState, folderPath: string): string | undefined {
+  const rootDoc = state.app.knowledge.get(`native.import.root.${shortHash(folderPath)}`);
+  const vaultPath = safeVaultPath(rootDoc?.metadata?.vaultPath);
+  return vaultPath?.split("/")[0];
+}
+
+function isImportedVaultRootNameTaken(state: BridgeState, rootName: string, folderPath: string): boolean {
+  if (!rootName || PROTECTED_VAULT_ROOTS.has(rootName)) return true;
+  if (existsSync(resolve(knowledgeVaultRoot(), rootName))) return true;
+  const target = resolve(folderPath);
+  for (const document of state.app.knowledge.list({ limit: 5_000 })) {
+    const vaultPath = safeVaultPath(document.metadata?.vaultPath);
+    if (vaultPath?.split("/")[0] !== rootName) continue;
+    const originPath = typeof document.metadata?.sourceFileOriginPath === "string"
+      ? resolve(document.metadata.sourceFileOriginPath)
+      : "";
+    if (originPath && (originPath === target || isPathInsideRoot(originPath, target))) {
+      continue;
+    }
+    return true;
+  }
+  return false;
 }

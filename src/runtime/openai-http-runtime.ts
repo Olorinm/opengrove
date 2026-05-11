@@ -3,11 +3,15 @@ import type {
   AgentRuntime,
   AgentSessionTrace,
   AgentTurnRequest,
+  ApprovalRequest,
   JsonObject,
   JsonValue,
+  ToolDefinition,
+  ToolResult,
 } from "../core.js";
+import { evaluateToolPolicy } from "../core.js";
+import { ProxyAgent, type Dispatcher } from "undici";
 import {
-  applyProviderHttpCaptureEnv,
   providerHttpCaptureSummary,
   resolveProviderHttpCaptureOptions,
   type ProviderHttpCaptureOptions,
@@ -15,7 +19,6 @@ import {
 import { recentSessionMessages } from "./session-history.js";
 import {
   parseOpenAiSseStream,
-  type OpenAiStreamChunk,
   type OpenAiStreamToolCallDelta,
 } from "./openai-http-sse.js";
 
@@ -34,12 +37,57 @@ export interface OpenAiHttpRuntimeOptions {
   env?: NodeJS.ProcessEnv;
 }
 
+interface OpenAiChatTool {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: JsonObject;
+  };
+}
+
+interface OpenAiChatToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+interface OpenAiChatMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  name?: string;
+  tool_call_id?: string;
+  tool_calls?: OpenAiChatToolCall[];
+}
+
+interface ToolBinding {
+  tool: ToolDefinition;
+  capabilityId?: string;
+}
+
 interface ToolCallAccumulator {
   id: string;
   name: string;
   argumentChunks: string[];
-  started: boolean;
 }
+
+interface CompletedToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+interface CompletionResult {
+  text: string;
+  toolCalls: CompletedToolCall[];
+}
+
+const MAX_TOOL_ROUNDS = 5;
+const OPENAI_HTTP_APPROVAL_TIMEOUT_MS = 120_000;
+const proxyAgents = new Map<string, Dispatcher>();
 
 export class OpenAiHttpRuntime implements AgentRuntime {
   constructor(private readonly options: OpenAiHttpRuntimeOptions) {}
@@ -64,6 +112,9 @@ export class OpenAiHttpRuntime implements AgentRuntime {
     if (request.assembledContext) {
       yield { type: "context.assembled", runId, context: request.assembledContext };
     }
+    const url = `${this.options.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+    const fetchTransport = resolveFetchTransport(providerCapture, url);
+    const captureSummary = providerHttpCaptureSummary(providerCapture);
     yield {
       type: "runtime.diagnostic",
       runId,
@@ -73,7 +124,11 @@ export class OpenAiHttpRuntime implements AgentRuntime {
         baseUrl: this.options.baseUrl,
         model,
         sessionMode: this.options.sessionMode ?? "stateless",
-        ...providerHttpCaptureSummary(providerCapture),
+        ...captureSummary,
+        inProcessFetch: true,
+        fetchProxyActive: fetchTransport.active,
+        fetchProxyBypassed: fetchTransport.bypassed,
+        warning: fetchTransport.warning ?? captureSummary.warning ?? "",
       },
     };
     yield {
@@ -93,10 +148,11 @@ export class OpenAiHttpRuntime implements AgentRuntime {
     };
 
     const abortController = new AbortController();
+    const abortTurn = () => abortController.abort();
     if (request.signal?.aborted) {
       abortController.abort();
     } else {
-      request.signal?.addEventListener("abort", () => abortController.abort(), { once: true });
+      request.signal?.addEventListener("abort", abortTurn, { once: true });
     }
 
     const timeoutMs = this.options.timeoutMs ?? 120_000;
@@ -104,54 +160,93 @@ export class OpenAiHttpRuntime implements AgentRuntime {
 
     try {
       const messages = this.buildMessages(request, priorMessages);
-      const body = this.buildRequestBody(messages, model);
+      const toolBindings = this.buildToolBindings(request);
+      const openAiTools = this.buildOpenAiTools(toolBindings);
       const headers = this.buildHeaders(request);
-      const url = `${this.options.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: abortController.signal,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "");
-        yield {
-          type: "error",
-          runId,
-          message: `HTTP ${response.status}: ${errorText.slice(0, 200) || response.statusText}`,
-        };
-        yield { type: "turn.finished", runId, at: new Date().toISOString() };
-        return;
-      }
-
-      if (!response.body) {
-        yield { type: "error", runId, message: "Response body is empty." };
-        yield { type: "turn.finished", runId, at: new Date().toISOString() };
-        return;
-      }
-
       let fullText = "";
-      const toolAccumulators = new Map<number, ToolCallAccumulator>();
 
-      for await (const chunk of parseOpenAiSseStream(response.body, abortController.signal)) {
-        const events = this.processChunk(chunk, runId, toolAccumulators);
-        for (const event of events) {
-          if (event.type === "assistant.delta") {
-            fullText += event.text;
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+        const body = this.buildRequestBody(messages, model, openAiTools);
+        const fetchOptions: RequestInit & { dispatcher?: Dispatcher } = {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal: abortController.signal,
+        };
+        if (fetchTransport.dispatcher) {
+          fetchOptions.dispatcher = fetchTransport.dispatcher;
+        }
+        const response = await fetch(url, fetchOptions);
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => "");
+          yield {
+            type: "error",
+            runId,
+            message: `HTTP ${response.status}: ${errorText.slice(0, 200) || response.statusText}`,
+          };
+          yield { type: "turn.finished", runId, at: new Date().toISOString() };
+          return;
+        }
+
+        if (!response.body) {
+          yield { type: "error", runId, message: "Response body is empty." };
+          yield { type: "turn.finished", runId, at: new Date().toISOString() };
+          return;
+        }
+
+        let completionText = "";
+        const toolAccumulators = new Map<number, ToolCallAccumulator>();
+        for await (const chunk of parseOpenAiSseStream(response.body, abortController.signal)) {
+          const delta = chunk.choices?.[0]?.delta;
+          if (!delta) continue;
+          if (delta.content) {
+            completionText += delta.content;
+            fullText += delta.content;
+            yield { type: "assistant.delta", runId, text: delta.content };
           }
-          yield event;
+          if (delta.tool_calls) {
+            for (const call of delta.tool_calls) {
+              this.accumulateToolCall(call, toolAccumulators);
+            }
+          }
+        }
+        const completion: CompletionResult = {
+          text: completionText,
+          toolCalls: this.finalizeToolCalls(toolAccumulators),
+        };
+
+        if (!completion.toolCalls.length) {
+          yield { type: "model.response", runId, response: { text: fullText } };
+          yield { type: "turn.finished", runId, at: new Date().toISOString() };
+          return;
+        }
+
+        messages.push({
+          role: "assistant",
+          content: completion.text || null,
+          tool_calls: completion.toolCalls.map((call) => ({
+            id: call.id,
+            type: "function",
+            function: {
+              name: call.name,
+              arguments: call.arguments,
+            },
+          })),
+        });
+
+        for (const call of completion.toolCalls) {
+          const execution = this.executeToolCall(call, toolBindings, request, runId, abortController.signal);
+          let next = await execution.next();
+          while (!next.done) {
+            yield next.value;
+            next = await execution.next();
+          }
+          messages.push(next.value);
         }
       }
 
-      // Flush any remaining tool calls
-      for (const acc of toolAccumulators.values()) {
-        if (acc.started) {
-          yield this.finishToolCall(acc, runId);
-        }
-      }
-
+      yield { type: "error", runId, message: "openai_http_tool_round_limit_exceeded" };
       yield { type: "model.response", runId, response: { text: fullText } };
     } catch (err) {
       if (abortController.signal.aborted) {
@@ -165,7 +260,7 @@ export class OpenAiHttpRuntime implements AgentRuntime {
       }
     } finally {
       clearTimeout(timer);
-      request.signal?.removeEventListener("abort", () => abortController.abort());
+      request.signal?.removeEventListener("abort", abortTurn);
     }
 
     yield { type: "turn.finished", runId, at: new Date().toISOString() };
@@ -174,40 +269,40 @@ export class OpenAiHttpRuntime implements AgentRuntime {
   private buildMessages(
     request: AgentTurnRequest,
     priorMessages: Array<{ role: string; content: string }>,
-  ): Array<{ role: string; content: string }> {
-    const messages: Array<{ role: string; content: string }> = [];
-
-    if (this.options.sessionMode === "server-side") {
-      // Server maintains history; only send current user message
-      const hostContext = request.assembledContext?.promptBlock?.trim();
-      if (hostContext) {
-        messages.push({ role: "system", content: `OpenGrove host context:\n${hostContext}` });
-      }
-      messages.push({ role: "user", content: request.input });
-    } else {
-      // Stateless: send full history
-      const hostContext = request.assembledContext?.promptBlock?.trim();
-      if (hostContext) {
-        messages.push({ role: "system", content: `OpenGrove host context:\n${hostContext}` });
-      }
-      for (const msg of priorMessages) {
-        messages.push({ role: msg.role, content: msg.content });
-      }
-      messages.push({ role: "user", content: request.input });
+  ): OpenAiChatMessage[] {
+    const messages: OpenAiChatMessage[] = [];
+    const hostContext = request.assembledContext?.promptBlock?.trim();
+    if (hostContext) {
+      messages.push({ role: "system", content: `OpenGrove host context:\n${hostContext}` });
     }
 
+    if (this.options.sessionMode !== "server-side") {
+      for (const msg of priorMessages) {
+        const role = toOpenAiRole(msg.role);
+        if (role) {
+          messages.push({ role, content: msg.content });
+        }
+      }
+    }
+
+    messages.push({ role: "user", content: request.input });
     return messages;
   }
 
   private buildRequestBody(
-    messages: Array<{ role: string; content: string }>,
+    messages: OpenAiChatMessage[],
     model: string,
+    tools: OpenAiChatTool[],
   ): Record<string, unknown> {
     const body: Record<string, unknown> = {
       model,
       messages,
       stream: true,
     };
+    if (tools.length) {
+      body.tools = tools;
+      body.tool_choice = "auto";
+    }
     if (this.options.maxTokens) {
       body.max_tokens = this.options.maxTokens;
     }
@@ -225,7 +320,7 @@ export class OpenAiHttpRuntime implements AgentRuntime {
 
     const apiKey = this.resolveApiKey();
     if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
+      headers.Authorization = `Bearer ${apiKey}`;
     }
 
     if (this.options.sessionHeaderName && this.options.sessionMode === "server-side") {
@@ -248,91 +343,303 @@ export class OpenAiHttpRuntime implements AgentRuntime {
     return this.options.apiKey?.trim() || undefined;
   }
 
-  private processChunk(
-    chunk: OpenAiStreamChunk,
-    runId: string,
-    toolAccumulators: Map<number, ToolCallAccumulator>,
-  ): AgentEvent[] {
-    const events: AgentEvent[] = [];
-    const choice = chunk.choices?.[0];
-    if (!choice) return events;
-
-    const { delta, finish_reason } = choice;
-
-    if (delta.content) {
-      events.push({ type: "assistant.delta", runId, text: delta.content });
-    }
-
-    if (delta.tool_calls) {
-      for (const tc of delta.tool_calls) {
-        this.accumulateToolCall(tc, runId, toolAccumulators, events);
+  private buildToolBindings(request: AgentTurnRequest): Map<string, ToolBinding> {
+    const capabilityByToolId = new Map<string, string>();
+    for (const capability of request.capabilities ?? []) {
+      for (const tool of capability.tools) {
+        capabilityByToolId.set(tool.id, capability.id);
       }
     }
 
-    if (finish_reason === "tool_calls" || finish_reason === "function_call") {
-      for (const acc of toolAccumulators.values()) {
-        if (acc.started) {
-          events.push(this.finishToolCall(acc, runId));
-        }
-      }
-      toolAccumulators.clear();
+    const usedNames = new Set<string>();
+    const bindings = new Map<string, ToolBinding>();
+    for (const tool of request.tools) {
+      const name = toOpenAiToolName(tool.spec.id, usedNames);
+      bindings.set(name, {
+        tool,
+        capabilityId: capabilityByToolId.get(tool.spec.id),
+      });
     }
+    return bindings;
+  }
 
-    return events;
+  private buildOpenAiTools(bindings: Map<string, ToolBinding>): OpenAiChatTool[] {
+    return Array.from(bindings.entries()).map(([name, binding]) => ({
+      type: "function",
+      function: {
+        name,
+        description: `${binding.tool.spec.title}: ${binding.tool.spec.description}`,
+        parameters: binding.tool.spec.input.schema,
+      },
+    }));
   }
 
   private accumulateToolCall(
     tc: OpenAiStreamToolCallDelta,
-    runId: string,
     accumulators: Map<number, ToolCallAccumulator>,
-    events: AgentEvent[],
   ): void {
     let acc = accumulators.get(tc.index);
     if (!acc) {
       acc = {
-        id: tc.id ?? `tool_${tc.index}`,
+        id: tc.id ?? `call_${tc.index}`,
         name: tc.function?.name ?? "unknown",
         argumentChunks: [],
-        started: false,
       };
       accumulators.set(tc.index, acc);
     }
-
-    if (tc.id && !acc.started) {
+    if (tc.id) {
       acc.id = tc.id;
     }
-    if (tc.function?.name && !acc.started) {
+    if (tc.function?.name) {
       acc.name = tc.function.name;
     }
     if (tc.function?.arguments) {
       acc.argumentChunks.push(tc.function.arguments);
     }
+  }
 
-    if (!acc.started && acc.name !== "unknown") {
-      acc.started = true;
-      events.push({
-        type: "tool.started",
+  private finalizeToolCalls(accumulators: Map<number, ToolCallAccumulator>): CompletedToolCall[] {
+    return Array.from(accumulators.entries())
+      .sort(([left], [right]) => left - right)
+      .map(([, acc]) => ({
+        id: acc.id,
+        name: acc.name,
+        arguments: acc.argumentChunks.join(""),
+      }))
+      .filter((call) => call.name && call.name !== "unknown");
+  }
+
+  private async *executeToolCall(
+    call: CompletedToolCall,
+    bindings: Map<string, ToolBinding>,
+    request: AgentTurnRequest,
+    runId: string,
+    signal: AbortSignal,
+  ): AsyncGenerator<AgentEvent, OpenAiChatMessage, void> {
+    const binding = bindings.get(call.name);
+    const input = parseToolInput(call.arguments);
+    if (!binding) {
+      const result: ToolResult = {
+        ok: false,
+        error: `Unknown OpenGrove tool: ${call.name}`,
+      };
+      yield { type: "tool.started", runId, toolId: call.name, input };
+      yield { type: "tool.finished", runId, toolId: call.name, result };
+      return toolResultMessage(call.id, result);
+    }
+
+    const toolId = binding.tool.spec.id;
+    yield { type: "tool.started", runId, toolId, input };
+    let decision = evaluateToolPolicy(binding.tool.spec, request.policy, binding.capabilityId);
+    let result: ToolResult;
+    if (decision.mode !== "allow") {
+      if (decision.mode === "deny") {
+        result = {
+          ok: false,
+          error: "permission_denied",
+          value: {
+            status: decision.mode,
+            reason: decision.reason,
+          },
+        };
+        yield { type: "tool.finished", runId, toolId, result };
+        return toolResultMessage(call.id, result);
+      }
+
+      const approval = request.context.approvals.request({
+        kind: "tool",
+        title: binding.tool.spec.title || toolId,
+        reason: decision.reason,
+        toolId,
+        capabilityId: binding.capabilityId,
+        input,
+        resume: { type: "tool", runId },
+      });
+      yield { type: "approval.requested", runId, request: approval };
+      yield {
+        type: "run.paused",
         runId,
-        toolId: acc.name,
-        input: acc.argumentChunks.join("") as unknown as JsonValue,
+        at: new Date().toISOString(),
+        reason: decision.reason,
+        approvalId: approval.id,
+      };
+      const decided = await waitForOpenAiHttpApproval(request, approval, signal);
+      yield { type: "approval.resolved", runId, request: decided };
+      if (decided.status !== "approved") {
+        result = {
+          ok: false,
+          error: "approval_rejected",
+          value: {
+            status: decided.status,
+            reason: decision.reason,
+          },
+        };
+        yield { type: "tool.finished", runId, toolId, result };
+        return toolResultMessage(call.id, result);
+      }
+      yield {
+        type: "run.resumed",
+        runId,
+        at: new Date().toISOString(),
+        reason: "Approved by user through the OpenGrove bridge.",
+        approvalId: approval.id,
+      };
+      decision = { mode: "allow", reason: "Approved by user through the OpenGrove bridge." };
+    }
+
+    try {
+      result = await binding.tool.execute(input, {
+        runId,
+        capabilityId: binding.capabilityId,
+        skillId: request.requestedSkillInvocation?.skillId,
+        memory: request.context.memory,
+        artifacts: request.context.artifacts,
+        workingState: request.context.workingState,
+        approvals: request.context.approvals,
+        skills: request.context.skills,
+        packs: request.context.packs,
+        policy: decision,
+      });
+    } catch (error) {
+      result = {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+
+    yield { type: "tool.finished", runId, toolId, result };
+    return toolResultMessage(call.id, result);
+  }
+}
+
+async function waitForOpenAiHttpApproval(
+  request: AgentTurnRequest,
+  approval: ApprovalRequest,
+  signal?: AbortSignal,
+): Promise<ApprovalRequest> {
+  try {
+    return await request.context.approvals.waitForDecision(approval.id, {
+      timeoutMs: OPENAI_HTTP_APPROVAL_TIMEOUT_MS,
+      signal,
+    });
+  } catch (error) {
+    const current = request.context.approvals.get(approval.id);
+    if (current?.status === "pending") {
+      return request.context.approvals.decide(approval.id, "rejected", {
+        error: error instanceof Error ? error.message : String(error),
       });
     }
+    if (current) return current;
+    throw error;
   }
+}
 
-  private finishToolCall(acc: ToolCallAccumulator, runId: string): AgentEvent {
-    const rawArgs = acc.argumentChunks.join("");
-    let parsedInput: JsonValue = rawArgs;
-    try {
-      parsedInput = JSON.parse(rawArgs);
-    } catch {
-      // leave as raw string
-    }
-    acc.started = false;
+interface FetchTransport {
+  dispatcher?: Dispatcher;
+  active: boolean;
+  bypassed: boolean;
+  warning?: string;
+}
+
+function resolveFetchTransport(
+  capture: ReturnType<typeof resolveProviderHttpCaptureOptions>,
+  url: string,
+): FetchTransport {
+  if (!capture.enabled || !capture.injected) {
+    return { active: false, bypassed: false };
+  }
+  if (!capture.proxyUrl) {
     return {
-      type: "tool.finished",
-      runId,
-      toolId: acc.name,
-      result: { ok: true, value: parsedInput },
+      active: false,
+      bypassed: false,
+      warning: "Provider HTTP capture is enabled but no proxy URL is configured.",
     };
   }
+  if (shouldBypassProxy(url, capture.noProxy)) {
+    return {
+      active: false,
+      bypassed: true,
+      warning: "Provider HTTP capture is enabled but this endpoint matches NO_PROXY.",
+    };
+  }
+  let dispatcher = proxyAgents.get(capture.proxyUrl);
+  if (!dispatcher) {
+    dispatcher = new ProxyAgent(capture.proxyUrl);
+    proxyAgents.set(capture.proxyUrl, dispatcher);
+  }
+  return { dispatcher, active: true, bypassed: false };
+}
+
+function shouldBypassProxy(url: string, noProxy: string): boolean {
+  let hostname = "";
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (!hostname || !noProxy.trim()) return false;
+  for (const rawEntry of noProxy.split(",")) {
+    const entry = rawEntry.trim().toLowerCase();
+    if (!entry) continue;
+    if (entry === "*") return true;
+    const withoutPort = entry.startsWith("[")
+      ? entry.replace(/^\[|\](?::\d+)?$/g, "")
+      : entry.split(":")[0];
+    const normalized = withoutPort.startsWith(".") ? withoutPort.slice(1) : withoutPort;
+    if (!normalized) continue;
+    if (hostname === normalized || hostname.endsWith(`.${normalized}`)) return true;
+  }
+  return false;
+}
+
+function toolResultMessage(toolCallId: string, result: ToolResult): OpenAiChatMessage {
+  return {
+    role: "tool",
+    tool_call_id: toolCallId,
+    content: stringifyToolResult(result),
+  };
+}
+
+function stringifyToolResult(result: ToolResult): string {
+  try {
+    return JSON.stringify(result);
+  } catch {
+    return JSON.stringify({ ok: false, error: "tool_result_not_serializable" });
+  }
+}
+
+function parseToolInput(raw: string): JsonObject {
+  const trimmed = raw.trim();
+  if (!trimmed) return {};
+  try {
+    const parsed = JSON.parse(trimmed) as JsonValue;
+    return isJsonObject(parsed) ? parsed : { value: parsed };
+  } catch {
+    return { value: raw };
+  }
+}
+
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function toOpenAiRole(role: string): OpenAiChatMessage["role"] | undefined {
+  if (role === "system" || role === "user" || role === "assistant" || role === "tool") {
+    return role;
+  }
+  return undefined;
+}
+
+function toOpenAiToolName(toolId: string, usedNames: Set<string>): string {
+  const raw = `opengrove_${toolId}`.replace(/[^A-Za-z0-9_-]/g, "_");
+  const base = /^[A-Za-z_]/.test(raw) ? raw : `opengrove_${raw}`;
+  let candidate = base.slice(0, 64);
+  let index = 2;
+  while (usedNames.has(candidate)) {
+    const suffix = `_${index}`;
+    candidate = `${base.slice(0, 64 - suffix.length)}${suffix}`;
+    index += 1;
+  }
+  usedNames.add(candidate);
+  return candidate;
 }

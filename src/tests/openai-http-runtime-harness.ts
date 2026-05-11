@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { OpenAiHttpRuntime } from "../runtime/openai-http-runtime.js";
-import type { AgentEvent, AgentTurnRequest } from "../core.js";
+import { ApprovalInbox } from "../core.js";
+import type { AgentEvent, AgentTurnRequest, JsonObject, ToolDefinition } from "../core.js";
 
-function createMockRequest(input: string): AgentTurnRequest {
+function createMockRequest(input: string, tools: ToolDefinition[] = []): AgentTurnRequest {
   return {
     input,
     runId: "test-run-1",
@@ -15,10 +16,10 @@ function createMockRequest(input: string): AgentTurnRequest {
       skills: undefined as any,
       executions: undefined as any,
       workingState: undefined as any,
-      approvals: undefined as any,
+      approvals: new ApprovalInbox(),
       packs: undefined as any,
     },
-    tools: [],
+    tools,
   };
 }
 
@@ -55,18 +56,28 @@ function handleMockToolCall(req: IncomingMessage, res: ServerResponse) {
   let body = "";
   req.on("data", (chunk) => { body += chunk; });
   req.on("end", () => {
+    const parsed = JSON.parse(body);
+    const toolName = parsed.tools?.[0]?.function?.name ?? "opengrove_get_weather";
+    const hasToolResult = parsed.messages?.some((message: any) => message.role === "tool");
+
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
     });
 
-    const chunks = [
-      { id: "c2", object: "chat.completion.chunk", model: "test-model", choices: [{ index: 0, delta: { role: "assistant", content: null, tool_calls: [{ index: 0, id: "call_abc", type: "function", function: { name: "get_weather", arguments: "" } }] }, finish_reason: null }] },
-      { id: "c2", object: "chat.completion.chunk", model: "test-model", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '{"city":' } }] }, finish_reason: null }] },
-      { id: "c2", object: "chat.completion.chunk", model: "test-model", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '"Beijing"}' } }] }, finish_reason: null }] },
-      { id: "c2", object: "chat.completion.chunk", model: "test-model", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
-    ];
+    const chunks = hasToolResult
+      ? [
+          { id: "c3", object: "chat.completion.chunk", model: "test-model", choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }] },
+          { id: "c3", object: "chat.completion.chunk", model: "test-model", choices: [{ index: 0, delta: { content: "Weather checked." }, finish_reason: null }] },
+          { id: "c3", object: "chat.completion.chunk", model: "test-model", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+        ]
+      : [
+          { id: "c2", object: "chat.completion.chunk", model: "test-model", choices: [{ index: 0, delta: { role: "assistant", content: null, tool_calls: [{ index: 0, id: "call_abc", type: "function", function: { name: toolName, arguments: "" } }] }, finish_reason: null }] },
+          { id: "c2", object: "chat.completion.chunk", model: "test-model", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '{"city":' } }] }, finish_reason: null }] },
+          { id: "c2", object: "chat.completion.chunk", model: "test-model", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '"Beijing"}' } }] }, finish_reason: null }] },
+          { id: "c2", object: "chat.completion.chunk", model: "test-model", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] },
+        ];
 
     for (const chunk of chunks) {
       res.write(`data: ${JSON.stringify(chunk)}\n\n`);
@@ -76,10 +87,15 @@ function handleMockToolCall(req: IncomingMessage, res: ServerResponse) {
   });
 }
 
-async function collectEvents(runtime: OpenAiHttpRuntime, request: AgentTurnRequest): Promise<AgentEvent[]> {
+async function collectEvents(
+  runtime: OpenAiHttpRuntime,
+  request: AgentTurnRequest,
+  onEvent?: (event: AgentEvent) => void,
+): Promise<AgentEvent[]> {
   const events: AgentEvent[] = [];
   for await (const event of runtime.runTurn(request)) {
     events.push(event);
+    onEvent?.(event);
   }
   return events;
 }
@@ -139,7 +155,34 @@ async function runTests() {
   // Test 2: Tool calls
   console.log("\n--- Test 2: Tool calls ---");
   testMode = "tool";
-  const toolEvents = await collectEvents(runtime, createMockRequest("weather"));
+  const weatherTool: ToolDefinition<JsonObject, JsonObject> = {
+    spec: {
+      id: "get_weather",
+      title: "Get weather",
+      description: "Return mock weather for a city.",
+      activity: "api",
+      risk: "read",
+      input: {
+        type: "json-schema",
+        schema: {
+          type: "object",
+          required: ["city"],
+          properties: {
+            city: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+      },
+      permission: {
+        mode: "allow",
+        reason: "Read-only mock weather lookup.",
+      },
+    },
+    async execute(input) {
+      return { ok: true, value: { city: String(input.city ?? ""), tempC: 21 } };
+    },
+  };
+  const toolEvents = await collectEvents(runtime, createMockRequest("weather", [weatherTool]));
   const toolTypes = toolEvents.map((e) => e.type);
   console.log("Event types:", toolTypes);
 
@@ -153,11 +196,63 @@ async function runTests() {
     toolTypes.includes("tool.finished") &&
     toolStarted?.toolId === "get_weather" &&
     toolFinished?.toolId === "get_weather" &&
-    (toolFinished?.result as any)?.value?.city === "Beijing";
+    (toolFinished?.result as any)?.value?.city === "Beijing" &&
+    (toolEvents.find((e) => e.type === "model.response") as any)?.response?.text === "Weather checked.";
   console.log(toolPass ? "✓ PASS" : "✗ FAIL");
 
-  // Test 3: Health check via adapter
-  console.log("\n--- Test 3: Adapter health check ---");
+  // Test 3: Approval-gated tool calls pause, resume, and continue the OpenAI tool loop
+  console.log("\n--- Test 3: Approval-gated tool calls ---");
+  testMode = "tool";
+  const writeTool: ToolDefinition<JsonObject, JsonObject> = {
+    spec: {
+      id: "write_note",
+      title: "Write note",
+      description: "Write a mock note.",
+      activity: "local",
+      risk: "write",
+      input: {
+        type: "json-schema",
+        schema: {
+          type: "object",
+          required: ["city"],
+          properties: {
+            city: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+      },
+      permission: {
+        mode: "allow",
+        reason: "Writes are approved by policy.",
+      },
+    },
+    async execute(input) {
+      return { ok: true, value: { wrote: String(input.city ?? "") } };
+    },
+  };
+  const approvalRequest = createMockRequest("write", [writeTool]);
+  const approvalEvents = await collectEvents(runtime, approvalRequest, (event) => {
+    if (event.type === "approval.requested") {
+      setTimeout(() => {
+        approvalRequest.context.approvals.decide(event.request.id, "approved");
+      }, 0);
+    }
+  });
+  const approvalTypes = approvalEvents.map((e) => e.type);
+  console.log("Event types:", approvalTypes);
+  const approvalToolFinished = approvalEvents.find((e) => e.type === "tool.finished") as any;
+  const approvalPass =
+    approvalTypes.includes("approval.requested") &&
+    approvalTypes.includes("run.paused") &&
+    approvalTypes.includes("approval.resolved") &&
+    approvalTypes.includes("run.resumed") &&
+    approvalToolFinished?.toolId === "write_note" &&
+    approvalToolFinished?.result?.ok === true &&
+    (approvalEvents.find((e) => e.type === "model.response") as any)?.response?.text === "Weather checked.";
+  console.log(approvalPass ? "✓ PASS" : "✗ FAIL");
+
+  // Test 4: Health check via adapter
+  console.log("\n--- Test 4: Adapter health check ---");
   const { OpenAiHttpKernelAdapter } = await import("../kernel/adapters/openai-http.js");
   const adapter = new OpenAiHttpKernelAdapter({
     id: "test-kernel",
@@ -173,7 +268,7 @@ async function runTests() {
 
   // Summary
   console.log("\n=== Summary ===");
-  const allPass = textPass && toolPass && healthPass;
+  const allPass = textPass && toolPass && approvalPass && healthPass;
   console.log(allPass ? "All tests PASSED ✓" : "Some tests FAILED ✗");
 
   server.close();

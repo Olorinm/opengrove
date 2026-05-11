@@ -42,11 +42,10 @@ import {
   resolveCodexApprovalsReviewer,
   resolveCodexSandboxMode,
   resolveCodexServiceTier,
-  resolveReasoningEffort,
-  toCodexSandboxPolicy,
 } from "./codex/policy.js";
 import {
   CODEX_THREAD_CONFIG_OVERRIDES,
+  DEFAULT_CODEX_APP_SERVER_ARGS,
   type CodexApprovalPolicy,
   type CodexApprovalsReviewer,
   type CodexDynamicToolSpec,
@@ -93,11 +92,16 @@ export class CodexRuntime implements AgentRuntime {
     const developerInstructions = buildCodexDeveloperInstructions();
     const turnInput = buildCodexTurnInput(request);
     const turnInputItems = buildCodexTurnInputItems(request, turnInput);
-    const toolBridge = createCodexDynamicToolBridge(request, runId);
+    const exposeDynamicTools = shouldExposeCodexDynamicTools(request);
+    const toolBridge = createCodexDynamicToolBridge(
+      exposeDynamicTools ? request : { ...request, tools: [], capabilities: [] },
+      runId,
+    );
     const providerCapture = resolveProviderHttpCaptureOptions(
       this.options.providerHttpCapture,
       this.options.env,
     );
+    const rawEventCapture = Boolean(this.options.rawEventCapture && providerCapture.enabled && providerCapture.injected);
 
     yield { type: "turn.started", runId, at: new Date().toISOString() };
     if (request.assembledContext) {
@@ -123,6 +127,7 @@ export class CodexRuntime implements AgentRuntime {
         modelProvider,
         dynamicToolsFingerprint: toolBridge.fingerprint,
         cwd,
+        rawEventCapture,
       }),
       sandbox,
       developerInstructions,
@@ -132,6 +137,7 @@ export class CodexRuntime implements AgentRuntime {
       approvalsReviewer,
       serviceTier,
       config: threadConfig,
+      rawEventCapture,
     });
     const sessionTrace: AgentSessionTrace = {
       provider: "codex",
@@ -243,15 +249,6 @@ export class CodexRuntime implements AgentRuntime {
         {
           threadId: thread.threadId,
           input: turnInputItems as unknown as JsonValue,
-          cwd,
-          approvalPolicy,
-          approvalsReviewer,
-          sandboxPolicy: toCodexSandboxPolicy(sandbox),
-          model,
-          ...(serviceTier ? { serviceTier } : {}),
-          ...(resolveReasoningEffort(request.requestedEffort)
-            ? { effort: resolveReasoningEffort(request.requestedEffort) }
-            : {}),
         },
         { timeoutMs: this.options.requestTimeoutMs ?? 60_000, signal: request.signal },
       );
@@ -336,9 +333,12 @@ export class CodexRuntime implements AgentRuntime {
       { ...process.env, ...this.options.env },
       resolvedProviderCapture,
     );
+    if (!env.TERM) {
+      env.TERM = "dumb";
+    }
     const client = CodexAppServerClient.start({
       command: this.options.command ?? "codex",
-      args: this.options.args ?? ["app-server", "--listen", "stdio://"],
+      args: this.options.args ?? DEFAULT_CODEX_APP_SERVER_ARGS,
       env,
       rpcCapture,
     });
@@ -363,6 +363,7 @@ export class CodexRuntime implements AgentRuntime {
       approvalsReviewer: CodexApprovalsReviewer;
       serviceTier?: string;
       config: JsonObject;
+      rawEventCapture: boolean;
     },
   ): Promise<CodexThreadBinding> {
     this.loadBindings();
@@ -388,7 +389,7 @@ export class CodexRuntime implements AgentRuntime {
           approvalsReviewer: options.approvalsReviewer,
           sandbox: options.sandbox,
           config: options.config,
-          persistExtendedHistory: true,
+          persistExtendedHistory: options.rawEventCapture,
           ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
         });
         const threadId = response.thread?.id ?? existing.threadId;
@@ -421,8 +422,8 @@ export class CodexRuntime implements AgentRuntime {
       developerInstructions: options.developerInstructions,
       dynamicTools: options.dynamicTools,
       config: options.config,
-      experimentalRawEvents: true,
-      persistExtendedHistory: true,
+      experimentalRawEvents: options.rawEventCapture,
+      persistExtendedHistory: options.rawEventCapture,
       ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
     });
     const threadId = response.thread?.id;
@@ -546,11 +547,22 @@ function codexRuntimeBindingFingerprint(input: {
   modelProvider?: string;
   dynamicToolsFingerprint: string;
   cwd: string;
+  rawEventCapture: boolean;
 }): string {
   return [
     input.base || "native",
     input.modelProvider || "native",
     input.dynamicToolsFingerprint,
     input.cwd,
+    input.rawEventCapture ? "raw" : "normal",
   ].join(":");
+}
+
+function shouldExposeCodexDynamicTools(request: AgentTurnRequest): boolean {
+  if (request.requestedSkillInvocation) {
+    return true;
+  }
+  return /browser|computer|memory|selection|网页|浏览器|页面|选中|桌面|窗口|点击|保存笔记|记住|记忆/.test(
+    request.input,
+  );
 }

@@ -3,9 +3,8 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createOpenGrove } from "../app/create-opengrove.js";
-import type { AgentEvent } from "../core.js";
+import type { AgentEvent, AgentRuntime } from "../core.js";
 import { APP_CONFIG_DIR, APP_ENV_PREFIX } from "../identity.js";
-import { createScriptedCompanionSession } from "../runtime/scripted-session.js";
 import { createSkillCatalog } from "../skills/catalog.js";
 import { createJsonStateStore } from "../storage/json-state-store.js";
 
@@ -21,7 +20,7 @@ async function main() {
       "description: Demo inline skill for harness verification.",
       "when_to_use: When validating the harness.",
       "allowed-tools:",
-      "  - browser.readSelection",
+      "  - host.ui.requestChoices",
       "arguments:",
       "  - topic",
       "user-invocable: true",
@@ -40,7 +39,7 @@ async function main() {
   const manifest = catalog.resolve("demo-inline");
   assert.ok(manifest, "project skill should be discovered");
   assert.equal(manifest?.name, "demo-inline");
-  assert.deepEqual(manifest?.allowedTools, ["browser.readSelection"]);
+  assert.deepEqual(manifest?.allowedTools, ["host.ui.requestChoices"]);
 
   const loaded = catalog.load("demo-inline", "packaging", "session_test");
   assert.ok(loaded.content.includes("Base directory for this skill"));
@@ -57,7 +56,7 @@ async function main() {
       locator: "demo-selection",
       visibleText: "A selected paragraph used for harness validation.",
     }),
-    createSession: () => createScriptedCompanionSession(),
+    runtime: createHarnessRuntime(),
     sessionId: "skill-harness",
     userId: "local-user",
   });
@@ -114,7 +113,7 @@ async function main() {
       selection: "",
       locator: "demo-selection",
     }),
-    createSession: () => createScriptedCompanionSession(),
+    runtime: createHarnessRuntime(),
     sessionId: "skill-harness",
     userId: "local-user",
   });
@@ -125,6 +124,33 @@ async function main() {
   );
 
   console.log(JSON.stringify({ ok: true, eventTypes: events.map((event) => event.type) }, null, 2));
+}
+
+function createHarnessRuntime(): AgentRuntime {
+  return {
+    async *runTurn(request) {
+      const runId = request.runId ?? "skill-harness-run";
+      yield { type: "turn.started", runId, at: new Date().toISOString() };
+      if (request.assembledContext) {
+        yield { type: "context.assembled", runId, context: request.assembledContext };
+      }
+      yield {
+        type: "model.requested",
+        runId,
+        request: {
+          systemPrompt: "",
+          userInput: request.input,
+          context: request.assembledContext,
+          tools: request.tools.map((tool) => tool.spec),
+          skills: request.skills ?? [],
+          packs: request.packs ?? [],
+          capabilities: request.capabilities ?? [],
+        },
+      };
+      yield { type: "assistant.delta", runId, text: "ok" };
+      yield { type: "turn.finished", runId, at: new Date().toISOString() };
+    },
+  };
 }
 
 await main();

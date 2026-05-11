@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, ChangeEvent, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, ChangeEvent, ClipboardEvent as ReactClipboardEvent, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { Bot, ChevronDown, FilePlus2, FolderPlus, ListChecks, ListChevronsDownUp, ListChevronsUpDown, PanelLeftClose, PanelLeftOpen, Search, SquarePen, X } from "lucide-react";
+import { Bot, ChevronDown, FilePlus2, FolderInput, FolderPlus, ListChecks, ListChevronsDownUp, ListChevronsUpDown, PanelLeftClose, PanelLeftOpen, Search, SquarePen, X } from "lucide-react";
 import type {
+  AgentEventRecord,
   AttachmentPayload,
   ApprovalsResponse,
   BridgeSettingsResponse,
@@ -22,6 +23,7 @@ import type {
   WorkspaceDirectoryResponse,
 } from "./bridge";
 import {
+  cancelAskStream,
   patchJson,
   postJson,
   viewTitle,
@@ -40,7 +42,7 @@ import {
   markAssistantMessageError,
 } from "./messages";
 import { buildContextPayload, createSnapshot } from "./runtime/composer-context";
-import { runThreadTurn } from "./runtime/thread-runtime";
+import { attachThreadTurn, runThreadTurn } from "./runtime/thread-runtime";
 import {
   MAX_COMPOSER_ATTACHMENTS,
   MIN_COMPOSER_HEIGHT,
@@ -66,7 +68,8 @@ import {
   type ComposerSkillInvocation,
 } from "./runtime/ui-model";
 import { useBridgeQueries } from "./runtime/use-bridge-queries";
-import { ChatComposer, modelOptionsForKernel, type ComposerMenuKind } from "./components/chat/chat-composer";
+import { ChatComposer, type ComposerMenuKind } from "./components/chat/chat-composer";
+import { modelOptionsForKernel } from "./runtime/kernel-models";
 import { KnowledgeLibraryView } from "./components/knowledge/knowledge-views";
 import {
   emptyKnowledgeLedgers,
@@ -79,9 +82,13 @@ import { ThreadShell } from "./components/chat/thread-shell";
 import {
   AppRail,
   MobileNav,
+  ThemedPixelIcon,
   railSectionForView,
   type RailSectionId,
 } from "./components/sidebar/app-navigation";
+import { RoomsView } from "./components/rooms/rooms-view";
+import { ContactsView } from "./components/rooms/contacts-view";
+import { buildRoomMemberContext, roomThreadId } from "./components/rooms/room-runtime";
 import { ConversationSidebar } from "./components/sidebar/conversation-sidebar";
 import { VaultSidebarPanel } from "./components/sidebar/knowledge-sidebar-panels";
 import { buildSidebarProjectTree, sortSidebarThreads, type ConversationSortKey } from "./components/sidebar/conversation-sidebar-model";
@@ -100,6 +107,7 @@ const MAX_LIBRARY_AI_PANEL_WIDTH = 680;
 type RunningTurn = {
   controller: AbortController;
   assistantId: string;
+  runId?: string;
 };
 
 function readStoredSidebarWidth(): number {
@@ -109,7 +117,11 @@ function readStoredSidebarWidth(): number {
 }
 
 function readStoredSidebarCollapsed(): boolean {
-  return window.localStorage.getItem(APP_STORAGE_KEYS.sidebarCollapsed) === "true";
+  return false;
+}
+
+function readStoredRailExpanded(): boolean {
+  return window.localStorage.getItem(APP_STORAGE_KEYS.railExpanded) === "true";
 }
 
 function readStoredLibraryAiPanelWidth(): number {
@@ -143,6 +155,73 @@ function writeStoredModelBinding(key: string, modelId: string): void {
   window.localStorage.setItem(APP_STORAGE_KEYS.uiModelByBinding, JSON.stringify(current));
 }
 
+function runRecordId(run: { id?: string; runId?: string } | undefined): string {
+  return String(run?.id || run?.runId || "");
+}
+
+function isActiveRunRecord(run: { status?: string } | undefined): boolean {
+  return run?.status === "running" || run?.status === "waiting_for_approval";
+}
+
+function isFreshRunRecord(run: { startedAt?: string; updatedAt?: string; createdAt?: string } | undefined, maxAgeMs = 60_000): boolean {
+  const timestamp = run?.startedAt || run?.updatedAt || run?.createdAt || "";
+  const time = timestamp ? new Date(timestamp).getTime() : 0;
+  return Number.isFinite(time) && time > 0 && Date.now() - time <= maxAgeMs;
+}
+
+function messagesForUiThread(
+  threads: UiThread[],
+  activeThreadId: string,
+  activeMessages: ReturnType<typeof useUiStore.getState>["messages"],
+  targetThreadId: string,
+) {
+  return targetThreadId === activeThreadId
+    ? activeMessages
+    : threads.find((thread) => thread.id === targetThreadId)?.messages ?? [];
+}
+
+function findAttachableAssistantMessageId(
+  messages: ReturnType<typeof useUiStore.getState>["messages"],
+  runId: string,
+  runInput = "",
+): string {
+  const normalizedRunInput = normalizeRunInput(runInput);
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "assistant" || !message.pending) {
+      continue;
+    }
+    if (message.runId === runId) {
+      return message.id;
+    }
+    if (!message.runId && normalizedRunInput && previousUserInputForAssistant(messages, index) === normalizedRunInput) {
+      return message.id;
+    }
+  }
+  return "";
+}
+
+function previousUserInputForAssistant(messages: ReturnType<typeof useUiStore.getState>["messages"], assistantIndex: number): string {
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "user") {
+      return normalizeRunInput(message.text);
+    }
+  }
+  return "";
+}
+
+function normalizeRunInput(value: unknown): string {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+function isRecoverableStreamDisconnect(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return (
+    error instanceof DOMException && error.name === "AbortError"
+  ) || /network error|failed to fetch|load failed|cancelled|canceled|aborted|stream_finished_without_final_payload/i.test(message);
+}
+
 function readStoredReasoningEffort(): ReasoningEffort {
   const raw = window.localStorage.getItem(APP_STORAGE_KEYS.reasoningEffort);
   if (raw === "low" || raw === "medium" || raw === "high" || raw === "xhigh") {
@@ -165,7 +244,7 @@ export function App() {
   const [focusedKnowledgeId, setFocusedKnowledgeId] = useState("");
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const [librarySearchOpen, setLibrarySearchOpen] = useState(false);
-  const [vaultActionRootPath, setVaultActionRootPath] = useState("OpenGrove");
+  const [, setVaultActionRootPath] = useState("OpenGrove");
   const [vaultAllFoldersOpen, setVaultAllFoldersOpen] = useState(false);
   const [vaultExpandRequest, setVaultExpandRequest] = useState({ id: 0, open: false });
   const [vaultEditingPath, setVaultEditingPath] = useState("");
@@ -191,6 +270,7 @@ export function App() {
   const [libraryAiOpen, setLibraryAiOpen] = useState(false);
   const [libraryAiThreadMenuOpen, setLibraryAiThreadMenuOpen] = useState(false);
   const [isComposingText, setIsComposingText] = useState(false);
+  const [railExpanded, setRailExpandedState] = useState(readStoredRailExpanded);
   const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
   const [sidebarRevealArmed, setSidebarRevealArmed] = useState(true);
@@ -229,6 +309,11 @@ export function App() {
       setSidebarRevealArmed(!next);
       return next;
     });
+  }
+
+  function setRailExpanded(expanded: boolean) {
+    setRailExpandedState(expanded);
+    window.localStorage.setItem(APP_STORAGE_KEYS.railExpanded, String(expanded));
   }
 
   const {
@@ -287,7 +372,15 @@ export function App() {
   const runs = inventory?.runs ?? [];
   const executions = inventory?.executions ?? [];
   const workingState = normalizeWorkingState(inventory?.workingState ?? createEmptyWorkingState());
-  const runningThreadSet = useMemo(() => new Set(runningThreadIds), [runningThreadIds]);
+  const runningThreadSet = useMemo(() => {
+    const ids = new Set(runningThreadIds);
+    for (const run of runs) {
+      if (isActiveRunRecord(run) && run.sessionId) {
+        ids.add(run.sessionId);
+      }
+    }
+    return ids;
+  }, [runningThreadIds, runs]);
   const currentThreadRunIds = useMemo(() => collectMessageRunIds(messages), [messages]);
   const activeThreadIsRunning = runningThreadSet.has(threadId);
   const hasThreadActivity = messages.length > 0 || activeThreadIsRunning;
@@ -296,6 +389,7 @@ export function App() {
   const runtimeBlocker = resolveLatestRuntimeBlocker(executions, latestRun?.sessionId || currentSession?.id || "");
   const activeKernel = healthQuery.data?.kernel;
   const activeWorkspaceRoot = settingsQuery.data?.settings.workspaceRoot || healthQuery.data?.settings?.workspaceRoot || "";
+  const roomsRuntimeReady = Boolean(settingsQuery.data || healthQuery.data);
   const activeRuntimeControls = healthQuery.data?.runtimeControls?.kernel === activeKernel
     ? healthQuery.data?.runtimeControls
     : undefined;
@@ -441,6 +535,51 @@ export function App() {
   }, [activeView, activeThreadIsRunning, messages]);
 
   useEffect(() => {
+    for (const run of runs) {
+      const runId = runRecordId(run);
+      const runThreadId = String(run.sessionId || "");
+      if (!isActiveRunRecord(run) || !runId || !runThreadId || runningTurnsRef.current.has(runThreadId)) {
+        continue;
+      }
+      const threadMessages = messagesForUiThread(threads, threadId, messages, runThreadId);
+      const assistantId = findAttachableAssistantMessageId(threadMessages, runId, isFreshRunRecord(run) ? run.input : "");
+      if (!assistantId) {
+        continue;
+      }
+      void attachRunningTurn(run, assistantId);
+    }
+  }, [messages, runs, threadId, threads]);
+
+  useEffect(() => {
+    for (const run of runs) {
+      const runId = runRecordId(run);
+      const runThreadId = String(run.sessionId || "");
+      if (isActiveRunRecord(run) || !runId || !runThreadId) {
+        continue;
+      }
+      const runEvents = events.filter((event) => event?.runId === runId);
+      if (!runEvents.length) {
+        continue;
+      }
+      const threadMessages = messagesForUiThread(threads, threadId, messages, runThreadId);
+      const assistantId = findAttachableAssistantMessageId(threadMessages, runId, isFreshRunRecord(run) ? run.input : "");
+      if (!assistantId) {
+        continue;
+      }
+      updateThreadMessage(runThreadId, assistantId, (message) => {
+        message.runId = runId;
+        message.text = "";
+        message.parts = [];
+        message.pending = true;
+        for (const event of runEvents) {
+          applyStreamEventToMessage(message, event);
+        }
+        finalizeAssistantMessage(message, { events: runEvents });
+      });
+    }
+  }, [events, messages, runs, threadId, threads, updateThreadMessage]);
+
+  useEffect(() => {
     if (activeView === "library" && libraryAiOpen && threadId && !threadId.startsWith("empty:")) {
       window.localStorage.setItem(APP_STORAGE_KEYS.libraryAiLastThreadId, threadId);
     }
@@ -451,6 +590,7 @@ export function App() {
       kernel?: KernelPreference;
       workspaceRoot?: BridgeSettings["workspaceRoot"];
       providerHttpCaptureEnabled?: boolean;
+      codexRawEventCaptureEnabled?: boolean;
       kernelProxy?: BridgeSettings["kernelProxy"];
       kernelPathOverrides?: BridgeSettings["kernelPathOverrides"];
       kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
@@ -677,6 +817,24 @@ export function App() {
     },
   });
 
+  const importLocalFolderMutation = useMutation({
+    mutationFn: async () => {
+      const chooseResult = await postJson<any>("/knowledge/file-system/choose-import-folder", {});
+      if (chooseResult.cancelled) {
+        return null;
+      }
+      return chooseResult;
+    },
+    onSuccess(result) {
+      if (!result) return;
+      mergeFinalDataIntoCache(queryClient, result);
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    },
+    onError(error) {
+      appendMessage("system", `导入文件夹失败：${error instanceof Error ? error.message : String(error)}`);
+    },
+  });
+
   const bridgeStatus = healthQuery.data?.ok
     ? {
         status: "online",
@@ -733,6 +891,30 @@ export function App() {
       return;
     }
 
+    await addComposerAttachments(files);
+  }
+
+  async function handleComposerPaste(event: ReactClipboardEvent<HTMLTextAreaElement>) {
+    const filesFromItems = Array.from(event.clipboardData.items ?? [])
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file))
+      .filter(isComposerImageFile);
+    const filesFromClipboard = Array.from(event.clipboardData.files ?? []).filter(isComposerImageFile);
+    const files = filesFromItems.length ? filesFromItems : filesFromClipboard;
+    if (!files.length) {
+      return;
+    }
+
+    event.preventDefault();
+    await addComposerAttachments(files);
+  }
+
+  function isComposerImageFile(file: File) {
+    return file.type.startsWith("image/") || /\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)$/i.test(file.name);
+  }
+
+  async function addComposerAttachments(files: File[]) {
     const remainingSlots = Math.max(0, MAX_COMPOSER_ATTACHMENTS - attachments.length);
     if (remainingSlots <= 0) {
       appendMessage("system", t("system.maxAttachments", { count: MAX_COMPOSER_ATTACHMENTS }));
@@ -1095,6 +1277,87 @@ export function App() {
     });
   }
 
+  function applyAgentRuntimeEventToAssistant(turnThreadId: string, assistantId: string, runtimeEvent: { event: Record<string, unknown> }) {
+    updateThreadMessage(turnThreadId, assistantId, (message) => {
+      const { approvalRequest } = applyStreamEventToMessage(message, runtimeEvent.event);
+      if (approvalRequest) {
+        queryClient.setQueryData(["approvals"], (previous: ApprovalsResponse | undefined) => ({
+          ok: true,
+          approvals: [
+            ...(previous?.approvals || []).filter((item) => item.id !== approvalRequest.id),
+            approvalRequest,
+          ],
+        }));
+      }
+    });
+  }
+
+  async function attachRunningTurn(run: { id?: string; runId?: string; sessionId?: string }, assistantId: string) {
+    const runId = runRecordId(run);
+    const turnThreadId = String(run.sessionId || "");
+    if (!runId || !turnThreadId || runningTurnsRef.current.has(turnThreadId)) {
+      return;
+    }
+
+    const abortController = new AbortController();
+    runningTurnsRef.current.set(turnThreadId, { controller: abortController, assistantId, runId });
+    syncRunningTurns();
+    updateThreadMessage(turnThreadId, assistantId, (message) => {
+      message.runId = runId;
+      message.pending = true;
+    });
+
+    try {
+      let resetForReplay = false;
+      const finalData = await attachThreadTurn(
+        { runId, threadId: turnThreadId },
+        {
+          signal: abortController.signal,
+          onRuntimeEvent(runtimeEvent) {
+            if (runtimeEvent.type === "run.start" && runtimeEvent.runId) {
+              updateThreadMessage(turnThreadId, assistantId, (message) => {
+                message.runId = runtimeEvent.runId || message.runId;
+                message.pending = true;
+                if (!resetForReplay) {
+                  message.text = "";
+                  message.parts = [];
+                  message.startedAt = undefined;
+                  message.finishedAt = undefined;
+                  resetForReplay = true;
+                }
+              });
+            }
+          },
+          onAgentEvent(runtimeEvent) {
+            applyAgentRuntimeEventToAssistant(turnThreadId, assistantId, runtimeEvent);
+          },
+        },
+      );
+
+      updateThreadMessage(turnThreadId, assistantId, (message) => {
+        finalizeAssistantMessage(message, { answer: finalData.answer, events: finalData.events });
+      });
+      mergeFinalDataIntoCache(queryClient, finalData);
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+    } catch (error) {
+      if (!abortController.signal.aborted && isRecoverableStreamDisconnect(error)) {
+        queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        queryClient.invalidateQueries({ queryKey: ["events"] });
+        return;
+      }
+      updateThreadMessage(turnThreadId, assistantId, (message) => {
+        const messageText = error instanceof Error ? error.message : String(error);
+        markAssistantMessageError(message, abortController.signal.aborted ? t("system.stopped") : messageText);
+      });
+    } finally {
+      const runningTurn = runningTurnsRef.current.get(turnThreadId);
+      if (runningTurn?.controller === abortController) {
+        runningTurnsRef.current.delete(turnThreadId);
+        syncRunningTurns();
+      }
+    }
+  }
+
   async function runAskTurn(
     userPrompt: string,
     userContext: MessageContext | null,
@@ -1136,19 +1399,22 @@ export function App() {
         },
         {
           signal: abortController.signal,
-          onAgentEvent(runtimeEvent) {
+          onRuntimeEvent(runtimeEvent) {
+            if (runtimeEvent.type !== "run.start" || !runtimeEvent.runId) {
+              return;
+            }
+            const runningTurn = runningTurnsRef.current.get(turnThreadId);
+            if (runningTurn?.controller === abortController) {
+              runningTurn.runId = runtimeEvent.runId;
+              runningTurnsRef.current.set(turnThreadId, runningTurn);
+            }
             updateThreadMessage(turnThreadId, assistantId, (message) => {
-              const { approvalRequest } = applyStreamEventToMessage(message, runtimeEvent.event);
-              if (approvalRequest) {
-                queryClient.setQueryData(["approvals"], (previous: ApprovalsResponse | undefined) => ({
-                  ok: true,
-                  approvals: [
-                    ...(previous?.approvals || []).filter((item) => item.id !== approvalRequest.id),
-                    approvalRequest,
-                  ],
-                }));
-              }
+              message.runId = runtimeEvent.runId || message.runId;
+              message.pending = true;
             });
+          },
+          onAgentEvent(runtimeEvent) {
+            applyAgentRuntimeEventToAssistant(turnThreadId, assistantId, runtimeEvent);
           },
         },
       );
@@ -1159,6 +1425,11 @@ export function App() {
       mergeFinalDataIntoCache(queryClient, finalData);
       queryClient.invalidateQueries({ queryKey: ["events"] });
     } catch (error) {
+      if (!abortController.signal.aborted && isRecoverableStreamDisconnect(error)) {
+        queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        queryClient.invalidateQueries({ queryKey: ["events"] });
+        return;
+      }
       updateThreadMessage(turnThreadId, assistantId, (message) => {
         const messageText = error instanceof Error ? error.message : String(error);
         markAssistantMessageError(message, abortController.signal.aborted ? t("system.stopped") : messageText);
@@ -1180,7 +1451,11 @@ export function App() {
   }
 
   function stopActiveTurn() {
-    runningTurnsRef.current.get(threadId)?.controller.abort();
+    const runningTurn = runningTurnsRef.current.get(threadId);
+    runningTurn?.controller.abort();
+    const activeRun = runs.find((run) => isActiveRunRecord(run) && run.sessionId === threadId);
+    const runId = runningTurn?.runId || runRecordId(activeRun);
+    void cancelAskStream({ runId: runId || undefined, threadId });
   }
 
   async function submitPrompt(prompt: string) {
@@ -1230,6 +1505,173 @@ export function App() {
     setActiveSlashIndex(0);
     setModelMenuKind(null);
     await runAskTurn(userPrompt, userContext, turnAttachments, { requestedSkill });
+  }
+
+  async function runRoomPrompt(input: {
+    roomId: string;
+    targetId: string;
+    targetName: string;
+    targetKernel: string;
+    targetModel: string;
+    targetRole: string;
+    prompt: string;
+    attachments: AttachmentPayload[];
+    onAgentEvent?(event: AgentEventRecord): void;
+    onRunId?(runId: string): void;
+  }): Promise<{ answer?: string; duration?: string; events?: AgentEventRecord[] }> {
+    const startedAt = performance.now();
+    const trimmedPrompt = input.prompt.trim();
+    const turnAttachments = input.attachments;
+    const roomMemberContext = buildRoomMemberContext(input);
+    const contextPayload = buildContextPayload(roomMemberContext, turnAttachments, []);
+    const userContext = contextPayload.text.trim() || turnAttachments.length ? contextPayload : null;
+    const userPrompt = trimmedPrompt || (turnAttachments.length ? t("system.defaultAttachmentPrompt") : t("system.defaultTextPrompt"));
+    const turnThreadId = roomThreadId(input.roomId, input.targetId, input.targetKernel || input.targetId);
+    const turnModel = input.targetModel || model;
+    const turnEffort = reasoningEffort;
+    const turnResponseSpeed = responseSpeed;
+    const turnAccessMode = accessMode;
+    const turnVaultFileContext = currentVaultFileContext;
+    let streamedAnswer = "";
+    const abortController = new AbortController();
+
+    if (runningTurnsRef.current.has(turnThreadId)) {
+      throw new Error("这个员工正在处理上一条消息。");
+    }
+    runningTurnsRef.current.set(turnThreadId, { controller: abortController, assistantId: `room:${input.roomId}:${input.targetId}` });
+    syncRunningTurns();
+
+    try {
+      const finalData = await runThreadTurn(
+        {
+          question: userPrompt,
+          model: turnModel,
+          kernel: input.targetKernel,
+          effort: turnEffort,
+          responseSpeed: turnResponseSpeed,
+          accessMode: turnAccessMode,
+          threadId: turnThreadId,
+          snapshot: createSnapshot(userContext, turnAttachments, turnVaultFileContext),
+          computerSnapshot: {},
+          allowMemory: false,
+          saveCandidateNote: false,
+        },
+        {
+          signal: abortController.signal,
+          onRuntimeEvent(runtimeEvent) {
+            if (runtimeEvent.type === "run.start" && runtimeEvent.runId) {
+              const runningTurn = runningTurnsRef.current.get(turnThreadId);
+              if (runningTurn?.controller === abortController) {
+                runningTurn.runId = runtimeEvent.runId;
+                runningTurnsRef.current.set(turnThreadId, runningTurn);
+              }
+              input.onRunId?.(runtimeEvent.runId);
+            }
+          },
+          onAgentEvent(runtimeEvent) {
+            const event = runtimeEvent.event;
+            if (!event) {
+              return;
+            }
+            input.onAgentEvent?.(event);
+            if (event?.type === "assistant.delta" && typeof event.text === "string") {
+              streamedAnswer += event.text;
+            }
+          },
+        },
+      );
+
+      mergeFinalDataIntoCache(queryClient, finalData);
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      const durationSeconds = Math.max(0.1, (performance.now() - startedAt) / 1000);
+      return {
+        answer: finalData.answer || streamedAnswer,
+        duration: `${durationSeconds.toFixed(1)}s`,
+        events: finalData.events,
+      };
+    } catch (error) {
+      if (!abortController.signal.aborted && isRecoverableStreamDisconnect(error)) {
+        queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        queryClient.invalidateQueries({ queryKey: ["events"] });
+        const recoverable = new Error("room_stream_recoverable_disconnect");
+        recoverable.name = "RecoverableRoomStreamDisconnect";
+        throw recoverable;
+      }
+      throw error;
+    } finally {
+      const runningTurn = runningTurnsRef.current.get(turnThreadId);
+      if (runningTurn?.controller === abortController) {
+        runningTurnsRef.current.delete(turnThreadId);
+        syncRunningTurns();
+      }
+    }
+  }
+
+  async function attachRoomRun(input: {
+    roomId: string;
+    targetId: string;
+    targetKernel: string;
+    runId: string;
+    onAgentEvent?(event: AgentEventRecord): void;
+    onRunId?(runId: string): void;
+  }): Promise<{ answer?: string; duration?: string; events?: AgentEventRecord[] }> {
+    const startedAt = performance.now();
+    const turnThreadId = roomThreadId(input.roomId, input.targetId, input.targetKernel || input.targetId);
+    if (!input.runId || runningTurnsRef.current.has(turnThreadId)) {
+      const recoverable = new Error("room_stream_recoverable_disconnect");
+      recoverable.name = "RecoverableRoomStreamDisconnect";
+      throw recoverable;
+    }
+
+    const abortController = new AbortController();
+    runningTurnsRef.current.set(turnThreadId, { controller: abortController, assistantId: `room:${input.roomId}:${input.targetId}`, runId: input.runId });
+    syncRunningTurns();
+    let streamedAnswer = "";
+
+    try {
+      const finalData = await attachThreadTurn(
+        { runId: input.runId, threadId: turnThreadId },
+        {
+          signal: abortController.signal,
+          onRuntimeEvent(runtimeEvent) {
+            if (runtimeEvent.type === "run.start" && runtimeEvent.runId) {
+              input.onRunId?.(runtimeEvent.runId);
+            }
+          },
+          onAgentEvent(runtimeEvent) {
+            const event = runtimeEvent.event;
+            if (!event) return;
+            input.onAgentEvent?.(event);
+            if (event?.type === "assistant.delta" && typeof event.text === "string") {
+              streamedAnswer += event.text;
+            }
+          },
+        },
+      );
+      mergeFinalDataIntoCache(queryClient, finalData);
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      const durationSeconds = Math.max(0.1, (performance.now() - startedAt) / 1000);
+      return {
+        answer: finalData.answer || streamedAnswer,
+        duration: `${durationSeconds.toFixed(1)}s`,
+        events: finalData.events,
+      };
+    } catch (error) {
+      if (!abortController.signal.aborted && isRecoverableStreamDisconnect(error)) {
+        queryClient.invalidateQueries({ queryKey: ["inventory"] });
+        queryClient.invalidateQueries({ queryKey: ["events"] });
+        const recoverable = new Error("room_stream_recoverable_disconnect");
+        recoverable.name = "RecoverableRoomStreamDisconnect";
+        throw recoverable;
+      }
+      throw error;
+    } finally {
+      const runningTurn = runningTurnsRef.current.get(turnThreadId);
+      if (runningTurn?.controller === abortController) {
+        runningTurnsRef.current.delete(turnThreadId);
+        syncRunningTurns();
+      }
+    }
   }
 
   function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -1359,6 +1801,7 @@ export function App() {
       onRemoveAttachment={removeAttachment}
       onQuestionChange={handleQuestionChange}
       onKeyDown={handleComposerKeyDown}
+      onPaste={handleComposerPaste}
       onCompositionStart={() => setIsComposingText(true)}
       onCompositionEnd={() => setIsComposingText(false)}
       onAttachmentInputChange={handleAttachmentInputChange}
@@ -1400,6 +1843,10 @@ export function App() {
     setConversationSortMenuOpen(false);
     if (section === "chat") {
       setView("chat");
+    } else if (section === "rooms") {
+      setView("rooms");
+    } else if (section === "contacts") {
+      setView("contacts");
     } else if (section === "library") {
       setView("library");
     } else if (section === "settings") {
@@ -1411,8 +1858,12 @@ export function App() {
     <div
       className="app-shell react-app"
       data-view={activeView}
+      data-rail-expanded={railExpanded ? "true" : "false"}
       data-sidebar-collapsed={sidebarCollapsed ? "true" : "false"}
-      style={{ "--opengrove-sidebar-width": `${sidebarWidth}px` } as CSSProperties}
+      style={{
+        "--opengrove-rail-width": railExpanded ? "128px" : "52px",
+        "--opengrove-sidebar-width": `${sidebarWidth}px`,
+      } as CSSProperties}
     >
       <div className="app-sidebar-header">
         <span className="sidebar-brand-main" aria-label={APP_PRODUCT_NAME} title={APP_PRODUCT_NAME}>
@@ -1455,8 +1906,10 @@ export function App() {
       </div>
       <AppRail
         activeSection={activeRailSection}
+        expanded={railExpanded}
         onOpenSection={openRailSection}
         onOpenSettings={() => openRailSection("settings")}
+        onSetExpanded={setRailExpanded}
       />
 
       <aside className="sidebar" data-section={activeRailSection} aria-label={t("layout.sidebar")}>
@@ -1471,20 +1924,29 @@ export function App() {
                   <button
                     className="sidebar-mini-action"
                     type="button"
-                    onClick={() => createVaultEntry("note", vaultActionRootPath)}
+                    onClick={() => createVaultEntry("note", "")}
                     aria-label={t("vault.newNote")}
-                    title={t("vault.newNoteInRoot", { root: vaultActionRootPath })}
+                    title={t("vault.newNote")}
                   >
-                    <FilePlus2 size={13} />
+                    <ThemedPixelIcon pixelIcon="document" professionalIcon={FilePlus2} professionalSize={13} pixelSize={15} />
                   </button>
                   <button
                     className="sidebar-mini-action"
                     type="button"
-                    onClick={() => createVaultEntry("folder", vaultActionRootPath)}
+                    onClick={() => createVaultEntry("folder", "")}
                     aria-label={t("vault.newFolder")}
-                    title={t("vault.newFolderInRoot", { root: vaultActionRootPath })}
+                    title={t("vault.newFolder")}
                   >
-                    <FolderPlus size={13} />
+                    <ThemedPixelIcon pixelIcon="folder" professionalIcon={FolderPlus} professionalSize={13} pixelSize={15} />
+                  </button>
+                  <button
+                    className="sidebar-mini-action"
+                    type="button"
+                    onClick={() => importLocalFolderMutation.mutate()}
+                    aria-label={t("vault.importLocalFolder")}
+                    title={t("vault.importLocalFolder")}
+                  >
+                    <ThemedPixelIcon pixelIcon="folder" professionalIcon={FolderInput} professionalSize={13} pixelSize={15} />
                   </button>
                   <button
                     className="sidebar-mini-action"
@@ -1505,13 +1967,13 @@ export function App() {
                     aria-label={showLibrarySearch ? t("vault.searchClose") : t("vault.search")}
                     title={showLibrarySearch ? t("vault.searchClose") : t("vault.search")}
                   >
-                    <Search size={13} />
+                    <ThemedPixelIcon pixelIcon="search" professionalIcon={Search} professionalSize={13} pixelSize={15} />
                   </button>
                 </div>
               </div>
               {showLibrarySearch ? (
                 <label className="sidebar-library-search">
-                  <Search size={13} />
+                  <ThemedPixelIcon pixelIcon="search" professionalIcon={Search} professionalSize={13} pixelSize={15} />
                   <input
                     autoFocus
                     value={knowledgeQuery}
@@ -1588,7 +2050,7 @@ export function App() {
       <main className="workspace">
         <header className="topbar" data-view={activeView}>
           <div>
-            {activeView === "chat" ? null : (
+            {activeView === "chat" || activeView === "rooms" ? null : (
               <>
                 <div className="topbar-title">{viewTitle(activeView)}</div>
                 <div className="topbar-subtitle">
@@ -1672,6 +2134,38 @@ export function App() {
               ) : null}
             </div>
           </section>
+        ) : null}
+
+        {activeView === "rooms" && roomsRuntimeReady ? (
+          <RoomsView
+            activeKernel={activeKernel}
+            activeModel={model}
+            activeWorkspaceRoot={activeWorkspaceRoot}
+            kernelOptions={settingsQuery.data?.settings.kernels ?? healthQuery.data?.settings?.kernels ?? []}
+            runtimeControls={activeRuntimeControls}
+            runtimeControlsByKernel={healthQuery.data?.runtimeControlsByKernel}
+            runtimeEvents={events}
+            runs={runs}
+            pendingApprovalCount={pendingApprovals.length}
+            onRunPrompt={runRoomPrompt}
+            onAttachRun={attachRoomRun}
+            onResolveApproval={(approvalId, action, response) => approvalsMutation.mutateAsync({ approvalId, action, response })}
+            onOpenSettings={() => setView("settings")}
+          />
+        ) : activeView === "rooms" ? (
+          <section className="rooms-view" aria-label="消息" />
+        ) : null}
+
+        {activeView === "contacts" ? (
+          <ContactsView
+            activeKernel={activeKernel}
+            activeModel={model}
+            activeWorkspaceRoot={activeWorkspaceRoot}
+            kernelOptions={settingsQuery.data?.settings.kernels ?? healthQuery.data?.settings?.kernels ?? []}
+            runtimeControls={activeRuntimeControls}
+            runtimeControlsByKernel={healthQuery.data?.runtimeControlsByKernel}
+            onOpenRooms={() => setView("rooms")}
+          />
         ) : null}
 
         {activeView === "library" ? (
@@ -1760,7 +2254,7 @@ export function App() {
                       aria-label={t("library.newAiConversation")}
                       title={t("library.newAiConversation")}
                     >
-                      <SquarePen size={14} />
+                      <ThemedPixelIcon pixelIcon="plus" professionalIcon={SquarePen} professionalSize={14} pixelSize={15} />
                     </button>
                   </div>
                   <button className="library-ai-icon-button" type="button" onClick={() => setLibraryAiOpen(false)} aria-label={t("library.closeAi")} title={t("library.closeAi")}>

@@ -1,7 +1,7 @@
 import type { OpenGroveApp } from "../app/create-opengrove.js";
 import type { ArtifactRecord } from "../core.js";
 import { computerSnapshotToObservation } from "../environment/computer-adapter.js";
-import type { ComputerStateSnapshot } from "../tools/computer.js";
+import type { ComputerStateSnapshot } from "../environment/computer-adapter.js";
 import { dedupeIds } from "./http-utils.js";
 
 export function createAnnotationArtifact(

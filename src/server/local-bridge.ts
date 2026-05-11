@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { execFileSync } from "node:child_process";
 import { APP_LOCAL_BRIDGE_NAME, readAppEnv } from "../identity.js";
 import { pathToFileURL } from "node:url";
 import type { JsonValue } from "../core.js";
@@ -16,7 +17,7 @@ import {
   createBridgeState,
   getBridgeSettingsSnapshot,
 } from "./bridge-state.js";
-import { getBridgeRuntimeControls } from "./kernel-selection.js";
+import { getBridgeRuntimeControls, getBridgeRuntimeControlsByKernel } from "./kernel-selection.js";
 import { buildContextRecords } from "./trajectory.js";
 import { buildProviderHttpCaptureDiagnostics } from "./provider-http-captures.js";
 import { filterEnabledKnowledgeDocuments, listKnowledgeVaultFolders, resolveKnowledgeVaultFilePath, syncKnowledgeVaultFiles } from "./knowledge-files.js";
@@ -47,7 +48,12 @@ import {
   normalizeRoutineDraftPayload,
   normalizeWorkingStatePatchPayload,
 } from "./payloads.js";
-import { streamAskResponse, persistSnapshotAttachments } from "./ask-stream.js";
+import {
+  cancelBackgroundAskRun,
+  streamAskResponse,
+  streamExistingAskResponse,
+  persistSnapshotAttachments,
+} from "./ask-stream.js";
 import { resolveApproval } from "./approval-actions.js";
 import { createAnnotationArtifact, createComputerSnapshotArtifact } from "./artifact-actions.js";
 import { syncBridgeWorkingState } from "./bridge-working-state.js";
@@ -93,6 +99,10 @@ export function startLocalBridgeServer(options: LocalBridgeServerOptions = {}) {
           kernel: state.kernel,
           settings: getBridgeSettingsSnapshot(state),
           runtimeControls: getBridgeRuntimeControls(state),
+          runtimeControlsByKernel: getBridgeRuntimeControlsByKernel(state),
+          appearance: {
+            systemTheme: detectSystemTheme(),
+          },
           tokenRequired: Boolean(security.bridgeToken),
         });
         return;
@@ -374,6 +384,24 @@ export function startLocalBridgeServer(options: LocalBridgeServerOptions = {}) {
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/ask/stream") {
+        await streamExistingAskResponse(state, {
+          runId: url.searchParams.get("runId") || undefined,
+          threadId: url.searchParams.get("threadId") || undefined,
+        }, response);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/ask/cancel") {
+        const body = record(await readJsonBody(request));
+        const cancelled = cancelBackgroundAskRun(state, {
+          runId: typeof body.runId === "string" ? body.runId : undefined,
+          threadId: typeof body.threadId === "string" ? body.threadId : undefined,
+        });
+        sendJson(response, 200, { ok: true, cancelled });
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/routines/draft") {
         const payload = normalizeRoutineDraftPayload(await readJsonBody(request));
         const routine = createRoutineDraftFromEvents(state.app, payload);
@@ -421,6 +449,52 @@ export function startLocalBridgeServer(options: LocalBridgeServerOptions = {}) {
   });
 
   return server;
+}
+
+function detectSystemTheme(): "light" | "dark" {
+  if (process.platform === "darwin") {
+    try {
+      const value = execFileSync("defaults", ["read", "-g", "AppleInterfaceStyle"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 750,
+      }).trim().toLowerCase();
+      return value.includes("dark") ? "dark" : "light";
+    } catch {
+      return "light";
+    }
+  }
+
+  if (process.platform === "win32") {
+    try {
+      const value = execFileSync("reg", [
+        "query",
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+        "/v",
+        "AppsUseLightTheme",
+      ], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 750,
+      }).toLowerCase();
+      return /\b0x0\b/.test(value) ? "dark" : "light";
+    } catch {
+      return "light";
+    }
+  }
+
+  try {
+    const colorScheme = execFileSync("gsettings", ["get", "org.gnome.desktop.interface", "color-scheme"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 750,
+    }).toLowerCase();
+    if (colorScheme.includes("dark")) return "dark";
+  } catch {
+    // Non-GNOME Linux desktops may not expose gsettings.
+  }
+
+  return "light";
 }
 
 function currentProviderHttpCaptureDiagnostics(state: BridgeState) {

@@ -49,15 +49,17 @@ export function buildSidebarProjectTree(
       ];
   const normalizedThreads = threads.length
     ? threads
-    : [
-        {
-          id: activeThreadId,
-          projectId: activeProjectId || normalizedProjects[0].id,
-          title: deriveSidebarThreadTitle(activeMessages),
-          updatedAt: new Date().toISOString(),
-          messages: activeMessages,
-        },
-      ];
+    : hasSidebarThreadContent(activeMessages)
+      ? [
+          {
+            id: activeThreadId,
+            projectId: activeProjectId || normalizedProjects[0].id,
+            title: deriveSidebarThreadTitle(activeMessages),
+            updatedAt: new Date().toISOString(),
+            messages: activeMessages,
+          },
+        ]
+      : [];
 
   return normalizedProjects.map((project) => {
     const projectThreads = normalizedThreads
@@ -127,6 +129,10 @@ export function deriveSidebarThreadTitle(messages: StoredMessage[]): string {
     return translate("conversation.newThreadFallback");
   }
   return summarize(userMessage.text, 28);
+}
+
+function hasSidebarThreadContent(messages: StoredMessage[]): boolean {
+  return messages.some((message) => message.role === "user" && Boolean(message.text.trim()));
 }
 
 

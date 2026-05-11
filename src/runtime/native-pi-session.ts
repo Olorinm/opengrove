@@ -639,38 +639,6 @@ function normalizeNativeToolResult(result: unknown, isError: boolean): ToolResul
 
 function enrichApprovalInput(toolId: string, args: unknown, agent: AgentContext): JsonValue {
   const input = asJsonObject(args);
-
-  if (toolId === "computer.requestAction") {
-    const computer = agent.computer;
-    if (!computer) {
-      return input;
-    }
-
-    return {
-      ...input,
-      app: readString(input.app) || computer.app || "",
-      windowTitle: readString(input.windowTitle) || computer.windowTitle || "",
-      url: readString(input.url) || computer.url || "",
-      focusedElement: readString(input.focusedElement) || computer.focusedElement || "",
-      screenshotArtifactId: readString(input.screenshotArtifactId) || computer.screenshotArtifactId || "",
-      observedAt: readString(input.observedAt) || computer.observedAt || "",
-    };
-  }
-
-  if (toolId === "browser.requestAct") {
-    const page = agent.page;
-    if (!page) {
-      return input;
-    }
-
-    return {
-      ...input,
-      url: readString(input.url) || page.url || "",
-      locator: readString(input.locator) || page.locator || "",
-      selection: readString(input.selection) || page.selection || "",
-    };
-  }
-
   return input;
 }
 

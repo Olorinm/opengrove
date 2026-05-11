@@ -97,6 +97,7 @@ export async function handleSettingsRoute(options: {
     nextSettings.kernel !== previousSettings.kernel ||
     nextSettings.workspaceRoot !== previousSettings.workspaceRoot ||
     nextSettings.providerHttpCaptureEnabled !== previousSettings.providerHttpCaptureEnabled ||
+    nextSettings.codexRawEventCaptureEnabled !== previousSettings.codexRawEventCaptureEnabled ||
     JSON.stringify(nextSettings.kernelProxy) !== JSON.stringify(previousSettings.kernelProxy) ||
     JSON.stringify(nextSettings.kernelPathOverrides) !== JSON.stringify(previousSettings.kernelPathOverrides) ||
     JSON.stringify(nextSettings.kernelProviderBindings) !== JSON.stringify(previousSettings.kernelProviderBindings) ||

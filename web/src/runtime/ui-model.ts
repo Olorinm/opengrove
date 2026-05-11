@@ -307,7 +307,7 @@ export async function readComposerAttachment(file: File): Promise<AttachmentPayl
     size: file.size,
   };
 
-  if (file.type.startsWith("image/")) {
+  if (base.mimeType.startsWith("image/")) {
     if (file.size > MAX_IMAGE_ATTACHMENT_BYTES) {
       return {
         ...base,
@@ -315,10 +315,12 @@ export async function readComposerAttachment(file: File): Promise<AttachmentPayl
         error: `图片超过 ${formatBytes(MAX_IMAGE_ATTACHMENT_BYTES)}，暂未读取内容。`,
       };
     }
+    const dataUrl = await readFileAsDataUrl(file);
     return {
       ...base,
       kind: "image",
-      dataUrl: await readFileAsDataUrl(file),
+      dataUrl,
+      thumbnailUrl: await createImageThumbnail(dataUrl),
     };
   }
 
@@ -363,6 +365,39 @@ export function readFileAsDataUrl(file: File): Promise<string> {
     reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
     reader.onerror = () => reject(reader.error ?? new Error("file_read_failed"));
     reader.readAsDataURL(file);
+  });
+}
+
+export function createImageThumbnail(dataUrl: string, maxEdge = 180): Promise<string> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      const sourceWidth = image.naturalWidth || image.width;
+      const sourceHeight = image.naturalHeight || image.height;
+      if (!sourceWidth || !sourceHeight) {
+        resolve(dataUrl);
+        return;
+      }
+      const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
+      const width = Math.max(1, Math.round(sourceWidth * scale));
+      const height = Math.max(1, Math.round(sourceHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        resolve(dataUrl);
+        return;
+      }
+      try {
+        context.drawImage(image, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/webp", 0.78));
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    image.onerror = () => resolve(dataUrl);
+    image.src = dataUrl;
   });
 }
 

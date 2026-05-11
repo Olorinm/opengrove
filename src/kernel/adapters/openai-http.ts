@@ -15,6 +15,7 @@ import type {
   KernelSessionStart,
   KernelTurnRequest,
 } from "../types.js";
+import type { ProviderHttpCaptureOptions } from "../../runtime/provider-http-capture.js";
 
 export interface OpenAiHttpKernelDefinition {
   id: string;
@@ -31,6 +32,8 @@ export interface OpenAiHttpKernelDefinition {
   timeoutMs?: number;
   maxTokens?: number;
   temperature?: number;
+  providerHttpCapture?: ProviderHttpCaptureOptions;
+  env?: NodeJS.ProcessEnv;
   knowledgeSources?: KernelKnowledgeSource[];
   installActions?: KernelInstallAction[];
   notes?: string[];
@@ -39,8 +42,8 @@ export interface OpenAiHttpKernelDefinition {
 const OPENAI_HTTP_CAPABILITIES: KernelCapabilities = {
   streaming: true,
   toolCalls: true,
-  hostTools: false,
-  approvals: false,
+  hostTools: true,
+  approvals: true,
   elicitation: false,
   artifacts: false,
   compaction: false,
@@ -60,9 +63,9 @@ const OPENAI_HTTP_CONTRACT: KernelAdapterContract = {
     { feature: "session", owner: "app", appResponsibility: "OpenGrove manages session history in stateless mode; server manages in server-side mode." },
     { feature: "turn_lifecycle", owner: "adapter", adapterResponsibility: "Adapter yields turn.started/turn.finished around the HTTP call." },
     { feature: "model_loop", owner: "kernel", kernelResponsibility: "The remote endpoint runs the inference loop." },
-    { feature: "native_tool_execution", owner: "kernel", kernelResponsibility: "Tool execution is performed server-side when supported." },
-    { feature: "host_tool_execution", owner: "unsupported" },
-    { feature: "approval", owner: "unsupported" },
+    { feature: "native_tool_execution", owner: "unsupported" },
+    { feature: "host_tool_execution", owner: "adapter", adapterResponsibility: "Adapter exposes OpenGrove tools as OpenAI function tools and returns tool results to the model." },
+    { feature: "approval", owner: "app", appResponsibility: "Own approval policy evaluation, approval inbox UI, user decisions, and audit trail.", adapterResponsibility: "Pause OpenAI-compatible tool loops until OpenGrove host tool approvals are resolved." },
     { feature: "user_question", owner: "unsupported" },
     { feature: "skill_discovery", owner: "app" },
     { feature: "skill_loading", owner: "app" },
@@ -104,6 +107,8 @@ export class OpenAiHttpKernelAdapter implements KernelAdapter {
       temperature: definition.temperature,
       sessionMode: definition.sessionMode,
       sessionHeaderName: definition.sessionHeaderName,
+      providerHttpCapture: definition.providerHttpCapture,
+      env: definition.env,
     };
     this.runtime = new OpenAiHttpRuntime(runtimeOptions);
   }
@@ -147,6 +152,8 @@ export class OpenAiHttpKernelAdapter implements KernelAdapter {
       version: undefined,
       health,
       knowledgeSources: this.definition.knowledgeSources ?? [],
+      installActions: this.definition.installActions ?? [],
+      notes: this.definition.notes ?? [],
     };
   }
 

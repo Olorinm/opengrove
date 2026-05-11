@@ -3,11 +3,12 @@ import clsx from "clsx";
 import { FileText, LoaderCircle, Pencil, Search, Sparkles, Terminal, Wrench } from "lucide-react";
 import { Button } from "../ui/button";
 import {
-  activityItemDetail,
+  activityItemDetailDisplay,
   activityItemError,
   activityItemKind,
   activityItemStatus,
   activityItemTitle,
+  activityItemTitleTooltip,
   buildUserInputApprovalResponse,
   choiceFormFromItem,
   editActivityInfo,
@@ -20,7 +21,7 @@ import {
   type ChoiceForm,
 } from "./message-activity-model";
 
-export { activityItemStatus, buildActivityItems, choiceFormFromItem, type ActivityEntry } from "./message-activity-model";
+export { activityItemStatus, buildActivityItems, choiceFormFromItem, summarizeActivityItems, type ActivityEntry } from "./message-activity-model";
 
 export function AssistantProcessBlock(props: {
   entries: ActivityEntry[];
@@ -37,8 +38,12 @@ export function AssistantProcessBlock(props: {
   );
   const items = props.entries.map(({ item }) => item);
   const hasRunningItem = props.entries.some(({ item }) => activityItemStatus(item) === "running");
-  const hasProblem = props.entries.some(({ item }) => ["blocked", "incomplete", "rejected"].includes(activityItemStatus(item)));
-  const forceOpen = hasRunningItem || hasPendingApproval || hasActiveChoiceForm;
+  const hasProblem = props.entries.some(({ item }) =>
+    ["blocked", "incomplete", "rejected", "failed", "error"].includes(activityItemStatus(item)),
+  );
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const shouldOpenByDefault = hasPendingApproval || hasActiveChoiceForm;
+  const detailsOpen = userOpen ?? shouldOpenByDefault;
   const summary = summarizeActivityItems(items, {
     active: hasRunningItem,
     pendingApproval: hasPendingApproval,
@@ -54,7 +59,8 @@ export function AssistantProcessBlock(props: {
         hasPendingApproval ? "tone-approval" : null,
       )}
       data-active={hasRunningItem ? "true" : "false"}
-      open={forceOpen ? true : undefined}
+      open={detailsOpen}
+      onToggle={(event) => setUserOpen((event.currentTarget as HTMLDetailsElement).open)}
     >
       <summary>
         <span className="thread-activity-summary">
@@ -86,7 +92,8 @@ function ActivityItemRow(props: {
   onSubmitPrompt?(prompt: string): void;
 }) {
   const status = activityItemStatus(props.item);
-  const detail = activityItemDetail(props.item);
+  const detail = activityItemDetailDisplay(props.item);
+  const titleTooltip = activityItemTitleTooltip(props.item);
   const choiceForm = choiceFormFromItem(props.item);
   const editInfo = activityItemKind(props.item) === "edit" ? editActivityInfo(props.item) : null;
   const editStatusLabel =
@@ -115,8 +122,12 @@ function ActivityItemRow(props: {
           </div>
         ) : (
           <>
-            <div className="thread-activity-row-title">{activityItemTitle(props.item)}</div>
-            {detail ? <div className="thread-activity-row-detail">{detail}</div> : null}
+            <div className="thread-activity-row-title" title={titleTooltip || undefined}>{activityItemTitle(props.item)}</div>
+            {detail ? (
+              <div className="thread-activity-row-detail" title={detail.title || undefined}>
+                {detail.label}
+              </div>
+            ) : null}
           </>
         )}
         {pendingApprovalPart ? (

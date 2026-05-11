@@ -25,7 +25,7 @@ export function useBridgeQueries() {
   const inventoryQuery = useQuery({
     queryKey: ["inventory"],
     queryFn: () => fetchJson<InventoryResponse>("/inventory", { headers: bridgeHeaders(false) }),
-    refetchInterval: 8_000,
+    refetchInterval: 2_000,
   });
 
   const approvalsQuery = useQuery({

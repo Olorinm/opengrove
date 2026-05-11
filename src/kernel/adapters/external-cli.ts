@@ -5,6 +5,7 @@ import {
   type GenericCliRuntimeOptions,
 } from "../../runtime/generic-cli-runtime.js";
 import type { ProviderHttpCaptureOptions } from "../../runtime/provider-http-capture.js";
+import type { KernelTransportKind } from "../../runtime/transports/types.js";
 import {
   commandVersion,
   directorySource,
@@ -42,6 +43,8 @@ export interface ExternalCliKernelDefinition {
   versionArgs?: string[];
   runArgs?: string[];
   promptMode?: "stdin" | "arg";
+  preferredTransport?: KernelTransportKind;
+  fallbackTransport?: KernelTransportKind;
   configHome: string;
   knowledgeSources: KernelKnowledgeSource[];
   installActions?: KernelInstallAction[];
@@ -161,7 +164,9 @@ export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
       directorySource({ id: "pi.packages", title: "packages", kind: "plugins", scope: "user", path: "~/.pi/agent/packages" }),
     ],
     installActions: [plannedInstallAction({ id: "pi.install", title: "安装 Pi", command: ["npm", "install", "-g", "@earendil-works/pi-coding-agent"] })],
-    notes: ["Pi uses the upstream pi-mono coding agent CLI. OpenGrove launches it in one-shot mode with `pi -p`."],
+    preferredTransport: "jsonl-rpc",
+    fallbackTransport: "oneshot-cli",
+    notes: ["Preferred integration is Pi `--mode rpc` JSONL RPC; the current adapter keeps `pi -p` as a fallback until the shared JSONL transport is wired."],
   },
   {
     id: "openclaw",
@@ -177,7 +182,9 @@ export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
       directorySource({ id: "openclaw.providers", title: "providers", kind: "settings", scope: "user", path: "~/.openclaw/providers", knowledgeLike: false }),
     ],
     installActions: [plannedInstallAction({ id: "openclaw.install", title: "安装 OpenClaw", command: ["npm", "install", "-g", "openclaw"] })],
-    notes: ["OpenClaw has its own gateway/provider layer; OpenGrove treats it as a high-level kernel instead of flattening it into a simple CLI."],
+    preferredTransport: "websocket-gateway",
+    fallbackTransport: "oneshot-cli",
+    notes: ["Preferred integration is OpenClaw Gateway WebSocket because it exposes request/response/event frames and approvals; CLI remains a fallback."],
   },
   {
     id: "deepseek-tui",
@@ -194,6 +201,9 @@ export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
       fileSource({ id: "deepseek.project-config", title: "Project config.toml", kind: "config", scope: "project", path: `${process.cwd()}/.deepseek/config.toml`, knowledgeLike: false }),
     ],
     installActions: [plannedInstallAction({ id: "deepseek.install", title: "安装 DeepSeek TUI", command: ["npm", "install", "-g", "deepseek-tui"] })],
+    preferredTransport: "stdio-jsonrpc",
+    fallbackTransport: "oneshot-cli",
+    notes: ["Preferred integration is the app-server stdio JSON-RPC path found in source; README-level ACP should stay untrusted until implemented in code."],
   },
   {
     id: "gemini-cli",
@@ -208,6 +218,7 @@ export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
       directorySource({ id: "gemini.config", title: "Gemini config", kind: "config", scope: "user", path: "~/.gemini", knowledgeLike: false }),
     ],
     installActions: [plannedInstallAction({ id: "gemini.install", title: "安装 Gemini CLI", command: ["npm", "install", "-g", "@google/gemini-cli"] })],
+    preferredTransport: "oneshot-cli",
   },
   {
     id: "qwen-code",
@@ -222,6 +233,7 @@ export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
       directorySource({ id: "qwen.config", title: "Qwen config", kind: "config", scope: "user", path: "~/.qwen", knowledgeLike: false }),
     ],
     installActions: [plannedInstallAction({ id: "qwen.install", title: "安装 Qwen Code", command: ["npm", "install", "-g", "@qwen-code/qwen-code"] })],
+    preferredTransport: "oneshot-cli",
   },
   {
     id: "opencode",
@@ -236,6 +248,9 @@ export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
       fileSource({ id: "opencode.project-config", title: "opencode.json", kind: "config", scope: "project", path: `${process.cwd()}/opencode.json`, knowledgeLike: false }),
     ],
     installActions: [plannedInstallAction({ id: "opencode.install", title: "安装 OpenCode", command: ["npm", "install", "-g", "opencode-ai"] })],
+    preferredTransport: "acp",
+    fallbackTransport: "oneshot-cli",
+    notes: ["Preferred integration is `opencode acp`: source maps assistant deltas, reasoning, tool calls, and permission requests into ACP events."],
   },
 ];
 
@@ -288,13 +303,17 @@ export function resolveExternalCliCommand(definition: ExternalCliKernelDefinitio
 }
 
 function createExternalCliContract(definition: ExternalCliKernelDefinition): KernelAdapterContract {
+  const preferredTransport = definition.preferredTransport ?? "oneshot-cli";
+  const fallbackTransport = definition.fallbackTransport;
   return {
     ownership: [
       {
         feature: "session",
         owner: "adapter",
         appResponsibility: "Own OpenGrove session ids and UI state.",
-        adapterResponsibility: "Launch the external CLI per turn unless a native session API is added.",
+        adapterResponsibility: preferredTransport === "oneshot-cli"
+          ? "Launch the external CLI per turn."
+          : `Use ${preferredTransport} as the target integration and keep ${fallbackTransport ?? "oneshot-cli"} only as an explicit fallback.`,
         kernelResponsibility: "May maintain its own transcripts/config outside OpenGrove.",
       },
       {
@@ -317,8 +336,20 @@ function createExternalCliContract(definition: ExternalCliKernelDefinition): Ker
       },
     ],
     diagnostics: {
-      defaultModeId: "process-stdio",
+      defaultModeId: `${preferredTransport}-bridge`,
       modes: [
+        {
+          id: `${preferredTransport}-bridge`,
+          title: `${definition.title} ${preferredTransport} bridge`,
+          layer: preferredTransport === "http-sse"
+            ? "adapter-rpc"
+            : preferredTransport === "oneshot-cli"
+              ? "process-stdio"
+              : "adapter-rpc",
+          status: preferredTransport === "oneshot-cli" ? "implemented" : "planned",
+          redaction: "redacted",
+          notes: definition.notes,
+        },
         {
           id: "process-stdio",
           title: `${definition.title} process stdio`,

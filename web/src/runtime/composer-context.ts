@@ -28,6 +28,7 @@ export function createSnapshot(
       size: attachment.size,
       text: attachment.kind === "text" ? attachment.text : undefined,
       dataUrl: attachment.dataUrl,
+      thumbnailUrl: attachment.kind === "image" ? attachment.thumbnailUrl : undefined,
     })),
   };
 }
@@ -48,6 +49,7 @@ export function buildContextPayload(
       kind: attachment.kind,
       mimeType: attachment.mimeType,
       size: attachment.size,
+      thumbnailUrl: attachment.kind === "image" ? attachment.thumbnailUrl : undefined,
       error: attachment.error,
     })),
     artifacts,

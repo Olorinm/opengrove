@@ -1323,7 +1323,7 @@ body[data-sidebar-resizing="true"] .library-ai-resize-handle::before {
   display: grid;
   gap: 0;
   margin: 0 0 12px;
-  border-bottom: 1px solid var(--c-border);
+  border-bottom: 0;
   padding: 4px 0 8px;
   font-size: 12px;
 }
@@ -1875,4 +1875,152 @@ body[data-sidebar-resizing="true"] .library-ai-resize-handle::before {
 :root[data-resolved-theme="dark"] .knowledge-body-editor::placeholder,
 :root[data-resolved-theme="dark"] .knowledge-page-property input::placeholder {
   color: #8f8f8f;
+}
+
+/* Warm charcoal dark theme pass. */
+:root[data-resolved-theme="dark"] .knowledge-product-view,
+:root[data-resolved-theme="dark"] .library-document-pane,
+:root[data-resolved-theme="dark"] .knowledge-page-editor,
+:root[data-resolved-theme="dark"] .knowledge-document-area,
+:root[data-resolved-theme="dark"] .knowledge-properties-panel,
+:root[data-resolved-theme="dark"] .knowledge-main,
+:root[data-resolved-theme="dark"] .library-ai-panel {
+  background: var(--og-app-bg);
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .library-ai-panel,
+:root[data-resolved-theme="dark"] .vault-workspace-head,
+:root[data-resolved-theme="dark"] .vault-file-pane,
+:root[data-resolved-theme="dark"] .md-editor-status {
+  border-color: var(--og-border);
+}
+
+:root[data-resolved-theme="dark"] .vault-tab {
+  border-bottom-color: var(--og-app-bg);
+  background: var(--og-app-bg);
+}
+
+:root[data-resolved-theme="dark"] .library-ai-edge-button,
+:root[data-resolved-theme="dark"] .library-ai-thread-button,
+:root[data-resolved-theme="dark"] .library-ai-thread-menu,
+:root[data-resolved-theme="dark"] .markdown-code-block,
+:root[data-resolved-theme="dark"] .markdown-preview-code,
+:root[data-resolved-theme="dark"] .md-property-recommendations,
+:root[data-resolved-theme="dark"] .markdown-preview code,
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror .tok-monospace {
+  border-color: var(--og-border);
+  background: var(--og-surface);
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .md-breadcrumb,
+:root[data-resolved-theme="dark"] .vault-status,
+:root[data-resolved-theme="dark"] .vault-pane-header small,
+:root[data-resolved-theme="dark"] .vault-section-label,
+:root[data-resolved-theme="dark"] .md-save-state,
+:root[data-resolved-theme="dark"] .knowledge-dirty-text,
+:root[data-resolved-theme="dark"] .knowledge-muted,
+:root[data-resolved-theme="dark"] .knowledge-row-body,
+:root[data-resolved-theme="dark"] .knowledge-row-meta span,
+:root[data-resolved-theme="dark"] .knowledge-chip,
+:root[data-resolved-theme="dark"] .md-add-property,
+:root[data-resolved-theme="dark"] .md-property-recommendation,
+:root[data-resolved-theme="dark"] .md-property-recommendation small,
+:root[data-resolved-theme="dark"] .md-editor-status,
+:root[data-resolved-theme="dark"] .markdown-empty,
+:root[data-resolved-theme="dark"] .knowledge-title-editor::placeholder,
+:root[data-resolved-theme="dark"] .knowledge-body-editor::placeholder,
+:root[data-resolved-theme="dark"] .knowledge-page-property input::placeholder {
+  color: var(--og-text-muted);
+}
+
+:root[data-resolved-theme="dark"] .md-breadcrumb span[data-current="true"],
+:root[data-resolved-theme="dark"] .vault-pane-header,
+:root[data-resolved-theme="dark"] .knowledge-title-display,
+:root[data-resolved-theme="dark"] .knowledge-title-editor,
+:root[data-resolved-theme="dark"] .knowledge-body-editor,
+:root[data-resolved-theme="dark"] .knowledge-markdown-source,
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror,
+:root[data-resolved-theme="dark"] .markdown-preview,
+:root[data-resolved-theme="dark"] .md-properties-title,
+:root[data-resolved-theme="dark"] .knowledge-page-property strong,
+:root[data-resolved-theme="dark"] .knowledge-page-property input,
+:root[data-resolved-theme="dark"] .md-property-value {
+  color: var(--og-text-strong);
+}
+
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror .cm-editor,
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror .cm-scroller,
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror .cm-content,
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror .cm-line,
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror .cm-line span,
+:root[data-resolved-theme="dark"] .markdown-preview p,
+:root[data-resolved-theme="dark"] .markdown-preview li,
+:root[data-resolved-theme="dark"] .markdown-preview ul,
+:root[data-resolved-theme="dark"] .markdown-preview ol,
+:root[data-resolved-theme="dark"] .markdown-preview blockquote,
+:root[data-resolved-theme="dark"] .markdown-preview pre {
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .markdown-preview h1,
+:root[data-resolved-theme="dark"] .markdown-preview h2,
+:root[data-resolved-theme="dark"] .markdown-preview h3,
+:root[data-resolved-theme="dark"] .markdown-preview h4,
+:root[data-resolved-theme="dark"] .markdown-preview h5,
+:root[data-resolved-theme="dark"] .markdown-preview h6 {
+  color: var(--og-text-strong);
+}
+
+:root[data-resolved-theme="dark"] .md-properties,
+:root[data-resolved-theme="dark"] .md-property-row,
+:root[data-resolved-theme="dark"] .md-property-key {
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .md-property-icon,
+:root[data-resolved-theme="dark"] .md-property-icon::after {
+  border-color: var(--og-text-muted);
+}
+
+:root[data-resolved-theme="dark"] .markdown-preview blockquote {
+  border-left-color: var(--og-border-strong);
+  color: var(--og-text-muted);
+}
+
+:root[data-resolved-theme="dark"] .markdown-preview a,
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror .tok-link,
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror .tok-url {
+  color: #9ccf9f;
+}
+
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror .cm-md-active-line,
+:root[data-resolved-theme="dark"] .md-property-row:hover,
+:root[data-resolved-theme="dark"] .md-property-row:focus-visible,
+:root[data-resolved-theme="dark"] .md-add-property:hover,
+:root[data-resolved-theme="dark"] .md-add-property:focus-visible,
+:root[data-resolved-theme="dark"] .md-property-recommendation:hover,
+:root[data-resolved-theme="dark"] .md-property-recommendation:focus-visible,
+:root[data-resolved-theme="dark"] .library-ai-edge-button:hover,
+:root[data-resolved-theme="dark"] .library-ai-edge-button[data-open="true"],
+:root[data-resolved-theme="dark"] .library-ai-thread-button:hover,
+:root[data-resolved-theme="dark"] .library-ai-thread-button:focus-visible,
+:root[data-resolved-theme="dark"] .library-ai-thread-button[aria-expanded="true"],
+:root[data-resolved-theme="dark"] .library-ai-thread-menu-item:hover,
+:root[data-resolved-theme="dark"] .library-ai-thread-menu-item[data-active="true"] {
+  background: var(--og-surface-subtle);
+}
+
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror .cm-md-frontmatter-line,
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror .cm-md-syntax {
+  color: var(--og-text-soft);
+}
+
+:root[data-resolved-theme="dark"] .knowledge-markdown-codemirror .cm-md-syntax-active {
+  color: var(--og-text-muted);
+}
+
+:root[data-resolved-theme="dark"] .md-editor-status {
+  background: rgba(41, 41, 39, 0.92);
 }

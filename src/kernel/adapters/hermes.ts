@@ -7,6 +7,7 @@ import {
 } from "../../runtime/hermes-runtime.js";
 import { APP_CONFIG_DIR, APP_PRODUCT_NAME, APP_PROTOCOL_ID, appEnvName, readAppEnv } from "../../identity.js";
 import { commandVersion, directorySource, fileSource, plannedInstallAction, resolveHomePath } from "../discovery.js";
+import type { KernelIntegrationManifest } from "../manifest.js";
 import type {
   KernelAdapter,
   KernelAdapterContract,
@@ -19,10 +20,10 @@ import type {
 } from "../types.js";
 
 const HERMES_CAPABILITIES: KernelCapabilities = {
-  streaming: false,
+  streaming: true,
   toolCalls: true,
   hostTools: false,
-  approvals: false,
+  approvals: true,
   elicitation: false,
   artifacts: false,
   compaction: false,
@@ -251,12 +252,17 @@ export function discoverHermesKernel(
     installActions: [
       plannedInstallAction({
         id: "hermes.install",
-        title: "安装 Hermes CLI",
-        command: ["npm", "install", "-g", "hermes-cli"],
+        title: "安装 Hermes Agent CLI",
+        command: [
+          "bash",
+          "-lc",
+          "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup",
+        ],
       }),
     ],
     notes: [
       `Hermes 的 skills/memories/config 都在 ~/.hermes 下，外部 skill 目录是 ${APP_PRODUCT_NAME} 与 Hermes 对接的关键入口。`,
+      `Preferred transport: ${HERMES_KERNEL_MANIFEST.transport.primary}; fallback: ${HERMES_KERNEL_MANIFEST.transport.fallbacks?.join(", ") ?? "none"}.`,
     ],
   };
 }
@@ -266,29 +272,29 @@ export const HERMES_KERNEL_CONTRACT: KernelAdapterContract = {
     {
       feature: "session",
       owner: "adapter",
-      nativeName: "Hermes oneshot invocation",
-      appResponsibility: `Own ${APP_PRODUCT_NAME} session/run ids.`,
-      adapterResponsibility: `Map ${APP_PRODUCT_NAME} session ids to deterministic Hermes invocation ids; oneshot runs are not long-lived native sessions.`,
+      nativeName: "Hermes ACP session",
+      appResponsibility: `Own ${APP_PRODUCT_NAME} session/run ids and persist the Hermes ACP session id binding.`,
+      adapterResponsibility: `Create or reuse Hermes ACP sessions over stdio JSON-RPC and map them to ${APP_PRODUCT_NAME} sessions.`,
     },
     {
       feature: "turn_lifecycle",
       owner: "adapter",
       appResponsibility: `Record ${APP_PRODUCT_NAME} run lifecycle and trajectory.`,
-      adapterResponsibility: `Call Hermes CLI oneshot mode when configured and normalize the final response into ${APP_PRODUCT_NAME} events.`,
+      adapterResponsibility: `Send session/prompt over Hermes ACP and normalize streamed session/update notifications into ${APP_PRODUCT_NAME} events.`,
     },
     {
       feature: "model_loop",
       owner: "kernel",
       nativeName: "Hermes AIAgent",
       kernelResponsibility: "Own provider selection, model calls, native tools, rules, memory, and skill loading.",
-      adapterResponsibility: "Use Hermes CLI oneshot mode instead of recreating its internal loop.",
+      adapterResponsibility: "Use Hermes ACP instead of recreating its internal loop.",
     },
     {
       feature: "native_tool_execution",
       owner: "kernel",
       nativeName: "Hermes toolsets",
       kernelResponsibility: "Execute enabled Hermes toolsets inside the Hermes loop.",
-      adapterResponsibility: `The current oneshot bridge only receives final text, so individual tool events are not yet visible to ${APP_PRODUCT_NAME}.`,
+      adapterResponsibility: `Map Hermes ACP tool_call/tool_call_update notifications into ${APP_PRODUCT_NAME} tool.started/tool.finished events.`,
     },
     {
       feature: "host_tool_execution",
@@ -297,8 +303,10 @@ export const HERMES_KERNEL_CONTRACT: KernelAdapterContract = {
     },
     {
       feature: "approval",
-      owner: "unsupported",
-      notes: "No Hermes approval bridge is wired yet.",
+      owner: "shared",
+      nativeName: "Hermes ACP session/request_permission",
+      kernelResponsibility: "Decide when native tool execution requires permission.",
+      adapterResponsibility: `Translate Hermes permission requests into ${APP_PRODUCT_NAME} approvals and return selected/cancelled ACP decisions.`,
     },
     {
       feature: "user_question",
@@ -361,32 +369,59 @@ export const HERMES_KERNEL_CONTRACT: KernelAdapterContract = {
     {
       feature: "diagnostics",
       owner: "adapter",
-      nativeName: "Hermes CLI stdout/stderr and provider capture",
-      adapterResponsibility: `Expose ${APP_PRODUCT_NAME} trajectory plus Hermes process/provider capture boundaries.`,
+      nativeName: "Hermes ACP JSON-RPC, process stderr, and provider capture",
+      adapterResponsibility: `Expose ${APP_PRODUCT_NAME} trajectory plus Hermes ACP/process/provider capture boundaries.`,
     },
   ],
   eventMappings: [
     {
-      appEvent: "model.requested / assistant.delta / model.response",
-      nativeEvent: "hermes -z final stdout",
+      appEvent: "model.requested",
+      nativeRequest: "session/prompt",
+      direction: "app_to_native",
+      adapterResponsibility: "Send the assembled turn prompt to Hermes ACP while preserving the OpenGrove run/session identity.",
+    },
+    {
+      appEvent: "assistant.delta / model.response",
+      nativeEvent: "session/update agent_message_chunk",
       direction: "native_to_app",
-      adapterResponsibility: `Map the oneshot final response into a ${APP_PRODUCT_NAME} assistant delta and model.response.`,
+      adapterResponsibility: `Stream Hermes text chunks into ${APP_PRODUCT_NAME} assistant deltas and emit the completed model.response.`,
+    },
+    {
+      appEvent: "tool.started / tool.finished",
+      nativeEvent: "session/update tool_call / tool_call_update",
+      direction: "native_to_app",
+      adapterResponsibility: "Project Hermes native tool lifecycle into OpenGrove trajectory events.",
+    },
+    {
+      appEvent: "approval.requested / approval.decided",
+      nativeRequest: "session/request_permission",
+      direction: "bidirectional",
+      adapterResponsibility: "Bridge Hermes native permission prompts to OpenGrove approval decisions.",
     },
   ],
   diagnostics: {
-    defaultModeId: "hermes-process-stdio",
+    defaultModeId: "hermes-acp-jsonrpc",
     modes: [
       {
-        id: "hermes-process-stdio",
-        title: "Hermes CLI process boundary",
-        layer: "process-stdio",
+        id: "hermes-acp-jsonrpc",
+        title: "Hermes ACP JSON-RPC stream",
+        layer: "adapter-rpc",
         status: "implemented",
         enabledByDefault: true,
         redaction: "raw",
         notes: [
-          "The current adapter calls Hermes oneshot mode and receives final stdout/stderr.",
-          `Hermes internal tool events are not streamed into ${APP_PRODUCT_NAME} yet.`,
+          "The adapter launches `hermes acp --accept-hooks` and exchanges line-delimited JSON-RPC messages over stdio.",
+          `Hermes assistant chunks, tool calls, usage updates, and permission requests are normalized into ${APP_PRODUCT_NAME} events.`,
         ],
+      },
+      {
+        id: "hermes-process-stdio",
+        title: "Hermes child process stderr",
+        layer: "process-stdio",
+        status: "implemented",
+        enabledByDefault: false,
+        redaction: "raw",
+        notes: ["Captures the native Hermes process boundary for startup/runtime errors."],
       },
       {
         id: `${APP_PROTOCOL_ID}-trajectory`,
@@ -422,12 +457,81 @@ export const HERMES_KERNEL_CONTRACT: KernelAdapterContract = {
       path: "~/.hermes/sessions/",
       availability: "partial",
       notes: [
-        `Owned by Hermes. The ${APP_PRODUCT_NAME} bridge currently uses oneshot mode, so ${APP_PRODUCT_NAME} relies on trajectory/provider capture for turn-level debugging.`,
+        `Owned by Hermes. ${APP_PRODUCT_NAME} stores the ACP session id binding and separately records normalized trajectory/provider capture for turn-level debugging.`,
       ],
     },
   },
   notes: [
     `Hermes has a real native skill system. ${APP_PRODUCT_NAME} publishes skills as external skill directories and should not host-inject duplicate skill bodies.`,
-    "The current bridge is a one-shot CLI adapter. A future gateway/stream adapter can map native tool events, approvals, and compaction directly.",
+    "The primary bridge uses ACP. The legacy oneshot CLI path remains available as an explicit fallback for environments where ACP is unavailable.",
   ],
+};
+
+export const HERMES_KERNEL_MANIFEST: KernelIntegrationManifest = {
+  kernelId: "hermes",
+  title: "Hermes",
+  transport: {
+    primary: "acp",
+    fallbacks: ["oneshot-cli"],
+    launch: {
+      command: "hermes",
+      args: ["acp", "--accept-hooks"],
+    },
+    notes: [
+      "ACP is the native bridge: OpenGrove keeps stdout for JSON-RPC and reads structured session/update notifications.",
+    ],
+  },
+  session: {
+    strategy: "native-persistent",
+    nativeSessionKey: "hermesAcpSessionIds",
+    reuseAcrossModelChanges: true,
+    notes: [
+      "OpenGrove stores Hermes ACP session ids by runtime binding fingerprint and reuses only sessions active in the current ACP child.",
+    ],
+  },
+  providerBinding: {
+    mode: "config-file",
+    configFiles: ["~/.hermes/config.yaml", "$HERMES_HOME/config.yaml"],
+    env: [appEnvName("HERMES_HOME")],
+    notes: [
+      "OpenGrove can generate an isolated HERMES_HOME config.yaml so Hermes owns the provider call while OpenGrove avoids logging credentials.",
+    ],
+  },
+  approvals: {
+    mode: "native-request",
+    nativeRequest: "session/request_permission",
+    notes: [
+      "Hermes native permission requests are turned into OpenGrove approval records and answered inline over ACP.",
+    ],
+  },
+  eventProjector: {
+    id: "acp-session-update",
+    nativeEvents: [
+      "session/update agent_message_chunk",
+      "session/update tool_call",
+      "session/update tool_call_update",
+      "session/update usage_update",
+      "session/request_permission",
+    ],
+    appEvents: [
+      "assistant.delta",
+      "model.response",
+      "tool.started",
+      "tool.finished",
+      "runtime.diagnostic",
+      "approval.requested",
+      "approval.resolved",
+    ],
+  },
+  harness: {
+    fakeServer: "acp",
+    smokePrompt: "Use a terminal tool to print an OpenGrove ACP marker.",
+    expectedEvents: ["assistant.delta", "tool.started", "tool.finished", "model.response", "turn.finished"],
+  },
+  capabilities: HERMES_CAPABILITIES,
+  contract: HERMES_KERNEL_CONTRACT,
+  rollout: {
+    status: "implemented",
+    next: ["Add elicitation mapping if Hermes exposes user-question ACP requests."],
+  },
 };

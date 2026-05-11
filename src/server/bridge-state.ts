@@ -55,6 +55,7 @@ export function createBridgeState(options: LocalBridgeServerOptions): BridgeStat
       kernel: "auto",
       workspaceRoot: undefined,
       providerHttpCaptureEnabled: false,
+      codexRawEventCaptureEnabled: false,
       kernelProxy: defaultKernelProxySettings(),
       kernelPathOverrides: {},
       kernelKnowledgeSourceEnabled: {},
@@ -112,6 +113,7 @@ export function getBridgeSettingsSnapshot(state: BridgeState): JsonObject {
     kernelKnowledgeSourceEnabled: state.settings.kernelKnowledgeSourceEnabled,
     kernelProxy: kernelProxySummary(resolveKernelProxySettings(state.settings.kernelProxy, process.env)),
     providerHttpCapture: getProviderHttpCaptureSnapshot(state),
+    codexRawEventCaptureEnabled: state.settings.providerHttpCaptureEnabled && state.settings.codexRawEventCaptureEnabled,
     settingsPath: bridgeSettingsPath(state),
   };
 }
@@ -130,6 +132,11 @@ export function normalizeBridgeSettingsPatch(input: unknown, base: BridgeSetting
         : Object.keys(providerHttpCapture).length > 0
           ? providerHttpCapture.enabled === true
           : base.providerHttpCaptureEnabled,
+    codexRawEventCaptureEnabled: Boolean(
+      typeof source.codexRawEventCaptureEnabled === "boolean"
+        ? source.codexRawEventCaptureEnabled
+        : base.codexRawEventCaptureEnabled,
+    ),
     kernelProxy: normalizeKernelProxySettings(source.kernelProxy, base.kernelProxy),
     kernelPathOverrides: normalizeKernelPathOverrides(
       source.kernelPathOverrides,
@@ -159,6 +166,10 @@ export function loadBridgeSettings(state: BridgeState): BridgeSettings {
         typeof parsed.providerHttpCaptureEnabled === "boolean"
           ? parsed.providerHttpCaptureEnabled
           : defaults.providerHttpCaptureEnabled,
+      codexRawEventCaptureEnabled:
+        typeof parsed.codexRawEventCaptureEnabled === "boolean"
+          ? parsed.codexRawEventCaptureEnabled
+          : defaults.codexRawEventCaptureEnabled,
       kernelProxy: normalizeKernelProxySettings(parsed.kernelProxy, defaults.kernelProxy),
       kernelPathOverrides: normalizeKernelPathOverrides(
         parsed.kernelPathOverrides,
@@ -193,6 +204,7 @@ function defaultBridgeSettings(): BridgeSettings {
     providerHttpCaptureEnabled: isEnabledEnvFlag(
       readAppEnv("PROVIDER_CAPTURE_ENABLED") ?? readAppEnv("PROVIDER_HTTP_CAPTURE"),
     ),
+    codexRawEventCaptureEnabled: isEnabledEnvFlag(readAppEnv("CODEX_RAW_EVENT_CAPTURE")),
     kernelProxy: defaultKernelProxySettings(),
     kernelPathOverrides: {},
     kernelKnowledgeSourceEnabled: {},

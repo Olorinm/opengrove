@@ -23,8 +23,8 @@ import type {
 import type { JsonStateStore } from "../storage/json-state-store.js";
 import type { KernelAdapter } from "../kernel/types.js";
 import type { KnowledgeDocument, KnowledgeLedgerSnapshot } from "../knowledge/types.js";
-import type { BrowserPageSnapshot } from "../tools/browser.js";
-import type { ComputerStateSnapshot } from "../tools/computer.js";
+import type { BrowserPageSnapshot } from "../environment/browser-adapter.js";
+import type { ComputerStateSnapshot } from "../environment/computer-adapter.js";
 
 export const BRIDGE_MODEL_IDS = [
   "MiMo-V2-Pro",
@@ -142,6 +142,7 @@ export interface LocalBridgeServerOptions {
 export interface BridgeAskPayload {
   question: string;
   model: BridgeModelId;
+  kernel?: BridgeKernelId;
   effort?: string;
   responseSpeed?: ResponseSpeed;
   accessMode?: RuntimeAccessMode;
@@ -236,6 +237,7 @@ export interface BridgeSettings {
   workspaceRoot?: string;
   providerSetupVersion?: number;
   providerHttpCaptureEnabled: boolean;
+  codexRawEventCaptureEnabled: boolean;
   kernelProxy: BridgeKernelProxySettings;
   kernelPathOverrides: Record<string, BridgeKernelPathOverride>;
   kernelKnowledgeSourceEnabled: Record<string, Record<string, boolean>>;

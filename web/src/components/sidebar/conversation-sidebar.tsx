@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { UiThread } from "../../store";
 import { useI18n } from "../../i18n";
+import { ThemedPixelIcon } from "./app-navigation";
 import {
   ConversationSortMenu,
   formatSidebarThreadMeta,
@@ -63,7 +64,7 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
             aria-label={t("conversation.newFolderProject")}
             title={t("conversation.newFolderProject")}
           >
-            <FolderOpen size={13} />
+            <ThemedPixelIcon pixelIcon="folder" professionalIcon={FolderOpen} professionalSize={13} pixelSize={15} />
           </button>
           <button
             className="sidebar-mini-action"
@@ -85,7 +86,7 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
             <ListChecks size={13} />
           </button>
           <button className="sidebar-mini-action" type="button" onClick={props.onOpenNewProject} aria-label={t("conversation.newProject")} title={t("conversation.newProject")}>
-            <FolderPlus size={13} />
+            <ThemedPixelIcon pixelIcon="folder" professionalIcon={FolderPlus} professionalSize={13} pixelSize={15} />
           </button>
           {props.conversationSortMenuOpen ? (
             <ConversationSortMenu
@@ -105,7 +106,11 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                 onClick={() => props.onToggleProjectCollapsed(project.id)}
               >
                 <span className="project-item-main">
-                  {props.collapsedProjectIds.has(project.id) ? <Folder size={17} /> : <FolderOpen size={17} />}
+                  {props.collapsedProjectIds.has(project.id) ? (
+                    <ThemedPixelIcon pixelIcon="folder" professionalIcon={Folder} professionalSize={17} pixelSize={20} />
+                  ) : (
+                    <ThemedPixelIcon pixelIcon="folder" professionalIcon={FolderOpen} professionalSize={17} pixelSize={20} />
+                  )}
                   <span className="project-item-copy">
                     <span className="project-item-title">{project.title}</span>
                     {project.workspaceRoot ? (
@@ -115,7 +120,9 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                     ) : null}
                   </span>
                 </span>
-                <span className="project-item-count">{project.threads.length}</span>
+                <span className="project-item-count">
+                  {project.threads.filter((thread) => !thread.id.startsWith("empty:")).length}
+                </span>
               </button>
               <span className="project-row-actions">
                 <button
@@ -125,7 +132,7 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                   aria-label={`${project.title} · ${t("conversation.newThread")}`}
                   title={t("conversation.newThread")}
                 >
-                  <SquarePen size={14} />
+                  <ThemedPixelIcon pixelIcon="plus" professionalIcon={SquarePen} professionalSize={14} pixelSize={15} />
                 </button>
                 <button
                   className="project-row-action"
@@ -145,7 +152,7 @@ export function ConversationSidebar(props: ConversationSidebarProps) {
                     {t("conversation.renameProject")}
                   </button>
                   <button type="button" role="menuitem" onClick={() => props.onChangeProjectFolder(project)}>
-                    <FolderOpen size={14} />
+                    <ThemedPixelIcon pixelIcon="folder" professionalIcon={FolderOpen} professionalSize={14} pixelSize={15} />
                     {t("conversation.changeProjectFolder")}
                   </button>
                   <button

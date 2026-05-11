@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, relative, resolve, sep } from "node:path";
 import type { ServerResponse } from "node:http";
+import { packageRoot } from "../../package-root.js";
 import { GENERATED_ASSET_ROUTE, VAULT_FILE_ROUTE } from "../bridge-types.js";
 import { knowledgeVaultRoot } from "../knowledge-files.js";
 
@@ -72,7 +73,7 @@ function serveVaultFileRoute(url: URL, response: ServerResponse): boolean {
 }
 
 function serveModernUiRoute(url: URL, response: ServerResponse): boolean {
-  const root = resolve(process.cwd(), "web-dist");
+  const root = resolve(packageRoot(), "web-dist");
   if (!existsSync(root)) {
     return false;
   }

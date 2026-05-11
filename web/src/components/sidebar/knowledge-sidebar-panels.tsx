@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent } from "react";
-import { ChevronRight, FilePlus2, FileText, Folder, FolderPlus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ChevronRight, FilePlus2, FileText, Folder, FolderCog, FolderPlus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import {
   knowledgeVaultPath,
 } from "../knowledge/knowledge-model";
 import { APP_STORAGE_KEYS } from "../../identity";
 import { useI18n } from "../../i18n";
+import { ThemedPixelIcon } from "./app-navigation";
 
 type VaultTreeNode = {
   id: string;
@@ -124,15 +125,8 @@ export function VaultSidebarPanel(props: {
   }, [props.expandRequest?.id, props.expandRequest?.open, folderPaths]);
 
   useEffect(() => {
-    if (props.focusedKnowledgeId === lastFocusedKnowledgeIdRef.current) return;
     lastFocusedKnowledgeIdRef.current = props.focusedKnowledgeId;
-    if (!focusedFolderPath) return;
-    const parentPaths = parentVaultPathsFromTreePath(focusedFolderPath);
-    setOpenPaths((current) => ({
-      ...current,
-      ...Object.fromEntries(parentPaths.map((path) => [path, true])),
-    }));
-  }, [props.focusedKnowledgeId, focusedFolderPath]);
+  }, [props.focusedKnowledgeId]);
 
   useEffect(() => {
     if ((props.editingPath ?? "") === lastEditingPathRef.current) return;
@@ -190,42 +184,68 @@ export function VaultSidebarPanel(props: {
     });
   }
 
+  const userNodes = tree.filter((node) => !isProtectedVaultRoot(node.name));
+  const kernelNodes = tree.filter((node) => isProtectedVaultRoot(node.name));
+  const kernelsOpen = openPaths["__kernels__"] ?? true;
+
+  const renderNode = (node: VaultTreeNode, depth: number) => (
+    <VaultTreeNodeView
+      depth={depth}
+      focusedKnowledgeId={props.focusedKnowledgeId}
+      forceOpen={props.forceOpen}
+      key={node.id}
+      node={node}
+      dragSourcePath={dragSourcePath}
+      dropTargetPath={dropTargetPath}
+      editingPath={props.editingPath}
+      menuAnchor={menuState}
+      menuPath={menuPath}
+      onCancelRename={props.onCancelRename}
+      onCreateFolder={props.onCreateFolder}
+      onCreateNote={props.onCreateNote}
+      onDeleteEntry={props.onDeleteEntry}
+      onFocusKnowledge={props.onFocusKnowledge}
+      onOpenMenu={openMenu}
+      onRenameEntry={props.onRenameEntry}
+      onReorderEntry={reorderEntry}
+      onStartRename={props.onStartRename}
+      onMoveEntry={moveEntryToFolder}
+      onSelectFolder={setSelectedFolderPath}
+      onSetDropTarget={setDropTargetPath}
+      onSetDragSource={setDragSourcePath}
+      onToggleNode={toggleNode}
+      openPaths={openPaths}
+    />
+  );
+
   return (
     <section className="sidebar-library-panel" aria-label={t("vault.files")}>
       <div className="sidebar-library-files">
-        {tree.length ? (
-          tree.map((node) => (
-            <VaultTreeNodeView
-              depth={0}
-              focusedKnowledgeId={props.focusedKnowledgeId}
-              forceOpen={props.forceOpen}
-              key={node.id}
-              node={node}
-              dragSourcePath={dragSourcePath}
-              dropTargetPath={dropTargetPath}
-              editingPath={props.editingPath}
-              menuAnchor={menuState}
-              menuPath={menuPath}
-              onCancelRename={props.onCancelRename}
-              onCreateFolder={props.onCreateFolder}
-              onCreateNote={props.onCreateNote}
-              onDeleteEntry={props.onDeleteEntry}
-                onFocusKnowledge={props.onFocusKnowledge}
-                onOpenMenu={openMenu}
-                onRenameEntry={props.onRenameEntry}
-                onReorderEntry={reorderEntry}
-                onStartRename={props.onStartRename}
-                onMoveEntry={moveEntryToFolder}
-              onSelectFolder={setSelectedFolderPath}
-              onSetDropTarget={setDropTargetPath}
-              onSetDragSource={setDragSourcePath}
-              onToggleNode={toggleNode}
-              openPaths={openPaths}
-            />
-          ))
-        ) : (
+        {userNodes.length ? userNodes.map((node) => renderNode(node, 0)) : null}
+        {kernelNodes.length ? (
+          <div className="vault-kernels-folder">
+            <div
+              className="sidebar-library-file sidebar-tree-folder"
+              role="button"
+              style={{ paddingLeft: "7px" }}
+              tabIndex={0}
+              onClick={() => setOpenPaths((current) => ({ ...current, "__kernels__": !kernelsOpen }))}
+              aria-expanded={kernelsOpen}
+            >
+              <ChevronRight className="sidebar-tree-chevron" size={13} data-open={kernelsOpen ? "true" : "false"} />
+              <FolderCog size={13} />
+              <span>Kernels</span>
+            </div>
+            {kernelsOpen ? (
+              <div className="sidebar-vault-tree-children">
+                {kernelNodes.map((node) => renderNode(node, 1))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {!tree.length ? (
           <div className="sidebar-library-empty">{t("vault.empty")}</div>
-        )}
+        ) : null}
       </div>
     </section>
   );
@@ -314,9 +334,9 @@ function VaultTreeNodeView(props: {
 }) {
   const isFolder = props.node.kind === "folder";
   const nodeOpen = props.forceOpen || (props.openPaths[props.node.path] ?? props.depth < 1);
-  const style: CSSProperties = { paddingLeft: `${7 + props.depth * 12}px` };
+  const style: CSSProperties = { paddingLeft: `${7 + props.depth * 12 + (isFolder ? 0 : 17)}px` };
   const canDragFolder = isFolder;
-  const canModify = !isFolder || props.depth > 0;
+  const canModify = !isFolder || props.depth > 0 || !isProtectedVaultRoot(props.node.name);
   const isEditing = props.editingPath === props.node.path;
   const menuOpen = props.menuPath === props.node.path;
   const displayName = isFolder ? props.node.name : displayVaultFileName(props.node.name);
@@ -453,14 +473,14 @@ function VaultTreeNodeView(props: {
             props.onOpenMenu("");
             props.onCreateNote(props.node.path);
           }}>
-            <FilePlus2 size={13} />
+            <ThemedPixelIcon pixelIcon="document" professionalIcon={FilePlus2} professionalSize={13} pixelSize={15} />
             <span>{t("vault.newNote")}</span>
           </button>
           <button type="button" role="menuitem" onClick={() => {
             props.onOpenMenu("");
             props.onCreateFolder(props.node.path);
           }}>
-            <FolderPlus size={13} />
+            <ThemedPixelIcon pixelIcon="folder" professionalIcon={FolderPlus} professionalSize={13} pixelSize={15} />
             <span>{t("vault.newFolder")}</span>
           </button>
         </>
@@ -507,7 +527,7 @@ function VaultTreeNodeView(props: {
           aria-expanded={nodeOpen}
         >
           <ChevronRight className="sidebar-tree-chevron" size={13} data-open={nodeOpen ? "true" : "false"} />
-          <Folder size={13} />
+          <ThemedPixelIcon pixelIcon="folder" professionalIcon={Folder} professionalSize={13} pixelSize={15} />
           {label}
           <button
             className="sidebar-tree-more"
@@ -583,7 +603,7 @@ function VaultTreeNodeView(props: {
       tabIndex={0}
       title={props.node.path}
     >
-      <FileText size={13} />
+      <ThemedPixelIcon pixelIcon="document" professionalIcon={FileText} professionalSize={13} pixelSize={15} />
       {label}
       <button
         className="sidebar-tree-more"
@@ -615,6 +635,7 @@ function buildVaultTree(documents: any[], folders: VaultFolderRecord[] = [], ord
     const path = knowledgeVaultPath(document);
     const segments = path.split("/").map((segment) => segment.trim()).filter(Boolean);
     if (!segments.length) continue;
+    if (segments[segments.length - 1].startsWith(".")) continue;
     let current = root;
     let currentPath = "";
     segments.forEach((segment, index) => {
@@ -766,4 +787,9 @@ function findVaultTreeNodeByPath(nodes: VaultTreeNode[], path: string): VaultTre
     if (found) return found;
   }
   return undefined;
+}
+
+const PROTECTED_VAULT_ROOTS_SET = new Set(["OpenGrove", "Codex", "Claude", "Hermes"]);
+function isProtectedVaultRoot(name: string): boolean {
+  return PROTECTED_VAULT_ROOTS_SET.has(name);
 }

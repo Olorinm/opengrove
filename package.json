@@ -1,14 +1,42 @@
 {
   "name": "opengrove",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "Open-source personal knowledge agent for calm, organized work.",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/Olorinm/opengrove#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/Olorinm/opengrove.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Olorinm/opengrove/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "opengrove": "dist/cli.js"
+  },
+  "files": [
+    "assets",
+    "dist",
+    "extension",
+    "scripts/provider-http-capture-addon.py",
+    "scripts/provider-http-capture.mjs",
+    "src/skills/bundled",
+    "web-dist",
+    "LICENSE",
+    "PROJECT_OVERVIEW.md",
+    "PROJECT_OVERVIEW.zh-CN.md",
+    "README.md",
+    "README.zh-CN.md"
+  ],
   "scripts": {
     "build": "npm run build:server && npm run build:web",
-    "build:server": "tsc",
+    "build:server": "npm run clean:server && tsc",
     "build:web": "node scripts/build-web.mjs",
+    "clean:server": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "typecheck": "npm run typecheck:server && npm run typecheck:web",
     "typecheck:server": "tsc --noEmit",
     "typecheck:web": "tsc -p web/tsconfig.json --noEmit",
@@ -16,9 +44,10 @@
     "check:secrets": "node scripts/check-secrets.mjs",
     "smoke": "npm run build:server && node dist/examples/smoke.js",
     "eval": "npm run build:server && node dist/evals/run-evals.js",
-    "test:harness": "npm run build:server && node dist/tests/skill-harness.js && node dist/tests/kernel-knowledge-harness.js && node dist/tests/native-skill-publisher-harness.js && node dist/tests/claude-code-runtime-harness.js && node dist/tests/claude-agent-sdk-runtime-harness.js && node dist/tests/hermes-runtime-harness.js && node dist/tests/bridge-kernel-selection-harness.js",
+    "test:harness": "npm run build:server && node dist/tests/skill-harness.js && node dist/tests/kernel-knowledge-harness.js && node dist/tests/native-skill-publisher-harness.js && node dist/tests/claude-code-runtime-harness.js && node dist/tests/claude-agent-sdk-runtime-harness.js && node dist/tests/hermes-runtime-harness.js && node dist/tests/kernel-extension-harness.js && node dist/tests/openai-http-runtime-harness.js && node dist/tests/bridge-kernel-selection-harness.js",
     "bridge": "npm run build && node dist/server/local-bridge.js",
-    "capture:provider": "node scripts/provider-http-capture.mjs"
+    "capture:provider": "node scripts/provider-http-capture.mjs",
+    "prepack": "npm run build"
   },
   "engines": {
     "node": ">=20"
@@ -42,8 +71,13 @@
     "lucide-react": "^1.8.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "undici": "^7.24.7",
     "zod": "^4.4.3",
     "zustand": "^5.0.12"
+  },
+  "overrides": {
+    "@anthropic-ai/sdk": "^0.95.1",
+    "fast-uri": "^3.1.2"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { execFile } from "node:child_process";
 import type { JsonObject, JsonValue } from "../../core.js";
 import { isKnowledgeDocumentType, isKnowledgeScope } from "../../knowledge/store.js";
 import type {
@@ -10,6 +11,7 @@ import {
   createKnowledgeFileSystemEntry,
   deleteKnowledgeFileSystemEntry,
   filterEnabledKnowledgeDocuments,
+  importLocalFolderToKnowledge,
   listKnowledgeVaultFolders,
   moveKnowledgeFileSystemEntry,
   normalizeKnowledgeFileSystemCreatePayload,
@@ -106,6 +108,37 @@ export async function handleKnowledgeRoute(options: {
       knowledgeFolders: listKnowledgeVaultFolders(state),
       knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     });
+    return true;
+  }
+
+  if (request.method === "POST" && url.pathname === "/knowledge/file-system/choose-import-folder") {
+    try {
+      const folderPath = await chooseImportFolder();
+      if (!folderPath) {
+        sendJson(response, 200, { ok: true, cancelled: true });
+      } else {
+        const result = importLocalFolderToKnowledge(state, { folderPath });
+        state.store.saveFrom(state.app);
+        sendJson(response, 200, {
+          ok: true,
+          ...result,
+          knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+          knowledgeFolders: listKnowledgeVaultFolders(state),
+          knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
+        });
+      }
+    } catch (error) {
+      sendJson(response, 500, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return true;
+  }
+
+  if (request.method === "POST" && url.pathname === "/knowledge/file-system/import-folder") {
+    await readJsonBody(request);
+    sendJson(response, 403, { ok: false, error: "import_folder_choose_required" });
     return true;
   }
 
@@ -236,4 +269,26 @@ function record(value: unknown): Record<string, unknown> {
 
 function isJsonObject(value: unknown): value is JsonObject {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function chooseImportFolder(): Promise<string | undefined> {
+  return new Promise((resolve, reject) => {
+    const script = [
+      'set chosenFolder to choose folder with prompt "选择要导入的文件夹"',
+      "POSIX path of chosenFolder",
+    ].join("\n");
+    execFile("osascript", ["-e", script], { timeout: 120_000, maxBuffer: 8192 }, (error, stdout, stderr) => {
+      if (!error) {
+        const folderPath = stdout.trim().replace(/\/$/, "");
+        resolve(folderPath || undefined);
+        return;
+      }
+      const message = `${stderr || ""}\n${error.message}`;
+      if (message.includes("User canceled") || message.includes("-128")) {
+        resolve(undefined);
+        return;
+      }
+      reject(new Error((stderr || "").trim() || error.message));
+    });
+  });
 }

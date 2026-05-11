@@ -1,4 +1,4 @@
-import type { ChangeEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactNode, RefObject } from "react";
+import type { ChangeEvent, ClipboardEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactNode, RefObject } from "react";
 import {
   ArrowUp,
   ClipboardPlus,
@@ -20,9 +20,9 @@ import type {
   RuntimeControls,
   RuntimeAccessMode,
 } from "../../bridge";
-import { MODEL_OPTIONS } from "../../bridge";
 import { clamp, summarize } from "../../format";
 import { useI18n, type TranslationFn } from "../../i18n";
+import { modelLabel, modelOptionsForKernel } from "../../runtime/kernel-models";
 import {
   MAX_COMPOSER_HEIGHT,
   MIN_COMPOSER_HEIGHT,
@@ -54,27 +54,10 @@ const SPEED_OPTIONS: Array<{ id: ResponseSpeed; labelKey: "composer.speedStandar
   { id: "fast", labelKey: "composer.speedFast", descriptionKey: "composer.speedFastDescription" },
 ];
 
-const CODEX_MODEL_LABELS: Record<string, string> = {
-  "claude-code-default": "Claude Code 默认",
-  "gpt-5.5": "GPT-5.5",
-  "gpt-5.4": "GPT-5.4",
-  "gpt-5.4-mini": "GPT-5.4 Mini",
-  "gpt-5.3-codex": "GPT-5.3 Codex",
-  "gpt-5.3-codex-spark": "GPT-5.3 Codex Spark",
-  "gpt-5.2": "GPT-5.2",
-  "claude-opus-4-6": "Claude Opus 4.6",
-  "MiMo-V2-Pro": "MiMo-V2-Pro",
-};
-
 export type ComposerMenuKind = "access" | "model";
 
-type ComposerModelOption = { id: string; label: string; description?: string };
 type ComposerEffortOption = { id: ReasoningEffort; label: string; description?: string };
 type ComposerSpeedOption = { id: ResponseSpeed; label: string; description?: string };
-
-function isModelId(value: string): value is ModelId {
-  return Boolean(value.trim());
-}
 
 function isReasoningEffort(value: string): value is ReasoningEffort {
   return value === "low" || value === "medium" || value === "high" || value === "xhigh";
@@ -84,25 +67,7 @@ function isResponseSpeed(value: string): value is ResponseSpeed {
   return value === "standard" || value === "fast";
 }
 
-export function modelOptionsForKernel(kernelId?: string, runtimeControls?: RuntimeControls): ComposerModelOption[] {
-  const controls = runtimeControls?.kernel === kernelId ? runtimeControls : undefined;
-  const discovered = controls?.models
-    ?.filter((item): item is ComposerModelOption => isModelId(item.id))
-    .map((item) => ({ id: item.id, label: item.label, description: item.description }));
-  if (discovered?.length) {
-    return discovered;
-  }
-  if (kernelId === "codex") {
-    return MODEL_OPTIONS.filter((item) => item.id.startsWith("gpt-"));
-  }
-  if (kernelId === "claude-code") {
-    return [{ id: "claude-code-default", label: "Claude Code 默认" }];
-  }
-  if (kernelId === "pi") {
-    return [{ id: "pi-default", label: "Pi 默认" }];
-  }
-  return [...MODEL_OPTIONS];
-}
+export { modelOptionsForKernel };
 
 export function supportsComposerEffort(kernelId?: string): boolean {
   return kernelId === "codex";
@@ -157,6 +122,7 @@ export interface ChatComposerProps {
   onRemoveAttachment(attachmentId: string): void;
   onQuestionChange(value: string): void;
   onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void;
+  onPaste(event: ClipboardEvent<HTMLTextAreaElement>): void;
   onCompositionStart(): void;
   onCompositionEnd(): void;
   onAttachmentInputChange(event: ChangeEvent<HTMLInputElement>): void;
@@ -220,6 +186,7 @@ export function ChatComposer(props: ChatComposerProps) {
             spellCheck={false}
             onChange={(event) => props.onQuestionChange(event.target.value)}
             onKeyDown={props.onKeyDown}
+            onPaste={props.onPaste}
             onCompositionStart={props.onCompositionStart}
             onCompositionEnd={props.onCompositionEnd}
             style={{ height: `${clamp(props.composerHeight, MIN_COMPOSER_HEIGHT, MAX_COMPOSER_HEIGHT)}px` }}
@@ -338,6 +305,28 @@ function ComposerAttachmentBar(props: {
       ))}
       {props.attachments.map((attachment) => {
         const Icon = attachmentIcon(attachment);
+        if (attachment.kind === "image") {
+          const previewUrl = attachment.thumbnailUrl || attachment.dataUrl;
+          return (
+            <div className="opengrove-attachment" key={attachment.id} data-kind="image" title={attachment.name}>
+              {previewUrl ? (
+                <img className="opengrove-attachment-thumb" src={previewUrl} alt="" />
+              ) : (
+                <span className="opengrove-attachment-image-fallback" aria-hidden="true">
+                  <Icon size={18} />
+                </span>
+              )}
+              <button
+                className="opengrove-action opengrove-icon opengrove-attachment-remove"
+                type="button"
+                onClick={() => props.onRemoveAttachment(attachment.id)}
+                aria-label={t("composer.removeAttachment", { name: attachment.name })}
+              >
+                ×
+              </button>
+            </div>
+          );
+        }
         return (
           <div className="opengrove-attachment" key={attachment.id} data-kind={attachment.kind}>
             <span className="opengrove-attachment-icon" aria-hidden="true">
@@ -428,7 +417,7 @@ function ComposerModelPicker(props: {
   const { t } = useI18n();
   const controls = props.runtimeControls?.kernel === props.activeKernel ? props.runtimeControls : undefined;
   const modelOptions = modelOptionsForKernel(props.activeKernel, props.runtimeControls);
-  const selectedModel = modelOptions.find((item) => item.id === props.model) ?? modelOptions[0] ?? MODEL_OPTIONS[0];
+  const selectedModel = modelOptions.find((item) => item.id === props.model) ?? modelOptions[0] ?? { id: props.model, label: props.model };
   const effortOptions = effortOptionsForRuntime(t, controls);
   const speedOptions = speedOptionsForRuntime(t, controls);
   const effortEnabled = Boolean(controls?.reasoningEfforts?.length) || (!controls && supportsComposerEffort(props.activeKernel));
@@ -436,7 +425,7 @@ function ComposerModelPicker(props: {
   const effortLabel = effortEnabled ? effortOptions.find((item) => item.id === props.effort)?.label || t("composer.effortHigh") : "";
   const compactModelLabel = selectedModel.id.startsWith("gpt-")
     ? selectedModel.id.replace(/^gpt-/, "").replace(/-codex-spark$/, " spark").replace(/-codex$/, " codex").replace(/-mini$/, " mini")
-    : CODEX_MODEL_LABELS[selectedModel.id as ModelId] || selectedModel.label;
+    : modelLabel(selectedModel);
 
   return (
     <div className="opengrove-model-picker">
@@ -489,7 +478,7 @@ function ComposerModelPicker(props: {
             aria-selected={item.id === selectedModel.id}
             onClick={() => props.onSetModel(item.id as ModelId)}
           >
-            <span className="opengrove-model-option-name">{CODEX_MODEL_LABELS[item.id as ModelId] || item.label}</span>
+            <span className="opengrove-model-option-name">{modelLabel(item)}</span>
             <span className="opengrove-model-option-check" aria-hidden="true"></span>
           </button>
         ))}

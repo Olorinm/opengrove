@@ -145,8 +145,48 @@ export function appendToolEventPart(
   });
 }
 
+export function closeDanglingMessageActivity(
+  message: StoredMessage,
+  options: { status?: "complete" | "failed"; errorMessage?: string } = {},
+): StoredMessage {
+  const status = options.status || "complete";
+  const errorMessage = String(options.errorMessage || "").trim();
+  for (const part of message.parts || []) {
+    if (part.type === "tool") {
+      closeDanglingToolPart(part, status, errorMessage);
+    } else if (part.type === "skill") {
+      closeDanglingSkillPart(part, status, errorMessage);
+    }
+  }
+  return message;
+}
+
+function closeDanglingToolPart(part: ToolPart, status: "complete" | "failed", errorMessage: string): void {
+  if (part.phase === "approval") {
+    return;
+  }
+  if (part.status !== "running") {
+    return;
+  }
+  part.status = status === "failed" ? "failed" : "complete";
+  if (status === "failed" && errorMessage && !part.error) {
+    part.error = errorMessage;
+  }
+}
+
+function closeDanglingSkillPart(part: SkillPart, status: "complete" | "failed", errorMessage: string): void {
+  if (!["invoked", "started", "running"].includes(part.status)) {
+    return;
+  }
+  part.status = status === "failed" ? "failed" : "finished";
+  if (status === "failed" && errorMessage && !part.result) {
+    part.result = errorMessage;
+  }
+}
+
 export function markAssistantMessageError(message: StoredMessage, errorMessage: string): StoredMessage {
   message.pending = false;
+  closeDanglingMessageActivity(message, { status: "failed", errorMessage });
   appendNotePart(message, `模型调用出错：${errorMessage}`, "error");
   if (!hasRenderableMessageParts(message)) {
     message.text = `模型调用出错：${errorMessage}`;
@@ -157,18 +197,24 @@ export function markAssistantMessageError(message: StoredMessage, errorMessage: 
 export function finalizeAssistantMessage(message: StoredMessage, data: { answer?: string; events?: any[] }): StoredMessage {
   message.pending = false;
   const timing = messageTimingFromEvents(data?.events);
+  const eventError = renderEventError(data?.events);
   message.startedAt = message.startedAt || timing.startedAt;
   message.finishedAt = message.finishedAt || timing.finishedAt;
   const finalResponseText = finalModelResponseTextFromEvents(data?.events);
   const answer = finalResponseText || (typeof data?.answer === "string" ? data.answer : "");
-  if (hasRenderableMessageParts(message) && shouldReplaceStreamedText(collectMessageText(message), answer, Boolean(finalResponseText))) {
+  const existingText = collectMessageText(message);
+  if (existingText && shouldReplaceStreamedText(existingText, answer, Boolean(finalResponseText))) {
     replaceTextPartsWithFinalAnswer(message, answer);
-  } else if (!hasRenderableMessageParts(message) && answer) {
+  } else if (!existingText && answer) {
     appendTextPart(message, answer);
   }
   if (!hasRenderableMessageParts(message) && !String(message.text || "").trim()) {
-    appendNotePart(message, renderEventError(data?.events) || "没有返回文本。", "muted");
+    appendNotePart(message, eventError || "没有返回文本。", "muted");
   }
+  closeDanglingMessageActivity(message, {
+    status: eventError ? "failed" : "complete",
+    errorMessage: eventError,
+  });
   message.text = collectMessageText(message);
   return message;
 }
@@ -314,11 +360,16 @@ export function applyStreamEventToMessage(message: StoredMessage, event: any): {
       updateApprovalMessagePart(message, event.request, { fromStream: true });
       break;
     case "error":
+      closeDanglingMessageActivity(message, {
+        status: "failed",
+        errorMessage: event.message || "模型调用出错。",
+      });
       appendNotePart(message, event.message || "模型调用出错。", "error");
       message.pending = false;
       message.finishedAt = message.finishedAt || new Date().toISOString();
       break;
     case "turn.finished":
+      closeDanglingMessageActivity(message);
       message.pending = false;
       message.finishedAt = event.at || message.finishedAt || new Date().toISOString();
       break;
