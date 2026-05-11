@@ -97,6 +97,7 @@ npm run eval
 
 - 在 OpenGrove 本地 UI 中和 agent 对话。
 - 通过设置界面或环境变量切换已安装的内核。
+- 使用 Rooms 进行单聊或群聊式 kernel 对话，并通过 `@` mention 把同一条 prompt 路由给一个或多个已安装内核。
 - 索引 `AGENTS.md`、`CLAUDE.md`、skills、配置文件和本地 vault 等原生知识来源。
 - 使用浏览器扩展把页面上下文和选中文本发送到 bridge。
 - 追踪 sessions、runs、executions、approvals、memory、artifacts、routines 和 provider capture 诊断信息。
@@ -121,17 +122,17 @@ OPENGROVE_KERNEL=opencode npm run bridge
 
 支持的内核 id：
 
-| 内核 | 接入方式 | 二进制路径覆盖 |
-| --- | --- | --- |
-| Codex | app-server / RPC bridge | `OPENGROVE_CODEX_BIN` |
-| Claude Code | CLI / SDK bridge | `OPENGROVE_CLAUDE_CLI_PATH` |
-| Hermes | CLI bridge | `OPENGROVE_HERMES_BIN` |
-| Pi | generic CLI adapter | `OPENGROVE_PI_BIN` |
-| OpenClaw | generic CLI adapter | `OPENGROVE_OPENCLAW_BIN` |
-| OpenCode | generic CLI adapter | `OPENGROVE_OPENCODE_BIN` |
-| DeepSeek TUI | generic CLI adapter | `OPENGROVE_DEEPSEEK_TUI_BIN` |
-| Gemini CLI | generic CLI adapter | `OPENGROVE_GEMINI_CLI_BIN` |
-| Qwen Code | generic CLI adapter | `OPENGROVE_QWEN_CODE_BIN` |
+| 内核 | 当前 runtime 路径 | OpenGrove 记录的更深/首选路径 | 覆盖配置 |
+| --- | --- | --- | --- |
+| Codex | `codex app-server --listen stdio://` JSON-RPC bridge | 原生 app-server 事件、审批、dynamic tools、thread 复用 | `OPENGROVE_CODEX_BIN` |
+| Claude Code | Claude Code SDK / CLI stream bridge | SDK 管理 session 和 Claude Code 原生工具 | `OPENGROVE_CLAUDE_CLI_PATH` |
+| Hermes | 默认走 stdio JSON-RPC 上的 ACP；配置后可走 OpenAI-compatible HTTP gateway | ACP session updates、原生 permission requests、原生 skill directory | `OPENGROVE_HERMES_BIN`, `OPENGROVE_HERMES_API_URL` |
+| Pi | one-shot CLI fallback（`pi -p`） | JSONL RPC | `OPENGROVE_PI_BIN` |
+| OpenClaw | 配置后走 OpenAI-compatible HTTP gateway；否则 one-shot CLI fallback | Gateway WebSocket | `OPENGROVE_OPENCLAW_BIN`, `OPENGROVE_OPENCLAW_API_URL` |
+| OpenCode | one-shot CLI fallback（`opencode run`） | ACP | `OPENGROVE_OPENCODE_BIN` |
+| DeepSeek TUI | one-shot CLI fallback（`deepseek --print`） | stdio JSON-RPC | `OPENGROVE_DEEPSEEK_TUI_BIN` |
+| Gemini CLI | one-shot CLI fallback | one-shot CLI | `OPENGROVE_GEMINI_CLI_BIN` |
+| Qwen Code | one-shot CLI fallback | one-shot CLI | `OPENGROVE_QWEN_CODE_BIN` |
 
 Codex 常用配置：
 
@@ -152,6 +153,35 @@ OPENGROVE_HERMES_PROVIDER=your-provider
 OPENGROVE_HERMES_TOOLSETS=shell,edit
 npm run bridge
 ```
+
+如果某个内核暴露 `/chat/completions` 兼容接口，也可以通过 OpenAI-compatible gateway 接入：
+
+```bash
+OPENGROVE_KERNEL=openclaw
+OPENGROVE_OPENCLAW_API_URL=http://127.0.0.1:11434/v1
+OPENGROVE_OPENCLAW_API_KEY=replace-with-your-key
+OPENGROVE_OPENCLAW_MODEL=your-model
+npm run bridge
+
+OPENGROVE_KERNEL=hermes
+OPENGROVE_HERMES_API_URL=http://127.0.0.1:8000/v1
+OPENGROVE_HERMES_API_KEY=replace-with-your-key
+OPENGROVE_HERMES_MODEL=your-model
+npm run bridge
+```
+
+## 内核接入层
+
+OpenGrove 现在不再把所有内核都当成“prompt 输入、stdout 输出”。内核接入被拆成四层：
+
+| 层 | 作用 |
+| --- | --- |
+| Transport | 负责真实通信边界：`acp`、`stdio-jsonrpc`、`jsonl-rpc`、`http-sse`、`websocket-gateway`、`pty-terminal`、`oneshot-cli` 或 `sdk-inprocess`。 |
+| Event projector | 把各家原生事件转成 OpenGrove 事件，例如 `assistant.delta`、`tool.started`、`tool.finished`、`approval.requested`。 |
+| Kernel manifest | 记录启动命令、session 策略、provider 绑定、approval 策略、事件映射、能力和 rollout 状态。 |
+| Harness template | 给每种协议一套 fake-server 测试形状，让新内核接入时先验证事件和协议行为。 |
+
+当前已经落地的 runtime 路径包括 Codex app-server JSON-RPC、Claude Code SDK/CLI streaming、Hermes ACP、带 host tool loop 的 OpenAI-compatible HTTP/SSE，以及 one-shot CLI fallback。尚未完全接通但更适合的协议会先写进 kernel manifest，这样后续可以按协议逐步替换 fallback。
 
 ## Provider 配置
 
@@ -248,6 +278,7 @@ OpenGrove Host
   - knowledge vault
   - memory and artifacts
   - approvals and policy
+  - rooms、contacts 和本地 workspace UI state
   - event log and diagnostics
         |
         v
@@ -255,6 +286,7 @@ Kernel Adapters
   - Codex
   - Claude Code
   - Hermes
+  - OpenAI-compatible HTTP gateways
   - Pi
   - OpenClaw / OpenCode / other CLIs
         |
@@ -274,14 +306,15 @@ Native Agent Runtime
 src/core/              稳定的 event、policy、registry、store 和共享类型契约
 src/app/               OpenGrove 装配入口和应用 wiring
 src/kernel/            Kernel 契约、发现逻辑、tool bridge 和 adapters
-src/runtime/           Codex、Claude Code、Hermes、Pi、generic CLI、proxy 和 capture runtimes
+src/runtime/           Codex、Claude Code、Hermes、Pi、HTTP、generic CLI、proxy、capture、transports 和 projectors
 src/server/            本地 bridge、settings、kernel selection、routes、approvals、artifacts
 src/knowledge/         Knowledge store views、organizer helpers、feedback 和 vault logic
 src/skills/            Skill catalog、runtime 和原生发布辅助逻辑
-src/tools/             memory、browser、computer、skills 和 UI host tools
 src/tests/             skills、kernels、runtimes 和 bridge selection 的 harness tests
 src/evals/             evaluation runner
 web/                   React 本地 UI
+web/src/components/rooms/
+                       Rooms、contacts、成员路由、mentions 和本地 room storage
 extension/             浏览器上下文 adapter
 assets/brand/          Wordmark、sapling mark 和视觉系统资产
 ```

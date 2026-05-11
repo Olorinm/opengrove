@@ -97,6 +97,7 @@ Modern agent tools are powerful, but their context, memory, generated files, pro
 
 - Talk to an agent through the local OpenGrove UI.
 - Switch between installed kernels from settings or environment variables.
+- Use Rooms for direct or group kernel conversations, including `@` mentions that route one prompt to one or more installed kernels.
 - Index native knowledge sources such as `AGENTS.md`, `CLAUDE.md`, skills, configs, and local vault files.
 - Use a browser extension to send page context and selections into the bridge.
 - Track sessions, runs, executions, approvals, memory, artifacts, routines, and provider capture diagnostics.
@@ -121,17 +122,17 @@ OPENGROVE_KERNEL=opencode npm run bridge
 
 Supported kernel ids:
 
-| Kernel | Integration | Binary override |
-| --- | --- | --- |
-| Codex | app-server / RPC bridge | `OPENGROVE_CODEX_BIN` |
-| Claude Code | CLI / SDK bridge | `OPENGROVE_CLAUDE_CLI_PATH` |
-| Hermes | CLI bridge | `OPENGROVE_HERMES_BIN` |
-| Pi | generic CLI adapter | `OPENGROVE_PI_BIN` |
-| OpenClaw | generic CLI adapter | `OPENGROVE_OPENCLAW_BIN` |
-| OpenCode | generic CLI adapter | `OPENGROVE_OPENCODE_BIN` |
-| DeepSeek TUI | generic CLI adapter | `OPENGROVE_DEEPSEEK_TUI_BIN` |
-| Gemini CLI | generic CLI adapter | `OPENGROVE_GEMINI_CLI_BIN` |
-| Qwen Code | generic CLI adapter | `OPENGROVE_QWEN_CODE_BIN` |
+| Kernel | Current runtime path | Deeper/preferred path tracked by OpenGrove | Overrides |
+| --- | --- | --- | --- |
+| Codex | `codex app-server --listen stdio://` JSON-RPC bridge | Native app-server events, approvals, dynamic tools, thread reuse | `OPENGROVE_CODEX_BIN` |
+| Claude Code | Claude Code SDK / CLI stream bridge | SDK-managed session and native Claude Code tools | `OPENGROVE_CLAUDE_CLI_PATH` |
+| Hermes | ACP over stdio JSON-RPC by default; OpenAI-compatible HTTP gateway when configured | ACP session updates, native permission requests, native skill directory | `OPENGROVE_HERMES_BIN`, `OPENGROVE_HERMES_API_URL` |
+| Pi | one-shot CLI fallback (`pi -p`) | JSONL RPC | `OPENGROVE_PI_BIN` |
+| OpenClaw | OpenAI-compatible HTTP gateway when configured; one-shot CLI fallback | Gateway WebSocket | `OPENGROVE_OPENCLAW_BIN`, `OPENGROVE_OPENCLAW_API_URL` |
+| OpenCode | one-shot CLI fallback (`opencode run`) | ACP | `OPENGROVE_OPENCODE_BIN` |
+| DeepSeek TUI | one-shot CLI fallback (`deepseek --print`) | stdio JSON-RPC | `OPENGROVE_DEEPSEEK_TUI_BIN` |
+| Gemini CLI | one-shot CLI fallback | one-shot CLI | `OPENGROVE_GEMINI_CLI_BIN` |
+| Qwen Code | one-shot CLI fallback | one-shot CLI | `OPENGROVE_QWEN_CODE_BIN` |
 
 Codex-specific options:
 
@@ -152,6 +153,35 @@ OPENGROVE_HERMES_PROVIDER=your-provider
 OPENGROVE_HERMES_TOOLSETS=shell,edit
 npm run bridge
 ```
+
+OpenAI-compatible gateway options for kernels that expose a `/chat/completions` surface:
+
+```bash
+OPENGROVE_KERNEL=openclaw
+OPENGROVE_OPENCLAW_API_URL=http://127.0.0.1:11434/v1
+OPENGROVE_OPENCLAW_API_KEY=replace-with-your-key
+OPENGROVE_OPENCLAW_MODEL=your-model
+npm run bridge
+
+OPENGROVE_KERNEL=hermes
+OPENGROVE_HERMES_API_URL=http://127.0.0.1:8000/v1
+OPENGROVE_HERMES_API_KEY=replace-with-your-key
+OPENGROVE_HERMES_MODEL=your-model
+npm run bridge
+```
+
+## Kernel Integration Layers
+
+OpenGrove no longer treats every kernel as "prompt in, stdout out." Kernel integrations are split into four small layers:
+
+| Layer | Purpose |
+| --- | --- |
+| Transport | Owns the wire boundary: `acp`, `stdio-jsonrpc`, `jsonl-rpc`, `http-sse`, `websocket-gateway`, `pty-terminal`, `oneshot-cli`, or `sdk-inprocess`. |
+| Event projector | Converts native events into OpenGrove events such as `assistant.delta`, `tool.started`, `tool.finished`, and `approval.requested`. |
+| Kernel manifest | Records launch command, session strategy, provider binding, approval policy, event mapping, capabilities, and rollout status. |
+| Harness template | Gives each protocol a fake-server test shape so new kernels can be added without guessing at runtime behavior. |
+
+Implemented runtime paths include Codex app-server JSON-RPC, Claude Code SDK/CLI streaming, Hermes ACP, OpenAI-compatible HTTP/SSE with host tool loops, and one-shot CLI fallbacks. Preferred-but-not-yet-wired transports are documented in the kernel manifests so adapter work can move one protocol at a time.
 
 ## Providers
 
@@ -248,6 +278,7 @@ OpenGrove Host
   - knowledge vault
   - memory and artifacts
   - approvals and policy
+  - rooms, contacts, and local workspace UI state
   - event log and diagnostics
         |
         v
@@ -255,6 +286,7 @@ Kernel Adapters
   - Codex
   - Claude Code
   - Hermes
+  - OpenAI-compatible HTTP gateways
   - Pi
   - OpenClaw / OpenCode / other CLIs
         |
@@ -274,14 +306,15 @@ This allows the project to add new kernels without pretending every agent works 
 src/core/              Stable event, policy, registry, store, and shared type contracts
 src/app/               OpenGrove composition root and app wiring
 src/kernel/            Kernel contracts, discovery, tool bridge, and adapters
-src/runtime/           Codex, Claude Code, Hermes, Pi, generic CLI, proxy, and capture runtimes
+src/runtime/           Codex, Claude Code, Hermes, Pi, HTTP, generic CLI, proxy, capture, transports, and projectors
 src/server/            Local bridge, settings, kernel selection, routes, approvals, artifacts
 src/knowledge/         Knowledge store views, organizer helpers, feedback, and vault logic
 src/skills/            Skill catalog, runtime, and native publication helpers
-src/tools/             Host tools for memory, browser, computer, skills, and UI
 src/tests/             Harness tests for skills, kernels, runtimes, and bridge selection
 src/evals/             Evaluation runner
 web/                   React local UI
+web/src/components/rooms/
+                       Rooms, contacts, member targeting, mentions, and local room storage
 extension/             Browser context adapter
 assets/brand/          Wordmark, sapling mark, and visual system assets
 ```
