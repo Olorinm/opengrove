@@ -6,12 +6,13 @@ import type {
   KnowledgeDocumentPatch,
   KnowledgeFeedbackSignal,
 } from "../../knowledge/types.js";
-import { KNOWLEDGE_INVENTORY_LIMIT, type BridgeState } from "../bridge-types.js";
+import type { BridgeState } from "../bridge-types.js";
 import {
   createKnowledgeFileSystemEntry,
   deleteKnowledgeFileSystemEntry,
   filterEnabledKnowledgeDocuments,
   importLocalFolderToKnowledge,
+  listKnowledgeInventoryDocuments,
   listKnowledgeVaultFolders,
   moveKnowledgeFileSystemEntry,
   normalizeKnowledgeFileSystemCreatePayload,
@@ -48,15 +49,15 @@ export async function handleKnowledgeRoute(options: {
       type: isKnowledgeDocumentType(type) ? type : undefined,
       scope: isKnowledgeScope(scope) ? scope : undefined,
       lifecycle: "active" as const,
-      limit,
     };
     const knowledge = query
       ? state.app.knowledge.search(query, filter)
       : state.app.knowledge.list(filter);
+    const filteredKnowledge = filterEnabledKnowledgeDocuments(state, knowledge);
     syncKnowledgeVaultFiles(state);
     sendJson(response, 200, {
       ok: true,
-      knowledge: filterEnabledKnowledgeDocuments(state, knowledge),
+      knowledge: typeof limit === "number" ? filteredKnowledge.slice(0, limit) : filteredKnowledge,
       knowledgeFolders: listKnowledgeVaultFolders(state),
       ...(includeLedgers ? { ledgers: state.app.knowledge.snapshotLedgers() } : {}),
     });
@@ -72,7 +73,7 @@ export async function handleKnowledgeRoute(options: {
     sendJson(response, 200, {
       ok: true,
       ...result,
-      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledge: listKnowledgeInventoryDocuments(state),
       knowledgeFolders: listKnowledgeVaultFolders(state),
       knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     });
@@ -88,7 +89,7 @@ export async function handleKnowledgeRoute(options: {
     sendJson(response, 200, {
       ok: true,
       ...result,
-      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledge: listKnowledgeInventoryDocuments(state),
       knowledgeFolders: listKnowledgeVaultFolders(state),
       knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     });
@@ -104,7 +105,7 @@ export async function handleKnowledgeRoute(options: {
     sendJson(response, 200, {
       ok: true,
       ...result,
-      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledge: listKnowledgeInventoryDocuments(state),
       knowledgeFolders: listKnowledgeVaultFolders(state),
       knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     });
@@ -122,7 +123,7 @@ export async function handleKnowledgeRoute(options: {
         sendJson(response, 200, {
           ok: true,
           ...result,
-          knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+          knowledge: listKnowledgeInventoryDocuments(state),
           knowledgeFolders: listKnowledgeVaultFolders(state),
           knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
         });
@@ -151,7 +152,7 @@ export async function handleKnowledgeRoute(options: {
     sendJson(response, 200, {
       ok: true,
       ...result,
-      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledge: listKnowledgeInventoryDocuments(state),
       knowledgeFolders: listKnowledgeVaultFolders(state),
       knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     });
@@ -177,7 +178,7 @@ export async function handleKnowledgeRoute(options: {
     sendJson(response, 200, {
       ok: true,
       ...result,
-      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledge: listKnowledgeInventoryDocuments(state),
       knowledgeFolders: listKnowledgeVaultFolders(state),
       knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     });
@@ -195,7 +196,7 @@ export async function handleKnowledgeRoute(options: {
     sendJson(response, 200, {
       ok: true,
       result,
-      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledge: listKnowledgeInventoryDocuments(state),
       knowledgeFolders: listKnowledgeVaultFolders(state),
       knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     });
@@ -213,7 +214,7 @@ export async function handleKnowledgeRoute(options: {
     sendJson(response, 200, {
       ok: true,
       document: knowledge,
-      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+      knowledge: listKnowledgeInventoryDocuments(state),
       knowledgeFolders: listKnowledgeVaultFolders(state),
       knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     });

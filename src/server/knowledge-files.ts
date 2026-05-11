@@ -11,7 +11,7 @@ import {
   APP_VAULT_ROOT_NAME,
 } from "../identity.js";
 import type { BridgeState } from "./bridge-types.js";
-import { KNOWLEDGE_FILE_SIZE_LIMIT } from "./bridge-types.js";
+import { KNOWLEDGE_FILE_SIZE_LIMIT, KNOWLEDGE_INVENTORY_LIMIT } from "./bridge-types.js";
 import type { KnowledgeDocument } from "../knowledge/types.js";
 import { kernelConfigHome } from "./kernel-paths.js";
 
@@ -164,7 +164,7 @@ export function syncKnowledgeVaultFiles(state: BridgeState): void {
   ensureKnowledgeVaultRoot();
   syncGlobalKernelKnowledgeDocumentsIfNeeded(state);
   syncImportedNativeFolders(state);
-  for (const document of filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: 2_000 }))) {
+  for (const document of listKnowledgeInventoryDocuments(state)) {
     try {
       const descriptor = resolveKnowledgeFileDescriptor(document);
       ensureKnowledgeFileExists(document, descriptor);
@@ -214,7 +214,7 @@ export function listKnowledgeVaultFolders(state: BridgeState): KnowledgeVaultFol
     // Best-effort scan
   }
 
-  for (const document of filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: 2_000 }))) {
+  for (const document of listKnowledgeInventoryDocuments(state)) {
     try {
       const descriptor = resolveKnowledgeFileDescriptor(document);
       const vaultPath = knowledgeVaultPath(document);
@@ -255,7 +255,7 @@ export function createKnowledgeFileSystemEntry(
         backing: target.backing,
         originPath: target.backing === "native" ? folderPath : undefined,
       },
-      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: 2_000 })),
+      knowledge: listKnowledgeInventoryDocuments(state),
       knowledgeFolders: listKnowledgeVaultFolders(state),
     };
   }
@@ -302,7 +302,7 @@ export function createKnowledgeFileSystemEntry(
       originPath: target.backing === "native" ? filePath : undefined,
       format: "markdown",
     }),
-    knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: 2_000 })),
+    knowledge: listKnowledgeInventoryDocuments(state),
     knowledgeFolders: listKnowledgeVaultFolders(state),
     knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
   };
@@ -345,7 +345,7 @@ export function moveKnowledgeFileSystemEntry(
         backing: source.backing,
         originPath: source.backing === "native" ? source.path : undefined,
       },
-      knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: 2_000 })),
+      knowledge: listKnowledgeInventoryDocuments(state),
       knowledgeFolders: listKnowledgeVaultFolders(state),
       knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     };
@@ -370,7 +370,7 @@ export function moveKnowledgeFileSystemEntry(
       backing: target.backing,
       originPath: target.backing === "native" ? destinationPath : undefined,
     },
-    knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: 2_000 })),
+    knowledge: listKnowledgeInventoryDocuments(state),
     knowledgeFolders: listKnowledgeVaultFolders(state),
     knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
   };
@@ -422,7 +422,7 @@ export function renameKnowledgeFileSystemEntry(
       backing: source.backing,
       originPath: source.backing === "native" ? destinationPath : undefined,
     },
-    knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: 2_000 })),
+    knowledge: listKnowledgeInventoryDocuments(state),
     knowledgeFolders: listKnowledgeVaultFolders(state),
     knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
   };
@@ -463,7 +463,7 @@ export function deleteKnowledgeFileSystemEntry(
       originPath: source.backing === "native" ? source.path : undefined,
     },
     deletedKnowledgeIds,
-    knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: 2_000 })),
+    knowledge: listKnowledgeInventoryDocuments(state),
     knowledgeFolders: listKnowledgeVaultFolders(state),
     knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
   };
@@ -476,6 +476,17 @@ export function filterEnabledKnowledgeDocuments(
   return documents.filter((document) =>
     isPrimaryLibraryDocument(document) && isKnowledgeDocumentSourceEnabled(state, document)
   );
+}
+
+export function listKnowledgeInventoryDocuments(
+  state: BridgeState,
+  limit = KNOWLEDGE_INVENTORY_LIMIT,
+): KnowledgeDocument[] {
+  const documents = filterEnabledKnowledgeDocuments(
+    state,
+    state.app.knowledge.list({ lifecycle: "active" }),
+  );
+  return Number.isFinite(limit) && limit > 0 ? documents.slice(0, limit) : documents;
 }
 
 export function writeKnowledgeFile(
@@ -1815,7 +1826,7 @@ export function importLocalFolderToKnowledge(
   ]);
 
   return {
-    knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: 2_000 })),
+    knowledge: listKnowledgeInventoryDocuments(state),
     knowledgeFolders: listKnowledgeVaultFolders(state),
     knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
   };

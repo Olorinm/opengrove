@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createOpenGrove } from "../app/create-opengrove.js";
 import { createHermesKernelAdapter } from "../kernel/adapters/hermes.js";
+import type { BridgeState } from "../server/bridge-types.js";
+import { listKnowledgeInventoryDocuments } from "../server/knowledge-files.js";
 
 async function main() {
   const app = createOpenGrove({
@@ -44,6 +46,36 @@ async function main() {
   assert.ok(
     app.knowledge.listRevisions({ knowledgeId: `artifact.${artifact.id}` }).length > 0,
     "mirrored artifact should keep revision history",
+  );
+
+  const olderVisibleDocument = app.knowledge.create({
+    type: "note",
+    title: "Old visible vault note",
+    body: "Visible library note",
+    format: "markdown",
+    tags: [],
+    lifecycle: "active",
+    metadata: {
+      vaultPath: "OpenGrove/notes/old-visible.md",
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  for (let index = 0; index < 6; index += 1) {
+    app.knowledge.create({
+      type: "project_doc",
+      title: `Hidden project doc ${index}`,
+      body: "Hidden from the primary library tree",
+      format: "markdown",
+      tags: [],
+      lifecycle: "active",
+    });
+  }
+  assert.ok(
+    listKnowledgeInventoryDocuments(
+      { app, settings: { kernelKnowledgeSourceEnabled: {} } } as unknown as BridgeState,
+      3,
+    ).some((document) => document.id === olderVisibleDocument.id),
+    "knowledge inventory should filter visible documents before applying the limit",
   );
 
   const events = [];

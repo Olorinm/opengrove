@@ -9,11 +9,10 @@ import type {
   BridgeAskResult,
   BridgeState,
 } from "./bridge-types.js";
-import { KNOWLEDGE_INVENTORY_LIMIT } from "./bridge-types.js";
 import { getBridgeSettingsSnapshot, recreateBridgeApp } from "./bridge-state.js";
 import { extractMediaArtifactsFromEvents } from "./media-artifacts.js";
 import { buildProviderHttpCaptureDiagnostics } from "./provider-http-captures.js";
-import { filterEnabledKnowledgeDocuments } from "./knowledge-files.js";
+import { listKnowledgeInventoryDocuments } from "./knowledge-files.js";
 import {
   attachModelId,
   buildContextRecords,
@@ -347,7 +346,7 @@ function finalizeAskResponse(
     approvals: state.app.approvals.list(),
     events,
     memory: state.app.memory.list(),
-    knowledge: filterEnabledKnowledgeDocuments(state, state.app.knowledge.list({ limit: KNOWLEDGE_INVENTORY_LIMIT })),
+    knowledge: listKnowledgeInventoryDocuments(state),
     knowledgeLedgers: state.app.knowledge.snapshotLedgers(),
     artifacts: state.app.artifacts.list(),
     workingState: state.app.workingState.get(),

@@ -121,7 +121,7 @@ export interface BridgeRuntimeControls {
   defaultSpeedTier?: string;
 }
 
-export const KNOWLEDGE_INVENTORY_LIMIT = 400;
+export const KNOWLEDGE_INVENTORY_LIMIT = 5_000;
 export const KNOWLEDGE_FILE_SIZE_LIMIT = 2_000_000;
 export const GENERATED_ASSET_ROUTE = "/generated/";
 export const VAULT_FILE_ROUTE = "/vault-file/";
