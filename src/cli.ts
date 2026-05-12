@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { packageRoot } from "./package-root.js";
-import { startRelayHttpServer } from "./relay/http-relay-server.js";
+import { startInviteLandingServer } from "./invite/invite-landing-server.js";
 import { normalizePersistedAgentState } from "./storage/json-state-store.js";
 import { savePostgresStateSnapshot } from "./storage/postgres-state-store.js";
 import { startLocalProfile } from "./profiles/local.js";
@@ -20,7 +20,7 @@ Usage:
   opengrove start [--host HOST] [--port PORT]
   opengrove bridge [--host HOST] [--port PORT]
   opengrove server [--host HOST] [--port PORT] [--database-url URL] [--workspace-id ID]
-  opengrove relay [--host HOST] [--port PORT]
+  opengrove invite-landing [--host HOST] [--port PORT]
   opengrove migrate json-to-postgres --state PATH --database-url URL [--workspace-id ID]
   opengrove update
   opengrove version
@@ -28,7 +28,7 @@ Usage:
 Commands:
   start, bridge   Start the local OpenGrove bridge and UI.
   server          Start the deployable OpenGrove server profile.
-  relay           Start the OpenGrove room relay HTTP/SSE server.
+  invite-landing  Start the public invite landing page server.
   migrate         Run data migrations between storage profiles.
   update          Upgrade the npm global installation to the latest version.
   version         Print the installed OpenGrove version.
@@ -61,9 +61,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (command === "relay") {
+  if (command === "invite-landing") {
     const options = parseStartOptions(args.slice(1));
-    startRelayHttpServer(options);
+    startInviteLandingServer(options);
     return;
   }
 

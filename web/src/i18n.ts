@@ -115,7 +115,7 @@ export type TranslationKey =
   | "composer.effortXHigh"
   | "settings.kernels"
   | "settings.providers"
-  | "settings.relay"
+  | "settings.remoteMessaging"
   | "settings.network"
   | "settings.diagnostics"
   | "settings.appearance"
@@ -124,21 +124,13 @@ export type TranslationKey =
   | "settings.general"
   | "settings.kernelsDescription"
   | "settings.providersDescription"
-  | "settings.relayDescription"
+  | "settings.remoteMessagingDescription"
   | "settings.networkDescription"
-  | "settings.relayServer"
-  | "settings.relayReady"
-  | "settings.relayMissing"
-  | "settings.relayEnabled"
-  | "settings.relayEnabledCopy"
-  | "settings.relayBaseUrl"
-  | "settings.relayBaseUrlCopy"
-  | "settings.relayToken"
-  | "settings.relayTokenCopy"
-  | "settings.relayTokenPlaceholder"
-  | "settings.relayWorkspace"
-  | "settings.relayWorkspaceCopy"
-  | "settings.relayWorkspacePending"
+  | "settings.inviteLanding"
+  | "settings.notConfigured"
+  | "settings.inviteLandingUrl"
+  | "settings.inviteLandingUrlCopy"
+  | "settings.optionalSecretPlaceholder"
   | "settings.matrixServer"
   | "settings.matrixEnabled"
   | "settings.matrixEnabledCopy"
@@ -415,7 +407,7 @@ const ZH_CN: Dictionary = {
   "composer.effortXHigh": "超高",
   "settings.kernels": "内核与知识",
   "settings.providers": "模型提供方",
-  "settings.relay": "远程通信",
+  "settings.remoteMessaging": "远程通信",
   "settings.network": "网络代理",
   "settings.diagnostics": "抓包与诊断",
   "settings.appearance": "外观",
@@ -424,21 +416,13 @@ const ZH_CN: Dictionary = {
   "settings.general": "常规",
   "settings.kernelsDescription": "选择默认内核，并管理它们暴露给资料库的本机知识来源。",
   "settings.providersDescription": "管理可绑定到不同内核的模型网关和 coding plan。",
-  "settings.relayDescription": "配置远程员工加入共享群聊时使用的 Matrix/Tuwunel，以及生成邀请链接的公开落地页。",
+  "settings.remoteMessagingDescription": "配置远程员工加入共享群聊时使用的 Matrix/Tuwunel，以及生成邀请链接的公开落地页。",
   "settings.networkDescription": "配置内核和安装命令使用的代理；未开启时会继承终端环境代理。",
-  "settings.relayServer": "邀请落地页",
-  "settings.relayReady": "已配置",
-  "settings.relayMissing": "未配置",
-  "settings.relayEnabled": "启用邀请落地页",
-  "settings.relayEnabledCopy": "只用于让朋友打开邀请并跳回本机 OpenGrove，不承载群聊消息。",
-  "settings.relayBaseUrl": "落地页地址",
-  "settings.relayBaseUrlCopy": "用于生成朋友能打开的邀请页面；真正的消息同步仍然走 Matrix/Tuwunel。",
-  "settings.relayToken": "访问 token",
-  "settings.relayTokenCopy": "有鉴权时填写；公开邀请接受不需要这个 token。",
-  "settings.relayTokenPlaceholder": "可选",
-  "settings.relayWorkspace": "工作区",
-  "settings.relayWorkspaceCopy": "第一次生成邀请时会自动创建。",
-  "settings.relayWorkspacePending": "尚未创建",
+  "settings.inviteLanding": "邀请落地页",
+  "settings.notConfigured": "未配置",
+  "settings.inviteLandingUrl": "落地页地址",
+  "settings.inviteLandingUrlCopy": "用于生成朋友能打开的邀请页面；真正的消息同步仍然走 Matrix/Tuwunel。",
+  "settings.optionalSecretPlaceholder": "可选",
   "settings.matrixServer": "Matrix / Tuwunel",
   "settings.matrixEnabled": "启用 Matrix",
   "settings.matrixEnabledCopy": "使用 Matrix homeserver 创建共享群聊，商业化默认推荐 Tuwunel。",
@@ -713,7 +697,7 @@ const EN: Dictionary = {
   "composer.effortXHigh": "Extra high",
   "settings.kernels": "Kernels & Knowledge",
   "settings.providers": "Providers",
-  "settings.relay": "Remote messaging",
+  "settings.remoteMessaging": "Remote messaging",
   "settings.network": "Network proxy",
   "settings.diagnostics": "Capture & Diagnostics",
   "settings.appearance": "Appearance",
@@ -722,21 +706,13 @@ const EN: Dictionary = {
   "settings.general": "General",
   "settings.kernelsDescription": "Choose the default kernel and manage the local knowledge sources it exposes to the library.",
   "settings.providersDescription": "Manage model gateways and coding plans that can be bound to different kernels.",
-  "settings.relayDescription": "Configure Matrix/Tuwunel for shared rooms, plus the public landing page used to generate invite links.",
+  "settings.remoteMessagingDescription": "Configure Matrix/Tuwunel for shared rooms, plus the public landing page used to generate invite links.",
   "settings.networkDescription": "Configure the proxy used by kernels and install commands. When disabled, terminal proxy environment variables are inherited.",
-  "settings.relayServer": "Invite landing page",
-  "settings.relayReady": "Configured",
-  "settings.relayMissing": "Not configured",
-  "settings.relayEnabled": "Enable invite landing page",
-  "settings.relayEnabledCopy": "Only helps friends open an invite and return to their local OpenGrove. Room messages still use Matrix/Tuwunel.",
-  "settings.relayBaseUrl": "Landing page URL",
-  "settings.relayBaseUrlCopy": "Used to generate a friend-facing invite page; actual message sync still uses Matrix/Tuwunel.",
-  "settings.relayToken": "Access token",
-  "settings.relayTokenCopy": "Fill this when authentication is required. Public invite acceptance does not need this token.",
-  "settings.relayTokenPlaceholder": "Optional",
-  "settings.relayWorkspace": "Workspace",
-  "settings.relayWorkspaceCopy": "Created automatically the first time you generate an invite.",
-  "settings.relayWorkspacePending": "Not created yet",
+  "settings.inviteLanding": "Invite landing page",
+  "settings.notConfigured": "Not configured",
+  "settings.inviteLandingUrl": "Landing page URL",
+  "settings.inviteLandingUrlCopy": "Used to generate a friend-facing invite page; actual message sync still uses Matrix/Tuwunel.",
+  "settings.optionalSecretPlaceholder": "Optional",
   "settings.matrixServer": "Matrix / Tuwunel",
   "settings.matrixEnabled": "Enable Matrix",
   "settings.matrixEnabledCopy": "Use a Matrix homeserver for shared rooms. Tuwunel is the commercial-friendly default target.",

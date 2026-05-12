@@ -8,11 +8,11 @@ import { renderContextRecordCard } from "../system/system-views";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { KernelIcon, ProviderIcon } from "../ui/entity-icons";
 
-type SettingsSectionId = "kernels" | "providers" | "relay" | "network" | "diagnostics" | "appearance";
+type SettingsSectionId = "kernels" | "providers" | "remoteMessaging" | "network" | "diagnostics" | "appearance";
 type SettingsSectionLabelKey =
   | "settings.kernels"
   | "settings.providers"
-  | "settings.relay"
+  | "settings.remoteMessaging"
   | "settings.network"
   | "settings.diagnostics"
   | "settings.appearance";
@@ -20,7 +20,7 @@ type SettingsSectionLabelKey =
 const SETTINGS_SECTIONS: Array<{ id: SettingsSectionId; labelKey: SettingsSectionLabelKey; icon: typeof Cpu }> = [
   { id: "kernels", labelKey: "settings.kernels", icon: Cpu },
   { id: "providers", labelKey: "settings.providers", icon: PlugZap },
-  { id: "relay", labelKey: "settings.relay", icon: Globe2 },
+  { id: "remoteMessaging", labelKey: "settings.remoteMessaging", icon: Globe2 },
   { id: "network", labelKey: "settings.network", icon: Globe2 },
   { id: "diagnostics", labelKey: "settings.diagnostics", icon: Bug },
   { id: "appearance", labelKey: "settings.appearance", icon: Palette },
@@ -946,13 +946,13 @@ export function SettingsDialog(props: {
             </div>
           ) : null}
 
-          {activeSection === "relay" ? (
+          {activeSection === "remoteMessaging" ? (
             <div className="settings-page-stack">
               <section className="settings-list-section">
                 <div className="settings-list-section-heading">
                   <h2>{t("settings.matrixServer")}</h2>
                   <span className={matrixSettings.enabled && matrixSettings.homeserverUrl && matrixSettings.userId && matrixSettings.accessToken ? "settings-status-pill" : "settings-status-pill muted"}>
-                    {matrixSettings.enabled && matrixSettings.homeserverUrl && matrixSettings.userId && matrixSettings.accessToken ? t("settings.relayReady") : t("settings.relayMissing")}
+                    {matrixSettings.enabled && matrixSettings.homeserverUrl && matrixSettings.userId && matrixSettings.accessToken ? t("settings.configured") : t("settings.notConfigured")}
                   </span>
                 </div>
                 <div className="settings-list">
@@ -1013,7 +1013,7 @@ export function SettingsDialog(props: {
                       type="password"
                       value={matrixSettings.accessToken ?? ""}
                       disabled={props.loading || props.saving}
-                      placeholder={t("settings.relayTokenPlaceholder")}
+                      placeholder={t("settings.optionalSecretPlaceholder")}
                       onBlur={() => saveMatrix()}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
@@ -1027,16 +1027,16 @@ export function SettingsDialog(props: {
               </section>
               <section className="settings-list-section">
                 <div className="settings-list-section-heading">
-                  <h2>{t("settings.relayServer")}</h2>
+                  <h2>{t("settings.inviteLanding")}</h2>
                   <span className={inviteLandingSettings.baseUrl ? "settings-status-pill" : "settings-status-pill muted"}>
-                    {inviteLandingSettings.baseUrl ? t("settings.relayReady") : t("settings.relayMissing")}
+                    {inviteLandingSettings.baseUrl ? t("settings.configured") : t("settings.notConfigured")}
                   </span>
                 </div>
                 <div className="settings-list">
                   <label className="settings-list-row settings-list-row-field">
                     <span className="settings-list-row-main">
-                      <strong>{t("settings.relayBaseUrl")}</strong>
-                      <small>{t("settings.relayBaseUrlCopy")}</small>
+                      <strong>{t("settings.inviteLandingUrl")}</strong>
+                      <small>{t("settings.inviteLandingUrlCopy")}</small>
                     </span>
                     <input
                       value={inviteLandingSettings.baseUrl}
@@ -1694,7 +1694,7 @@ function sectionTitle(value: SettingsSectionId, t: TranslationFn): string {
 function sectionDescription(value: SettingsSectionId, t: TranslationFn): string {
   if (value === "kernels") return t("settings.kernelsDescription");
   if (value === "providers") return t("settings.providersDescription");
-  if (value === "relay") return t("settings.relayDescription");
+  if (value === "remoteMessaging") return t("settings.remoteMessagingDescription");
   if (value === "network") return t("settings.networkDescription");
   if (value === "diagnostics") return t("settings.diagnosticsDescription");
   if (value === "appearance") return t("settings.appearanceDescription");

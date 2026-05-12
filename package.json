@@ -44,7 +44,7 @@
     "check:secrets": "node scripts/check-secrets.mjs",
     "smoke": "npm run build:server && node dist/examples/smoke.js",
     "eval": "npm run build:server && node dist/evals/run-evals.js",
-    "test:harness": "npm run build:server && node dist/tests/skill-harness.js && node dist/tests/kernel-knowledge-harness.js && node dist/tests/native-skill-publisher-harness.js && node dist/tests/claude-code-runtime-harness.js && node dist/tests/claude-agent-sdk-runtime-harness.js && node dist/tests/hermes-runtime-harness.js && node dist/tests/kernel-extension-harness.js && node dist/tests/openai-http-runtime-harness.js && node dist/tests/bridge-kernel-selection-harness.js && node dist/tests/server-profile-harness.js",
+    "test:harness": "npm run build:server && node dist/tests/skill-harness.js && node dist/tests/kernel-knowledge-harness.js && node dist/tests/native-skill-publisher-harness.js && node dist/tests/claude-code-runtime-harness.js && node dist/tests/claude-agent-sdk-runtime-harness.js && node dist/tests/hermes-runtime-harness.js && node dist/tests/kernel-extension-harness.js && node dist/tests/openai-http-runtime-harness.js && node dist/tests/bridge-kernel-selection-harness.js && node dist/tests/server-profile-harness.js && node dist/tests/invite-landing-harness.js",
     "bridge": "npm run build && node dist/server/local-bridge.js",
     "capture:provider": "node scripts/provider-http-capture.mjs",
     "prepack": "npm run build"

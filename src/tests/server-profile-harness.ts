@@ -39,22 +39,22 @@ try {
   const probePreflight = await fetch(`${baseUrl}/opengrove-probe`, {
     method: "OPTIONS",
     headers: {
-      origin: "https://relay.example.com",
+      origin: "https://invite.example.com",
       "access-control-request-method": "GET",
       "access-control-request-private-network": "true",
     },
   });
   assert.equal(probePreflight.status, 204);
-  assert.equal(probePreflight.headers.get("access-control-allow-origin"), "https://relay.example.com");
+  assert.equal(probePreflight.headers.get("access-control-allow-origin"), "https://invite.example.com");
   assert.equal(probePreflight.headers.get("access-control-allow-private-network"), "true");
 
   const probe = await fetch(`${baseUrl}/opengrove-probe`, {
     headers: {
-      origin: "https://relay.example.com",
+      origin: "https://invite.example.com",
     },
   });
   assert.equal(probe.status, 200);
-  assert.equal(probe.headers.get("access-control-allow-origin"), "https://relay.example.com");
+  assert.equal(probe.headers.get("access-control-allow-origin"), "https://invite.example.com");
   const probeJson = await probe.json() as { ok?: boolean; product?: string; name?: string };
   assert.equal(probeJson.ok, true);
   assert.equal(probeJson.product, "OpenGrove");

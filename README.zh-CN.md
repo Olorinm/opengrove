@@ -137,7 +137,7 @@ OPENGROVE_INVITE_BASE_URL=https://invite.example.com
 - Matrix homeserver URL 和邀请落地页 URL 可以公开。
 - Matrix access token 必须留在各自本机。
 - 邀请链接只发给目标朋友。
-- 邀请落地页不是消息 relay；它只把不透明邀请 payload 转给本机 OpenGrove UI。
+- 邀请落地页不承载 Room 消息；它只把不透明邀请 payload 转给本机 OpenGrove UI。
 - 跨不可信网络使用 Matrix 和邀请落地页时应启用 HTTPS。
 
 ## 内核
@@ -348,7 +348,7 @@ src/app/               OpenGrove 装配入口和应用 wiring
 src/kernel/            Kernel 契约、发现逻辑、tool bridge 和 adapters
 src/runtime/           Codex、Claude Code、Hermes、Pi、HTTP、generic CLI、proxy、capture、transports 和 projectors
 src/server/            本地 bridge、settings、kernel selection、routes、approvals、artifacts
-src/relay/             邀请落地页服务，以及历史 Relay 协议 harness
+src/invite/            公开邀请落地页服务
 src/knowledge/         Knowledge store views、organizer helpers、feedback 和 vault logic
 src/skills/            Skill catalog、runtime 和原生发布辅助逻辑
 src/tests/             skills、kernels、runtimes 和 bridge selection 的 harness tests

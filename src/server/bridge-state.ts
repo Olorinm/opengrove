@@ -148,7 +148,7 @@ export function normalizeBridgeSettingsPatch(input: unknown, base: BridgeSetting
         : base.codexRawEventCaptureEnabled,
     ),
     kernelProxy: normalizeKernelProxySettings(source.kernelProxy, base.kernelProxy),
-    inviteLanding: normalizeInviteLandingSettings(source.inviteLanding ?? source.relay, base.inviteLanding),
+    inviteLanding: normalizeInviteLandingSettings(source.inviteLanding, base.inviteLanding),
     matrix: normalizeMatrixSettings(source.matrix, base.matrix),
     kernelPathOverrides: normalizeKernelPathOverrides(
       source.kernelPathOverrides,
@@ -183,7 +183,7 @@ export function loadBridgeSettings(state: BridgeState): BridgeSettings {
           ? parsed.codexRawEventCaptureEnabled
           : defaults.codexRawEventCaptureEnabled,
       kernelProxy: normalizeKernelProxySettings(parsed.kernelProxy, defaults.kernelProxy),
-      inviteLanding: normalizeInviteLandingSettings(parsed.inviteLanding ?? parsed.relay, defaults.inviteLanding),
+      inviteLanding: normalizeInviteLandingSettings(parsed.inviteLanding, defaults.inviteLanding),
       matrix: normalizeMatrixSettings(parsed.matrix, defaults.matrix),
       kernelPathOverrides: normalizeKernelPathOverrides(
         parsed.kernelPathOverrides,
@@ -239,8 +239,8 @@ function defaultKernelProxySettings(): BridgeKernelProxySettings {
 }
 
 function defaultInviteLandingSettings(): BridgeInviteLandingSettings {
-  const baseUrl = readAppEnv("OPENGROVE_INVITE_BASE_URL")
-    || readAppEnv("OPENGROVE_INVITE_URL")
+  const baseUrl = readAppEnv("INVITE_BASE_URL")
+    || readAppEnv("INVITE_URL")
     || "";
   return {
     baseUrl,

@@ -1,6 +1,6 @@
 # OpenGrove Project Overview
 
-OpenGrove is a local-first agent workspace where people and agents talk, remember, and collaborate. It provides a stable workspace around Rooms, contacts, native agent kernels, local knowledge files, tool boundaries, artifacts, settings, approvals, Relay-backed remote employees, and diagnostics.
+OpenGrove is a local-first agent workspace where people and agents talk, remember, and collaborate. It provides a stable workspace around Rooms, contacts, native agent kernels, local knowledge files, tool boundaries, artifacts, settings, approvals, Matrix/Tuwunel-backed remote employees, and diagnostics.
 
 OpenGrove is not a replacement model loop or a generic chat wrapper. The current design keeps native kernels in charge of their own reasoning, tools, session semantics, compaction, and provider behavior where possible. OpenGrove owns the host layer around them.
 

@@ -137,7 +137,7 @@ Security boundaries:
 - The Matrix homeserver URL and invite landing page URL can be public.
 - Matrix access tokens must stay local to each OpenGrove node.
 - Invite links should only be sent to the intended person.
-- The invite landing page is not a message relay; it only forwards the opaque invite payload into a local OpenGrove UI.
+- The invite landing page does not carry Room messages; it only forwards the opaque invite payload into a local OpenGrove UI.
 - Use HTTPS for Matrix and the invite landing page across untrusted networks.
 
 ## Kernels
@@ -348,7 +348,7 @@ src/app/               OpenGrove composition root and app wiring
 src/kernel/            Kernel contracts, discovery, tool bridge, and adapters
 src/runtime/           Codex, Claude Code, Hermes, Pi, HTTP, generic CLI, proxy, capture, transports, and projectors
 src/server/            Local bridge, settings, kernel selection, routes, approvals, artifacts
-src/relay/             Invite landing page server plus historical Relay protocol harnesses
+src/invite/            Public invite landing page server
 src/knowledge/         Knowledge store views, organizer helpers, feedback, and vault logic
 src/skills/            Skill catalog, runtime, and native publication helpers
 src/tests/             Harness tests for skills, kernels, runtimes, and bridge selection

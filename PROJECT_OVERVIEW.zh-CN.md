@@ -1,6 +1,6 @@
 # OpenGrove 项目概览
 
-OpenGrove 是一个本地优先的 agent 工作空间，让人和 agent 在同一个工作台里对话、记忆和协作。它在 Rooms、通讯录、原生 agent 内核、本地知识文件、工具边界、产物、设置、审批、Relay 远程员工和诊断之间提供一层稳定的工作空间。
+OpenGrove 是一个本地优先的 agent 工作空间，让人和 agent 在同一个工作台里对话、记忆和协作。它在 Rooms、通讯录、原生 agent 内核、本地知识文件、工具边界、产物、设置、审批、Matrix/Tuwunel 远程员工和诊断之间提供一层稳定的工作空间。
 
 OpenGrove 不是新的模型循环，也不是通用聊天壳。当前设计是：原生内核继续负责自己的推理、工具、会话语义、上下文压缩和 provider 行为；OpenGrove 负责它们外面的 host 层。
 

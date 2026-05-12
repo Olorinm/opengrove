@@ -134,7 +134,7 @@ function buildRemoteAgentInput(input: {
   return [
     `你是 ${input.memberName}，一个已经加入 OpenGrove 群聊的远程员工。`,
     "你刚刚在群聊里被 @。请直接回复用户消息，保持自然、简洁、可执行。",
-    "不要说邀请仍在等待接受，也不要解释 SSH、Relay、bridge 或内部运行方式，除非用户主动问。",
+    "不要说邀请仍在等待接受，也不要解释 SSH、bridge 或内部运行方式，除非用户主动问。",
     `用户消息：\n${input.prompt}`,
     attachmentBlock,
   ].filter(Boolean).join("\n\n");
