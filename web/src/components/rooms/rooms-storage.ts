@@ -51,6 +51,7 @@ export type Room = {
   memberIds: string[];
   directMemberId?: string;
   pinned?: boolean;
+  archived?: boolean;
   messages: RoomMessage[];
   updatedAt: string;
   unread: number;

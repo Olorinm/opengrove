@@ -47,6 +47,7 @@ import {
   normalizeWorkspaceRootValue,
   resolveBridgeWorkspaceRoot,
 } from "./workspace-root.js";
+import type { RoomChannelMember } from "../rooms/channel-store.js";
 
 export function createBridgeState(options: LocalBridgeServerOptions): BridgeState {
   const state: BridgeState = {
@@ -99,6 +100,11 @@ export function recreateBridgeApp(state: BridgeState): void {
     includeCodexSkills: state.kernel === "codex",
   });
   state.store.loadInto(state.app);
+  const hadRooms = state.app.rooms.snapshot().rooms.length > 0;
+  state.app.rooms.ensureOpenGroup(seedRoomMembers(state));
+  if (!hadRooms) {
+    state.store.saveFrom(state.app);
+  }
   state.app.skills.list();
 }
 
@@ -257,6 +263,44 @@ function defaultMatrixSettings(): BridgeMatrixSettings {
     accessToken,
     roomBindings: {},
   };
+}
+
+function seedRoomMembers(state: BridgeState): RoomChannelMember[] {
+  return getBridgeKernelOptions(state)
+    .filter((kernel) => String(kernel.id) !== "auto" && (kernel.available || kernel.installed))
+    .map((kernel) => {
+      const kernelId = String(kernel.id);
+      return {
+        id: defaultRoomMemberId(kernelId),
+        name: String(kernel.label || kernel.id),
+        kernel: kernelId,
+        model: kernelId === state.kernel ? state.model : String(kernel.providerLabel || kernel.version || "native"),
+        role: String(kernel.description || "Agent"),
+        status: kernelId === state.kernel ? "idle" : "waiting",
+        color: kernelColor(kernelId),
+        lastActive: kernelId === state.kernel ? "now" : "waiting",
+        source: "local",
+        sourceLabel: "local",
+      };
+    });
+}
+
+function defaultRoomMemberId(kernelId: string): string {
+  let hash = 2166136261;
+  for (const char of kernelId) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `member_${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function kernelColor(kernelId: string): string {
+  const palette = ["#2563eb", "#f59e0b", "#10b981", "#8b5cf6", "#ef4444", "#0ea5e9", "#64748b"];
+  let hash = 0;
+  for (const char of kernelId) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+  return palette[hash % palette.length] ?? "#64748b";
 }
 
 function bridgeSettingsPath(state: BridgeState): string {

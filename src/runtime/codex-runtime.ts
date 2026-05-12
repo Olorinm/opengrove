@@ -373,11 +373,10 @@ export class CodexRuntime implements AgentRuntime {
       this.bindings.get(bindingKey) ??
       this.findCompatibleLegacyBinding(sessionId, bindingKey, options);
     const modelProviderKey = options.modelProvider ?? "";
-    const existingModelProviderKey = existing?.modelProvider ?? "";
     if (
       existing?.threadId &&
       existing.dynamicToolsFingerprint === options.dynamicToolsFingerprint &&
-      existingModelProviderKey === modelProviderKey &&
+      codexModelProviderMatches(existing.modelProvider, modelProviderKey) &&
       existing.runtimeBindingFingerprint === options.runtimeBindingFingerprint
     ) {
       try {
@@ -397,7 +396,7 @@ export class CodexRuntime implements AgentRuntime {
           ...existing,
           threadId,
           model: response.model ?? options.model,
-          modelProvider: response.modelProvider ?? options.modelProvider,
+          modelProvider: codexStoredModelProvider(response.modelProvider, options.modelProvider),
           runtimeBindingFingerprint: options.runtimeBindingFingerprint,
           cwd: options.cwd,
           updatedAt: new Date().toISOString(),
@@ -436,7 +435,7 @@ export class CodexRuntime implements AgentRuntime {
       dynamicToolsFingerprint: options.dynamicToolsFingerprint,
       runtimeBindingFingerprint: options.runtimeBindingFingerprint,
       model: response.model ?? options.model,
-      modelProvider: response.modelProvider ?? options.modelProvider,
+      modelProvider: codexStoredModelProvider(response.modelProvider, options.modelProvider),
       cwd: options.cwd,
       createdAt,
       updatedAt: createdAt,
@@ -504,7 +503,7 @@ export class CodexRuntime implements AgentRuntime {
         key.startsWith(prefix) &&
         binding.threadId &&
         binding.dynamicToolsFingerprint === options.dynamicToolsFingerprint &&
-        (binding.modelProvider ?? "") === (options.modelProvider ?? "") &&
+        codexModelProviderMatches(binding.modelProvider, options.modelProvider) &&
         (!binding.cwd || binding.cwd === options.cwd)
       )
       .map(([, binding]) => binding)
@@ -556,6 +555,28 @@ function codexRuntimeBindingFingerprint(input: {
     input.cwd,
     input.rawEventCapture ? "raw" : "normal",
   ].join(":");
+}
+
+function codexModelProviderMatches(left: string | null | undefined, right: string | null | undefined): boolean {
+  const normalizedLeft = codexComparableModelProvider(left);
+  const normalizedRight = codexComparableModelProvider(right);
+  return normalizedLeft === normalizedRight;
+}
+
+function codexStoredModelProvider(
+  responseModelProvider: string | null | undefined,
+  requestedModelProvider: string | undefined,
+): string | undefined {
+  const value = responseModelProvider ?? requestedModelProvider;
+  if (!requestedModelProvider && codexComparableModelProvider(value) === "") {
+    return undefined;
+  }
+  return value ?? requestedModelProvider;
+}
+
+function codexComparableModelProvider(value: string | null | undefined): string {
+  const normalized = value?.trim() ?? "";
+  return normalized === "openai" ? "" : normalized;
 }
 
 function shouldExposeCodexDynamicTools(request: AgentTurnRequest): boolean {

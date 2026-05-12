@@ -31,6 +31,7 @@ import { handleKnowledgeRoute } from "./routes/knowledge.js";
 import { handleMatrixRoomRoute } from "./routes/matrix-rooms.js";
 import { handleRemoteInviteRoute } from "./routes/remote-invites.js";
 import { handleRemoteAgentRoute } from "./routes/remote-agents.js";
+import { handleRoomsRoute } from "./routes/rooms.js";
 import { handleSettingsRoute } from "./routes/settings.js";
 import { handleWorkspaceRoute } from "./routes/workspace.js";
 import {
@@ -384,6 +385,10 @@ export function startOpenGroveServer(options: LocalBridgeServerOptions = {}) {
 
       if (request.method === "GET" && routeUrl.pathname === "/events") {
         sendJson(response, 200, { ok: true, events: state.app.events.list() });
+        return;
+      }
+
+      if (await handleRoomsRoute({ request, response, url: routeUrl, state, sendJson, readJsonBody })) {
         return;
       }
 

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { readAppEnv } from "../identity.js";
 import type {
@@ -19,9 +19,10 @@ import type {
   KnowledgeFeedbackEvent,
   KnowledgeRevision,
 } from "../knowledge/types.js";
+import type { RoomChannelSnapshot } from "../rooms/channel-store.js";
 
 export interface PersistedAgentState {
-  version: 7;
+  version: 8;
   savedAt: string;
   knowledge: KnowledgeDocument[];
   knowledgeEvidence: KnowledgeEvidenceRecord[];
@@ -37,6 +38,7 @@ export interface PersistedAgentState {
   sessions: SessionRecord[];
   runs: RunRecord[];
   executions: ExecutionRecord[];
+  rooms: RoomChannelSnapshot;
 }
 
 export interface AgentStateStore {
@@ -98,6 +100,10 @@ export interface PersistableAgentStatePorts {
     restore(records: ExecutionRecord[]): void;
     list(): ExecutionRecord[];
   };
+  rooms: {
+    restore(snapshot: RoomChannelSnapshot | undefined): void;
+    snapshot(): RoomChannelSnapshot;
+  };
 }
 
 export function createJsonStateStore(path = defaultStatePath()): JsonStateStore {
@@ -119,7 +125,9 @@ export function createJsonStateStore(path = defaultStatePath()): JsonStateStore 
       const state = snapshotPersistedAgentState(app);
 
       mkdirSync(dirname(resolved), { recursive: true });
-      writeFileSync(resolved, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+      const tempPath = `${resolved}.${process.pid}.${Date.now()}.tmp`;
+      writeFileSync(tempPath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+      renameSync(tempPath, resolved);
       return state;
     },
   };
@@ -127,7 +135,7 @@ export function createJsonStateStore(path = defaultStatePath()): JsonStateStore 
 
 export function snapshotPersistedAgentState(app: PersistableAgentStatePorts): PersistedAgentState {
   return {
-    version: 7,
+    version: 8,
     savedAt: new Date().toISOString(),
     knowledge: app.knowledge.snapshot(),
     knowledgeEvidence: app.knowledge.listEvidence(),
@@ -143,6 +151,7 @@ export function snapshotPersistedAgentState(app: PersistableAgentStatePorts): Pe
     sessions: app.sessions.list(),
     runs: app.sessions.listRuns(),
     executions: app.executions.list(),
+    rooms: app.rooms.snapshot(),
   };
 }
 
@@ -168,6 +177,7 @@ export function restorePersistedAgentState(
     runs: state.runs,
   });
   app.executions.restore(state.executions);
+  app.rooms.restore(state.rooms);
 }
 
 function defaultStatePath(): string {
@@ -180,7 +190,7 @@ export function normalizePersistedAgentState(input: unknown): PersistedAgentStat
       ? (input as Record<string, unknown>)
       : {};
   return {
-    version: 7,
+    version: 8,
     savedAt: typeof object.savedAt === "string" ? object.savedAt : new Date().toISOString(),
     knowledge: Array.isArray(object.knowledge) ? object.knowledge as KnowledgeDocument[] : [],
     knowledgeEvidence: Array.isArray(object.knowledgeEvidence) ? object.knowledgeEvidence as KnowledgeEvidenceRecord[] : [],
@@ -211,7 +221,22 @@ export function normalizePersistedAgentState(input: unknown): PersistedAgentStat
     sessions: Array.isArray(object.sessions) ? object.sessions as SessionRecord[] : [],
     runs: Array.isArray(object.runs) ? object.runs as RunRecord[] : [],
     executions: Array.isArray(object.executions) ? object.executions as ExecutionRecord[] : [],
+    rooms: normalizeRoomChannelState(object.rooms),
   };
 }
 
 const normalizeState = normalizePersistedAgentState;
+
+function normalizeRoomChannelState(input: unknown): RoomChannelSnapshot {
+  const object = input && typeof input === "object" && !Array.isArray(input)
+    ? input as Partial<RoomChannelSnapshot>
+    : {};
+  return {
+    version: 1,
+    currentEventSeq: typeof object.currentEventSeq === "number" ? object.currentEventSeq : 0,
+    rooms: Array.isArray(object.rooms) ? object.rooms as RoomChannelSnapshot["rooms"] : [],
+    members: Array.isArray(object.members) ? object.members as RoomChannelSnapshot["members"] : [],
+    messages: Array.isArray(object.messages) ? object.messages as RoomChannelSnapshot["messages"] : [],
+    events: Array.isArray(object.events) ? object.events as RoomChannelSnapshot["events"] : [],
+  };
+}

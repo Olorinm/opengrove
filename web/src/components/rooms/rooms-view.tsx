@@ -42,10 +42,23 @@ import {
   type MatrixRoomEvent,
 } from "./room-matrix";
 import { runRemoteRoomAgent } from "./room-remote-agent";
-import { roomThreadId } from "./room-runtime";
+import { roomAgentThreadId, type RoomDeliveryContext } from "./room-runtime";
 import { RoomSettingsPanel } from "./room-settings-panel";
 import { RoomSidebar } from "./room-sidebar";
 import { useRoomsStorage } from "./use-rooms-storage";
+import {
+  addServerRoomMember,
+  applyRoomEvents,
+  createServerRoom,
+  fetchRoomEvents,
+  fetchRoomsInit,
+  openServerDirectRoom,
+  patchServerRoom,
+  patchServerRoomMessage,
+  postServerRoomMessage,
+  removeServerRoomMember,
+  roomsFromServerSnapshot,
+} from "./rooms-api";
 import {
   ROOM_OWNER_MEMBER,
   createId,
@@ -77,6 +90,7 @@ type RoomRunPromptInput = {
   targetRole: string;
   prompt: string;
   attachments: AttachmentPayload[];
+  roomContext?: RoomDeliveryContext;
   onAgentEvent?(event: AgentEventRecord): void;
   onRunId?(runId: string): void;
 };
@@ -178,6 +192,40 @@ function canSendRoomDraft(rawText: string, attachmentCount: number): boolean {
   const text = rawText.trim();
   if (!text) return false;
   return !/^@\S*$/.test(text);
+}
+
+function buildRoomDeliveryContext(
+  room: Room,
+  allMembers: RoomMember[],
+  target: RoomMember,
+  currentMessageId: string,
+): RoomDeliveryContext {
+  const memberNames = new Map(allMembers.map((member) => [member.id, member.name]));
+  memberNames.set("user", "You");
+  return {
+    room: {
+      id: room.id,
+      kind: room.kind,
+      title: room.title,
+    },
+    target: {
+      id: target.id,
+      name: target.name,
+      kernel: target.kernel,
+      model: target.model,
+    },
+    currentMessageId,
+    messages: room.messages.map((message, index) => ({
+      id: message.id,
+      seq: index + 1,
+      senderName: message.senderName,
+      senderType: message.senderType,
+      text: roomMessageText(message),
+      targetNames: message.targetIds.map((id) => memberNames.get(id) || id).filter(Boolean),
+      status: message.status,
+      createdAt: message.createdAt,
+    })),
+  };
 }
 
 function wait(ms: number): Promise<void> {
@@ -312,6 +360,9 @@ export function RoomsView(props: {
   const matrixSyncTokensRef = useRef(new Map<string, string>());
   const roomsRef = useRef<Room[]>([]);
   const membersRef = useRef<RoomMember[]>([]);
+  const agentQueuesRef = useRef(new Map<string, Promise<void>>());
+  const serverRoomsEventSeqRef = useRef(0);
+  const serverRoomsPollingRef = useRef(false);
   const { rooms, setRooms, members, setMembers, activeRoomId, setActiveRoomId, storageWarning } = useRoomsStorage({
     activeKernel: props.activeKernel,
     activeModel: props.activeModel,
@@ -352,6 +403,58 @@ export function RoomsView(props: {
   useEffect(() => {
     membersRef.current = members;
   }, [members]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchRoomsInit()
+      .then((snapshot) => {
+        if (cancelled || !snapshot.ok) return;
+        const serverRooms = roomsFromServerSnapshot(snapshot);
+        if (serverRooms.length) {
+          setRooms(serverRooms);
+          setMembers(snapshot.members);
+          setActiveRoomId((current) => serverRooms.some((room) => room.id === current) ? current : serverRooms[0]?.id ?? "");
+        }
+        serverRoomsEventSeqRef.current = snapshot.currentEventSeq;
+      })
+      .catch(() => {
+        // Local room state remains usable when the bridge is not available yet.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [setActiveRoomId, setMembers, setRooms]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      if (serverRoomsPollingRef.current) return;
+      serverRoomsPollingRef.current = true;
+      try {
+        const result = await fetchRoomEvents(serverRoomsEventSeqRef.current);
+        if (!cancelled && result.ok) {
+          serverRoomsEventSeqRef.current = result.currentEventSeq;
+          if (result.events.length) {
+            const applied = applyRoomEvents(roomsRef.current, membersRef.current, result.events);
+            setMembers(applied.members);
+            setRooms(applied.rooms);
+          }
+        }
+      } catch {
+        // Polling is best-effort; the UI should not break if the bridge restarts.
+      } finally {
+        serverRoomsPollingRef.current = false;
+      }
+    };
+    const timer = window.setInterval(() => {
+      void poll();
+    }, 1500);
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [setMembers, setRooms]);
 
   useEffect(() => {
     function syncRemoteInviteFromLocation() {
@@ -533,7 +636,7 @@ export function RoomsView(props: {
         const member = members.find((item) => item.id === message.senderId);
         if (!member) continue;
         const run = runsById.get(message.runId);
-        const expectedThreadId = roomThreadId(room.id, member.id, member.kernel);
+        const expectedThreadId = roomAgentThreadId(room.id, member.id, member.kernel);
         if (run?.sessionId && run.sessionId !== expectedThreadId) continue;
         const runId = message.runId;
         attachedRoomRunIdsRef.current.add(runId);
@@ -1145,6 +1248,7 @@ export function RoomsView(props: {
       ],
     };
     setRooms((current) => [newRoom, ...current]);
+    void createServerRoom(newRoom).catch(() => undefined);
     setActiveRoomId(newRoom.id);
     setMemberPanelOpen(false);
     setMemberPickerMode(null);
@@ -1192,6 +1296,7 @@ export function RoomsView(props: {
         ],
       };
       setRooms((current) => [newRoom, ...current]);
+      void openServerDirectRoom(member.id, member.name).catch(() => undefined);
     }
     setActiveRoomId(roomId);
     setMemberPanelOpen(false);
@@ -1205,6 +1310,9 @@ export function RoomsView(props: {
   }
 
   function toggleActiveRoomPinned() {
+    if (activeRoom) {
+      void patchServerRoom(activeRoom.id, { pinned: !activeRoom.pinned }).catch(() => undefined);
+    }
     updateActiveRoom((room) => ({
       ...room,
       pinned: !room.pinned,
@@ -1239,6 +1347,7 @@ export function RoomsView(props: {
       title: nextTitle,
       updatedAt: nowIso(),
     }));
+    void patchServerRoom(activeRoom.id, { title: nextTitle }).catch(() => undefined);
   }
 
   function addMemberToActiveRoom(member: RoomMember) {
@@ -1251,6 +1360,7 @@ export function RoomsView(props: {
       memberIds: [...room.memberIds, member.id],
       updatedAt: nowIso(),
     }));
+    void addServerRoomMember(activeRoom.id, member).catch(() => undefined);
     setMemberPanelOpen(true);
     setMemberQuery("");
     closeMemberPicker();
@@ -1270,6 +1380,7 @@ export function RoomsView(props: {
         updatedAt: nowIso(),
       };
     });
+    void removeServerRoomMember(activeRoom.id, member.id).catch(() => undefined);
     setMemberPanelOpen(true);
     setMemberQuery("");
     closeMemberPicker();
@@ -1480,16 +1591,59 @@ export function RoomsView(props: {
       unread: 0,
     }));
     updateMemberStatus(targets.map((target) => target.id), "running");
-    targets.forEach((target, index) => {
-      const assistantMessage = assistantMessages[index];
-      if (!assistantMessage) return;
-      void runTargetReply(activeRoom.id, assistantMessage.id, target, text, outgoingAttachments);
-    });
+    void postServerRoomMessage({
+      roomId: activeRoom.id,
+      text,
+      targetIds: targets.map((member) => member.id),
+      attachments: outgoingAttachments,
+      userMessageId: userMessage.id,
+      assistantMessageIds: assistantMessages.map((message) => message.id),
+    })
+      .then((result) => {
+        if (result.ok) {
+          serverRoomsEventSeqRef.current = Math.max(serverRoomsEventSeqRef.current, result.currentEventSeq);
+          for (const serverMessage of result.assistantMessages) {
+            updateRoomMessage(activeRoom.id, serverMessage.id, (message) => ({
+              ...message,
+              ...serverMessage,
+              status: serverMessage.status,
+            }));
+          }
+        }
+      })
+      .catch(() => {
+        targets.forEach((target, index) => {
+          const assistantMessage = assistantMessages[index];
+          if (!assistantMessage) return;
+          enqueueTargetReply(activeRoom.id, userMessage.id, assistantMessage.id, target, text, outgoingAttachments);
+        });
+      });
     return true;
+  }
+
+  function enqueueTargetReply(
+    roomId: string,
+    userMessageId: string,
+    messageId: string,
+    target: RoomMember,
+    prompt: string,
+    outgoingAttachments: AttachmentPayload[],
+  ) {
+    const previous = agentQueuesRef.current.get(target.id) ?? Promise.resolve();
+    const queued = previous
+      .catch(() => undefined)
+      .then(() => runTargetReply(roomId, userMessageId, messageId, target, prompt, outgoingAttachments));
+    agentQueuesRef.current.set(target.id, queued);
+    void queued.finally(() => {
+      if (agentQueuesRef.current.get(target.id) === queued) {
+        agentQueuesRef.current.delete(target.id);
+      }
+    });
   }
 
   async function runTargetReply(
     roomId: string,
+    userMessageId: string,
     messageId: string,
     target: RoomMember,
     prompt: string,
@@ -1507,6 +1661,10 @@ export function RoomsView(props: {
 
     let currentRunId = "";
     try {
+      const roomForContext = roomsRef.current.find((room) => room.id === roomId);
+      const roomContext = roomForContext
+        ? buildRoomDeliveryContext(roomForContext, membersRef.current, target, userMessageId)
+        : undefined;
       const result = await props.onRunPrompt({
         roomId,
         targetId: target.id,
@@ -1516,24 +1674,34 @@ export function RoomsView(props: {
         targetRole: target.role,
         prompt,
         attachments: outgoingAttachments,
+        roomContext,
         onRunId(runId) {
           currentRunId = runId;
           localRoomRunIdsRef.current.add(runId);
           updateRoomMessage(roomId, messageId, (message) => ({ ...message, runId }));
+          void patchServerRoomMessage(roomId, messageId, { runId }).catch(() => undefined);
         },
         onAgentEvent(event) {
           updateRoomMessage(roomId, messageId, (message) => applyAgentEventToRoomMessage(message, event));
         },
       });
+      let finalizedMessage: RoomMessage | undefined;
       updateRoomMessage(roomId, messageId, (message) => ({
-        ...finalizeRoomMessage(message, result),
+        ...(finalizedMessage = finalizeRoomMessage(message, result)),
         duration: result.duration,
       }));
+      if (finalizedMessage) {
+        void patchServerRoomMessage(roomId, messageId, { ...finalizedMessage, duration: result.duration }).catch(() => undefined);
+      }
       updateMemberStatus([target.id], "done");
     } catch (error) {
       if (isRecoverableRoomRunError(error)) return;
       const messageText = error instanceof Error ? error.message : String(error);
-      updateRoomMessage(roomId, messageId, (message) => failRoomMessage(message, messageText));
+      let failedMessage: RoomMessage | undefined;
+      updateRoomMessage(roomId, messageId, (message) => (failedMessage = failRoomMessage(message, messageText)));
+      if (failedMessage) {
+        void patchServerRoomMessage(roomId, messageId, failedMessage).catch(() => undefined);
+      }
       updateMemberStatus([target.id], "idle");
     } finally {
       if (currentRunId) {
