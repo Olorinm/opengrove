@@ -90,6 +90,24 @@ async function assertProtectedRelay(): Promise<void> {
 
     const created = await postOrGet("POST", `${baseUrl}/workspaces`, { name: "Protected" }, { authorization: `Bearer ${token}` });
     assert.equal(created.workspace.name, "Protected");
+    const room = await postOrGet("POST", `${baseUrl}/rooms`, {
+      workspaceId: created.workspace.id,
+      title: "Protected room",
+      createdByMemberId: "bootstrap",
+    }, { authorization: `Bearer ${token}` });
+    const owner = await postOrGet("POST", `${baseUrl}/rooms/${encodeURIComponent(room.room.id)}/members`, {
+      workspaceId: created.workspace.id,
+      kind: "human",
+      displayName: "Owner",
+    }, { authorization: `Bearer ${token}` });
+    const deniedMembers = await fetch(`${baseUrl}/rooms/${encodeURIComponent(room.room.id)}/members`);
+    assert.equal(deniedMembers.status, 401);
+    const visibleMembers = await postOrGet(
+      "GET",
+      `${baseUrl}/rooms/${encodeURIComponent(room.room.id)}/members?memberId=${encodeURIComponent(owner.member.id)}&memberToken=${encodeURIComponent(owner.memberAccessToken)}`,
+    );
+    assert.equal(visibleMembers.members.length, 1);
+    assert.equal(visibleMembers.members[0].displayName, "Owner");
   } finally {
     protectedServer.close();
   }

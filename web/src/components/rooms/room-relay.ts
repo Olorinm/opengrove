@@ -46,6 +46,12 @@ export type RelayAcceptedInvite = {
   memberAccessToken?: string;
 };
 
+export type RelayRoomMemberRecord = {
+  id: string;
+  kind?: string;
+  displayName: string;
+};
+
 export async function acceptRelayInvite(input: {
   invite: RemoteRoomInvitePayload;
   member: RoomMember;
@@ -67,6 +73,23 @@ export async function acceptRelayInvite(input: {
     throw new Error(data.message || data.error || `relay_accept_failed:${response.status}`);
   }
   return data;
+}
+
+export async function listRelayRoomMembers(binding: RoomRelayBinding): Promise<RelayRoomMemberRecord[]> {
+  if (!binding.baseUrl || !binding.roomId || !binding.memberId) return [];
+  const url = new URL(`/rooms/${encodeURIComponent(binding.roomId)}/members`, ensureTrailingSlash(binding.baseUrl));
+  url.searchParams.set("memberId", binding.memberId);
+  if (binding.memberToken) url.searchParams.set("memberToken", binding.memberToken);
+  const response = await fetch(url.toString(), {
+    headers: {
+      ...(binding.memberToken ? { "x-opengrove-member-token": binding.memberToken } : {}),
+    },
+  });
+  const data = await response.json() as { ok?: boolean; members?: RelayRoomMemberRecord[]; error?: string; message?: string };
+  if (!response.ok || !Array.isArray(data.members)) {
+    throw new Error(data.message || data.error || `relay_members_failed:${response.status}`);
+  }
+  return data.members;
 }
 
 export async function publishRelayMessage(input: {
@@ -125,19 +148,21 @@ export function relayMemberLocalId(relayMemberId: string): string {
 export function roomMemberFromRelayJoin(input: {
   relayMemberId: string;
   displayName: string;
+  kind?: string;
   homeNodeLabel?: string;
 }): RoomMember {
+  const isHuman = input.kind === "human";
   return {
     id: relayMemberLocalId(input.relayMemberId),
-    name: input.displayName.trim() || "远程员工",
+    name: normalizeRelayDisplayName(input.displayName, isHuman),
     kernel: "remote-agent",
     model: "OpenGrove Relay",
-    role: "远程员工",
+    role: isHuman ? "远程成员" : "远程员工",
     status: "waiting",
     color: "#14b8a6",
     lastActive: "刚刚",
-    source: "remote",
-    sourceLabel: roomMemberSourceLabel({ source: "remote" }),
+    source: isHuman ? "human" : "remote",
+    sourceLabel: isHuman ? "远程" : roomMemberSourceLabel({ source: "remote" }),
     inviteStatus: "accepted",
     homeNodeLabel: input.homeNodeLabel || "OpenGrove Relay",
     relayMemberId: input.relayMemberId,
@@ -257,4 +282,10 @@ function hashStableId(value: string): string {
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0).toString(36).padStart(7, "0");
+}
+
+function normalizeRelayDisplayName(value: string, isHuman: boolean): string {
+  const name = value.trim();
+  if (isHuman && (!name || name === "我")) return "房主";
+  return name || (isHuman ? "远程成员" : "远程员工");
 }

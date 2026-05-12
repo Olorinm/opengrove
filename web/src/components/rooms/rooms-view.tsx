@@ -32,12 +32,14 @@ import { RoomMessageStream } from "./room-message-stream";
 import {
   acceptRelayInvite,
   connectRelayRoom,
+  listRelayRoomMembers,
   publishRelayMessage,
   publishRelayTurnFinal,
   roomFromAcceptedRelayInvite,
   roomMemberFromRelayJoin,
   type RelayEventEnvelope,
   type RelayMessagePayload,
+  type RelayRoomMemberRecord,
   type RelayTurnFinalPayload,
 } from "./room-relay";
 import { runRemoteRoomAgent } from "./room-remote-agent";
@@ -490,13 +492,21 @@ export function RoomsView(props: {
   );
 
   useEffect(() => {
+    let closed = false;
     const sources: EventSource[] = [];
     for (const room of roomsRef.current) {
       if (!room.relay?.baseUrl || !room.relay.roomId || !room.relay.memberId) continue;
+      const binding = room.relay;
+      void listRelayRoomMembers(binding)
+        .then((relayMembers) => {
+          if (!closed) syncRelayRoomMembers(room.id, binding, relayMembers);
+        })
+        .catch(() => undefined);
       const source = connectRelayRoom(room.relay, (event) => handleRelayRoomEvent(room.id, event));
       if (source) sources.push(source);
     }
     return () => {
+      closed = true;
       for (const source of sources) source.close();
     };
   }, [relayConnectionKey]);
@@ -771,8 +781,9 @@ export function RoomsView(props: {
   }
 
   function handleRelayRoomEvent(localRoomId: string, event: RelayEventEnvelope) {
-    if (relayEventIdsRef.current.has(event.id)) return;
-    relayEventIdsRef.current.add(event.id);
+    const roomEventKey = `${localRoomId}:${event.id}`;
+    if (relayEventIdsRef.current.has(roomEventKey)) return;
+    relayEventIdsRef.current.add(roomEventKey);
     const room = roomsRef.current.find((item) => item.id === localRoomId);
     const binding = room?.relay;
     if (!room || !binding) return;
@@ -785,6 +796,7 @@ export function RoomsView(props: {
       const member = roomMemberFromRelayJoin({
         relayMemberId,
         displayName: payload.displayName || "远程员工",
+        kind: payload.kind,
       });
       setMembers((current) => current.some((item) => item.id === member.id) ? current : [...current, member]);
       updateRoom(localRoomId, (currentRoom) => ({
@@ -792,6 +804,21 @@ export function RoomsView(props: {
         memberIds: currentRoom.memberIds.includes(member.id)
           ? currentRoom.memberIds
           : [...currentRoom.memberIds, member.id],
+        messages: currentRoom.messages.some((message) => message.id === event.id)
+          ? currentRoom.messages
+          : [
+            ...currentRoom.messages,
+            {
+              id: event.id,
+              senderId: "system",
+              senderName: "系统",
+              senderType: "system",
+              text: `${member.name} 已通过 Relay 加入群聊。`,
+              targetIds: [],
+              status: "done",
+              createdAt: event.createdAt || nowIso(),
+            },
+          ],
         updatedAt: event.createdAt || nowIso(),
       }));
       return;
@@ -917,6 +944,39 @@ export function RoomsView(props: {
     if (relayMember) {
       updateMemberStatus([relayMember.id], "done");
     }
+  }
+
+  function syncRelayRoomMembers(
+    localRoomId: string,
+    binding: NonNullable<Room["relay"]>,
+    relayMembers: RelayRoomMemberRecord[],
+  ) {
+    const remoteMembers = relayMembers
+      .filter((relayMember) => relayMember.id && relayMember.id !== binding.memberId)
+      .map((relayMember) => roomMemberFromRelayJoin({
+        relayMemberId: relayMember.id,
+        displayName: relayMember.displayName || "远程员工",
+        kind: relayMember.kind,
+      }));
+    if (!remoteMembers.length) return;
+    setMembers((current) => {
+      const existingIds = new Set(current.map((member) => member.id));
+      const additions = remoteMembers.filter((member) => !existingIds.has(member.id));
+      return additions.length ? [...current, ...additions] : current;
+    });
+    updateRoom(localRoomId, (currentRoom) => {
+      const existingIds = new Set(currentRoom.memberIds);
+      const additions = remoteMembers
+        .map((member) => member.id)
+        .filter((memberId) => !existingIds.has(memberId));
+      return additions.length
+        ? {
+          ...currentRoom,
+          memberIds: [...currentRoom.memberIds, ...additions],
+          updatedAt: nowIso(),
+        }
+        : currentRoom;
+    });
   }
 
   function insertPrompt(prompt: string) {

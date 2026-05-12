@@ -225,7 +225,7 @@ async function createRelayRoomBinding(
     {
       workspaceId,
       kind: "human",
-      displayName: "我",
+      displayName: "房主",
       accountId: "opengrove-local",
     },
   );

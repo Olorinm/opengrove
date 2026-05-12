@@ -42,8 +42,9 @@ export function startRelayHttpServer(options: RelayHttpServerOptions = {}) {
       const publicInviteAccept = request.method === "POST" && url.pathname === "/invites/accept";
       const roomEventsMatch = url.pathname.match(/^\/rooms\/([^/]+)\/events$/);
       const roomStreamMatch = url.pathname.match(/^\/rooms\/([^/]+)\/stream$/);
+      const roomMembersMatch = url.pathname.match(/^\/rooms\/([^/]+)\/members$/);
       const publicInviteResolve = request.method === "GET" && url.pathname === "/invites/resolve";
-      const canDeferAuthToMemberToken = Boolean(roomEventsMatch || roomStreamMatch);
+      const canDeferAuthToMemberToken = Boolean(roomEventsMatch || roomStreamMatch || (request.method === "GET" && roomMembersMatch));
       if (authToken && !publicInviteAccept && !publicInviteResolve && !canDeferAuthToMemberToken && !isAuthorized(request, authToken)) {
         sendJson(response, 401, { ok: false, error: "unauthorized" });
         return;
@@ -86,9 +87,16 @@ export function startRelayHttpServer(options: RelayHttpServerOptions = {}) {
         return;
       }
 
-      const roomMembersMatch = url.pathname.match(/^\/rooms\/([^/]+)\/members$/);
       if (request.method === "GET" && roomMembersMatch) {
-        sendJson(response, 200, { ok: true, members: relay.listMembers(decodeURIComponent(roomMembersMatch[1]!)) });
+        const roomId = decodeURIComponent(roomMembersMatch[1]!);
+        if (authToken && !isAuthorized(request, authToken)) {
+          const memberId = stringValue(url.searchParams.get("memberId"));
+          if (!memberId || !relay.verifyMemberAccess(roomId, memberId, memberTokenFromRequest(request, url))) {
+            sendJson(response, 401, { ok: false, error: "unauthorized" });
+            return;
+          }
+        }
+        sendJson(response, 200, { ok: true, members: relay.listMembers(roomId) });
         return;
       }
       if (request.method === "POST" && roomMembersMatch) {
