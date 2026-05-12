@@ -111,7 +111,7 @@ export function EmployeeDialog(props: {
       try {
         const result = await (props.onCreateRemoteInvite?.() ?? null);
         setInviteResult(result);
-        setCopyState(result ? "" : "需要先在设置里配置 Relay");
+        setCopyState(result ? "" : "需要先在设置里配置远程通信");
       } catch (error) {
         setInviteResult(null);
         setCopyState(formatInviteError(error));
@@ -271,7 +271,7 @@ export function EmployeeDialog(props: {
           <div className="employee-dialog-runtime">
             <div className="employee-dialog-runtime-title">邀请链接</div>
             <div className="employee-dialog-warning">
-              朋友打开 Relay 链接后，会在自己的 OpenGrove 里选择一个员工加入这个聊天室。
+              朋友打开邀请链接后，会在自己的 OpenGrove 里选择一个员工加入这个共享群聊。
             </div>
             {inviteResult ? (
               <label className="employee-dialog-field">
@@ -328,11 +328,14 @@ function canSubmitDraft(
 
 function formatInviteError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("relay_not_configured")) {
-    return "请先到设置里启用 Relay，并填写公共 Relay 地址。";
+  if (message.includes("matrix_not_configured")) {
+    return "请先到设置里启用 Matrix/Tuwunel，并填写 homeserver、用户 ID 和访问 token。";
   }
-  if (message.includes("relay_invite_failed")) {
-    return "Relay 暂时无法创建邀请，请检查 Relay 地址和访问 token。";
+  if (message.includes("invite_landing_not_configured")) {
+    return "请先到设置里填写公开邀请落地页地址。";
+  }
+  if (message.includes("matrix_invite_failed")) {
+    return "Matrix/Tuwunel 暂时无法创建邀请，请检查 homeserver 和访问 token。";
   }
   return `生成邀请失败：${message}`;
 }

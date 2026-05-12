@@ -8,10 +8,6 @@ import {
   createMatrixInviteForRoom,
   matrixReady,
 } from "./matrix-invites.js";
-import {
-  createRelayInviteForRoom,
-  normalizeRelayBaseUrl,
-} from "./relay-invites.js";
 
 type SendJson = (response: ServerResponse, status: number, data: unknown) => void;
 type ReadJsonBody = (request: IncomingMessage) => Promise<unknown>;
@@ -38,6 +34,16 @@ export async function handleRemoteInviteRoute(options: {
   }
 
   if (matrixReady(state.settings.matrix)) {
+    if (!normalizePublicLandingBaseUrl(state.settings.inviteLanding.baseUrl)) {
+      sendJson(response, 400, {
+        ok: false,
+        provider: "matrix",
+        error: "invite_landing_not_configured",
+        message: "请先在设置里的远程通信填写公开邀请落地页地址。",
+        settings: getBridgeSettingsSnapshot(state),
+      });
+      return true;
+    }
     try {
       const result = await createMatrixInviteForRoom(state, state.settings.matrix, localRoomId, roomTitle);
       sendJson(response, 200, {
@@ -58,51 +64,25 @@ export async function handleRemoteInviteRoute(options: {
     return true;
   }
 
-  const relay = state.settings.relay;
-  const relayBaseUrl = normalizeRelayBaseUrl(relay.baseUrl);
-  if (relay.enabled && relayBaseUrl) {
-    try {
-      const result = await createRelayInviteForRoom(state, relay, relayBaseUrl, localRoomId, roomTitle);
-      sendJson(response, 200, {
-        ok: true,
-        provider: "relay",
-        invite: {
-          provider: "relay",
-          token: result.invite.token,
-          roomId: localRoomId,
-          relayRoomId: result.binding.relayRoomId,
-          relayWorkspaceId: result.binding.workspaceId,
-          ownerMemberId: result.binding.ownerMemberId,
-          ownerMemberToken: result.binding.ownerMemberToken,
-          roomTitle,
-          inviterName: "OpenGrove",
-          createdAt: result.invite.createdAt,
-          expiresAt: result.invite.expiresAt,
-          relayBaseUrl,
-        },
-        inviteUrl: new URL(result.invite.inviteUrl, ensureTrailingSlash(relayBaseUrl)).toString(),
-        settings: getBridgeSettingsSnapshot(state),
-      });
-    } catch (error) {
-      sendJson(response, 502, {
-        ok: false,
-        provider: "relay",
-        error: "relay_invite_failed",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-    return true;
-  }
-
   sendJson(response, 400, {
     ok: false,
-    error: "remote_messaging_not_configured",
-    message: "请先在设置里启用 Matrix/Tuwunel 或 Relay。",
+    error: "matrix_not_configured",
+    message: "请先在设置里启用 Matrix/Tuwunel。",
     settings: getBridgeSettingsSnapshot(state),
   });
   return true;
 }
 
-function ensureTrailingSlash(value: string): string {
-  return value.endsWith("/") ? value : `${value}/`;
+function normalizePublicLandingBaseUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  try {
+    const url = new URL(trimmed);
+    url.pathname = url.pathname.replace(/\/+$/, "");
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return "";
+  }
 }

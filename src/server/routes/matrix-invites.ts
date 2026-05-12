@@ -100,7 +100,7 @@ export async function createMatrixInviteForRoom(
   return {
     binding,
     invite,
-    inviteUrl: opengroveInviteUrl(invite, state.settings.relay.baseUrl),
+    inviteUrl: opengroveInviteUrl(invite, state.settings.inviteLanding.baseUrl),
   };
 }
 
@@ -233,14 +233,9 @@ export function normalizeMatrixHomeserverUrl(value: string): string {
 function opengroveInviteUrl(payload: MatrixInviteForRoomResult["invite"], publicLandingBaseUrl: string): string {
   const encoded = encodeInvitePayload(payload);
   const landingBaseUrl = normalizeMatrixHomeserverUrl(publicLandingBaseUrl);
-  if (landingBaseUrl) {
-    const url = new URL("/opengrove/invite", ensureTrailingSlash(landingBaseUrl));
-    url.searchParams.set("payload", encoded);
-    return url.toString();
-  }
-  const url = new URL("http://127.0.0.1:37373/ui/");
-  url.searchParams.set("view", "rooms");
-  url.searchParams.set("roomInvite", encoded);
+  if (!landingBaseUrl) throw new Error("invite_landing_not_configured");
+  const url = new URL("/opengrove/invite", ensureTrailingSlash(landingBaseUrl));
+  url.searchParams.set("payload", encoded);
   return url.toString();
 }
 

@@ -4,7 +4,7 @@
 </h1>
 
 <p align="center">
-  <strong>A local-first workspace where people and agents talk, remember, and collaborate.</strong>
+  <strong>A local-first workspace where people and agents talk, remember, and collaborate across local and shared rooms.</strong>
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
   <a href="#development">Development</a>
 </p>
 
-OpenGrove gives people and AI coding or knowledge agents a stable local workspace: Rooms, contacts, durable knowledge files, visible tool activity, approvals, artifacts, settings, and a bridge layer that can host multiple native agent kernels and relay invited remote employees without flattening them into one generic chat loop.
+OpenGrove gives people and AI coding or knowledge agents a stable local workspace: Rooms, contacts, durable knowledge files, visible tool activity, approvals, artifacts, settings, and a bridge layer that can host multiple native agent kernels and invite remote employees through Matrix/Tuwunel-backed shared rooms without flattening them into one generic chat loop.
 
 It is not trying to replace Codex, Claude Code, Hermes, Pi, OpenClaw, OpenCode, or other CLIs. OpenGrove sits around them as the host: it keeps local state inspectable, maps native events into a shared UI, and lets each kernel keep the model loop, native tools, sessions, and prompting rules it already does well.
 
@@ -98,7 +98,7 @@ Modern agent tools are powerful, but their context, memory, generated files, pro
 - Talk to an agent through the local OpenGrove UI.
 - Switch between installed kernels from settings or environment variables.
 - Use Rooms for direct or group kernel conversations, including `@` mentions that route one prompt to one or more installed kernels.
-- Invite a remote agent employee into a Room through a public Relay, so another OpenGrove node can choose one of its local employees to join and respond.
+- Invite a remote agent employee into a shared Room through Matrix/Tuwunel, so another OpenGrove node can choose one of its local employees to join and respond.
 - Index native knowledge sources such as `AGENTS.md`, `CLAUDE.md`, skills, configs, and local vault files.
 - Use a browser extension to send page context and selections into the bridge.
 - Track sessions, runs, executions, approvals, memory, artifacts, routines, and provider capture diagnostics.
@@ -107,43 +107,38 @@ Modern agent tools are powerful, but their context, memory, generated files, pro
 
 ## Remote Agent Employees
 
-OpenGrove can bridge Room messages through an OpenGrove Relay. This is meant for the case where you invite a friend's local agent into one of your Rooms without exposing either local bridge to the public internet.
+OpenGrove uses Matrix-compatible homeservers for remote Room membership and message delivery. The commercial-friendly default target is Tuwunel; Synapse and other Matrix homeservers are useful reference deployments.
 
-The Relay is only a routing boundary. Local OpenGrove nodes still choose and run their own employees locally.
+The homeserver is the routing and persistence boundary. Local OpenGrove nodes still choose and run their own employees locally, and model/API credentials stay on each owner machine.
 
 Typical flow:
 
-1. The Room owner configures a public Relay in Settings.
+1. The Room owner configures Matrix/Tuwunel and a public invite landing page in Settings.
 2. The owner opens a Room and creates an employee invite link.
 3. The friend opens the invite link in their browser.
 4. The friend's OpenGrove opens the Rooms view and asks which local employee should join.
-5. Room messages and final replies move through the Relay with per-room member tokens.
+5. The selected employee joins the Matrix Room and publishes an OpenGrove agent profile event.
+6. Room messages and final replies move through Matrix custom events.
 
-Friends accepting an invite do not need the Relay admin token. They only receive an invite token and, after accepting, a per-room member token stored in their local OpenGrove state.
+Friends accepting an invite need their own Matrix user/access token configured locally. The invite landing page only helps the browser find the friend's local OpenGrove port; it does not carry Room messages.
 
-Start a Relay server:
-
-```bash
-OPENGROVE_RELAY_TOKEN=replace-with-random-admin-token \
-OPENGROVE_RELAY_STATE_PATH=/var/lib/opengrove-relay/state.json \
-opengrove relay --host 0.0.0.0 --port 37372
-```
-
-For production-like use, put the Relay behind HTTPS and configure:
+Configure Matrix and the invite landing page:
 
 ```bash
-OPENGROVE_RELAY_ENABLED=1
-OPENGROVE_RELAY_URL=https://relay.example.com
-OPENGROVE_RELAY_TOKEN=replace-with-random-admin-token
+OPENGROVE_MATRIX_ENABLED=1
+OPENGROVE_MATRIX_HOMESERVER_URL=https://matrix.example.com
+OPENGROVE_MATRIX_USER_ID=@alice:matrix.example.com
+OPENGROVE_MATRIX_ACCESS_TOKEN=replace-with-local-matrix-token
+OPENGROVE_INVITE_BASE_URL=https://invite.example.com
 ```
 
 Security boundaries:
 
-- The Relay URL can be public.
-- The Relay admin token must stay private to the node that creates workspaces, rooms, and invites.
+- The Matrix homeserver URL and invite landing page URL can be public.
+- Matrix access tokens must stay local to each OpenGrove node.
 - Invite links should only be sent to the intended person.
-- Member tokens are scoped to a room member and are stored locally after invite acceptance.
-- Use HTTPS for any Relay used across untrusted networks.
+- The invite landing page is not a message relay; it only forwards the opaque invite payload into a local OpenGrove UI.
+- Use HTTPS for Matrix and the invite landing page across untrusted networks.
 
 ## Kernels
 
@@ -300,7 +295,10 @@ Common endpoints:
 | `/artifacts` | `GET` / `POST` | list or create artifacts |
 | `/routines` | `GET` | list routines |
 | `/context-records` | `GET` | recent prompt/context diagnostics |
-| `/rooms/relay-invites` | `POST` | create a Relay-backed Room invite when Relay is configured |
+| `/rooms/remote-invites` | `POST` | create a Matrix/Tuwunel shared Room invite |
+| `/rooms/matrix/join` | `POST` | join a Matrix shared Room and publish the selected employee profile |
+| `/rooms/matrix/events` | `POST` | publish OpenGrove Matrix room events |
+| `/rooms/matrix/sync` | `GET` | sync Matrix room state and timeline events |
 
 When `OPENGROVE_BRIDGE_TOKEN` is set, non-health endpoints require the `x-opengrove-token` header.
 
@@ -350,7 +348,7 @@ src/app/               OpenGrove composition root and app wiring
 src/kernel/            Kernel contracts, discovery, tool bridge, and adapters
 src/runtime/           Codex, Claude Code, Hermes, Pi, HTTP, generic CLI, proxy, capture, transports, and projectors
 src/server/            Local bridge, settings, kernel selection, routes, approvals, artifacts
-src/relay/             Relay protocol, HTTP/SSE server, file-backed Relay state
+src/relay/             Invite landing page server plus historical Relay protocol harnesses
 src/knowledge/         Knowledge store views, organizer helpers, feedback, and vault logic
 src/skills/            Skill catalog, runtime, and native publication helpers
 src/tests/             Harness tests for skills, kernels, runtimes, and bridge selection

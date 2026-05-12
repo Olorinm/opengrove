@@ -41,19 +41,6 @@ import {
   type MatrixAgentRequestContent,
   type MatrixRoomEvent,
 } from "./room-matrix";
-import {
-  acceptRelayInvite,
-  connectRelayRoom,
-  listRelayRoomMembers,
-  publishRelayMessage,
-  publishRelayTurnFinal,
-  roomFromAcceptedRelayInvite,
-  roomMemberFromRelayJoin,
-  type RelayEventEnvelope,
-  type RelayMessagePayload,
-  type RelayRoomMemberRecord,
-  type RelayTurnFinalPayload,
-} from "./room-relay";
 import { runRemoteRoomAgent } from "./room-remote-agent";
 import { roomThreadId } from "./room-runtime";
 import { RoomSettingsPanel } from "./room-settings-panel";
@@ -211,58 +198,18 @@ function buildPassiveMemberAnswer(member: RoomMember): string {
   return "";
 }
 
-function remoteMemberFromInvite(member: RoomMember, invite: RemoteRoomInvitePayload): RoomMember {
-  return {
-    id: `remote_${invite.token}_${member.id}`.replace(/[^A-Za-z0-9_-]/g, "_"),
-    name: member.name,
-    kernel: "remote-agent",
-    model: "OpenGrove Relay",
-    role: member.role,
-    status: "waiting",
-    color: member.color,
-    lastActive: "刚刚",
-    avatarDataUrl: member.avatarDataUrl,
-    source: "remote",
-    sourceLabel: "远程",
-    inviteStatus: "accepted",
-    homeNodeLabel: member.kernel,
-    relayMemberId: invite.relayRoomId ? member.id : undefined,
-  };
-}
-
-function remoteInviteJoinedMessage(memberName: string, createdAt: string): RoomMessage {
-  return {
-    id: createId("message"),
-    senderId: "system",
-    senderName: "系统",
-    senderType: "system",
-    text: `${memberName} 已通过邀请加入。`,
-    targetIds: [],
-    status: "done",
-    createdAt,
-  };
-}
-
 function remoteInviteErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("relay_not_configured")) {
-    return "还没有配置 Relay，暂时不能生成远程员工邀请链接。请先到设置里填写公共 Relay 地址。";
-  }
   if (message.includes("matrix_not_configured") || message.includes("remote_messaging_not_configured")) {
-    return "还没有配置 Matrix/Tuwunel 或 Relay，暂时不能生成远程员工邀请链接。请先到设置里的远程通信填写服务器信息。";
+    return "还没有配置 Matrix/Tuwunel，暂时不能生成远程员工邀请链接。请先到设置里的远程通信填写服务器信息。";
+  }
+  if (message.includes("invite_landing_not_configured")) {
+    return "还没有配置公开邀请落地页，暂时不能生成可分享的远程员工邀请链接。请先到设置里的远程通信填写落地页地址。";
   }
   if (message.includes("matrix_invite_failed")) {
     return "生成 Matrix 共享群聊邀请失败，请检查 Tuwunel homeserver、用户 ID 和 access token。";
   }
   return `生成远程员工邀请链接失败：${message}`;
-}
-
-function relayTurnKey(event: Pick<RelayEventEnvelope, "id" | "turnId">): string {
-  return event.turnId || event.id;
-}
-
-function stableRelayMessageId(prefix: string, ...parts: string[]): string {
-  return `${prefix}_${parts.join("_")}`.replace(/[^A-Za-z0-9_-]/g, "_");
 }
 
 function matrixEventCreatedAt(event: MatrixRoomEvent): string {
@@ -325,53 +272,6 @@ function patchMatrixFinalMessages(
   }];
 }
 
-function patchRelayFinalMessages(
-  messages: RoomMessage[],
-  event: RelayEventEnvelope,
-  payload: RelayTurnFinalPayload,
-  relayMember: RoomMember | undefined,
-  answer: string,
-): RoomMessage[] {
-  const turnKey = relayTurnKey(event);
-  if (messages.some((message) => (
-    message.relayEventId === event.id
-    || (relayMember && message.senderId === relayMember.id && message.relayTurnId === turnKey && message.status !== "running")
-  ))) {
-    return messages;
-  }
-  let patched = false;
-  const next = messages.map((message) => {
-    if ((message.runId && event.turnId && message.runId === event.turnId) || message.relayTurnId === turnKey) {
-      patched = true;
-      return {
-        ...finalizeRoomMessage(message, {
-          answer,
-          duration: payload.duration,
-          events: payload.events,
-        }),
-        relayEventId: event.id,
-        relayTurnId: turnKey,
-      };
-    }
-    return message;
-  });
-  if (patched || !relayMember) return next;
-  return [...next, {
-    id: stableRelayMessageId("relay_final", relayMember.id, turnKey),
-    senderId: relayMember.id,
-    senderName: payload.memberName || relayMember.name,
-    senderType: "agent",
-    text: answer,
-    targetIds: [relayMember.id],
-    status: "done",
-    createdAt: event.createdAt || nowIso(),
-    duration: payload.duration,
-    parts: [],
-    relayEventId: event.id,
-    relayTurnId: turnKey,
-  }];
-}
-
 function findMentionContext(value: string, cursor: number): Pick<MentionMenuState, "query" | "start" | "end"> | null {
   const beforeCursor = value.slice(0, cursor);
   const match = beforeCursor.match(/(^|\s)@([^\s@]*)$/);
@@ -408,7 +308,6 @@ export function RoomsView(props: {
   const suppressNextEnterRef = useRef(false);
   const attachedRoomRunIdsRef = useRef(new Set<string>());
   const localRoomRunIdsRef = useRef(new Set<string>());
-  const relayEventIdsRef = useRef(new Set<string>());
   const matrixEventIdsRef = useRef(new Set<string>());
   const matrixSyncTokensRef = useRef(new Map<string, string>());
   const roomsRef = useRef<Room[]>([]);
@@ -577,20 +476,6 @@ export function RoomsView(props: {
     return runIds;
   }, [props.runs]);
   const messageCount = activeRoom?.messages.length ?? 0;
-  const relayConnectionKey = useMemo(
-    () => rooms
-      .filter((room) => room.relay?.baseUrl && room.relay.roomId && room.relay.memberId)
-      .map((room) => [
-        room.id,
-        room.relay?.baseUrl,
-        room.relay?.roomId,
-        room.relay?.memberId,
-        room.relay?.memberToken,
-      ].join(":"))
-      .sort()
-      .join("|"),
-    [rooms],
-  );
   const matrixConnectionKey = useMemo(
     () => rooms
       .filter((room) => room.matrix?.homeserverUrl && room.matrix.roomId)
@@ -604,26 +489,6 @@ export function RoomsView(props: {
       .join("|"),
     [rooms],
   );
-
-  useEffect(() => {
-    let closed = false;
-    const sources: EventSource[] = [];
-    for (const room of roomsRef.current) {
-      if (!room.relay?.baseUrl || !room.relay.roomId || !room.relay.memberId) continue;
-      const binding = room.relay;
-      void listRelayRoomMembers(binding)
-        .then((relayMembers) => {
-          if (!closed) syncRelayRoomMembers(room.id, binding, relayMembers);
-        })
-        .catch(() => undefined);
-      const source = connectRelayRoom(room.relay, (event) => handleRelayRoomEvent(room.id, event));
-      if (source) sources.push(source);
-    }
-    return () => {
-      closed = true;
-      for (const source of sources) source.close();
-    };
-  }, [relayConnectionKey]);
 
   useEffect(() => {
     let closed = false;
@@ -927,224 +792,6 @@ export function RoomsView(props: {
     setMembers((current) => current.map((member) => (targetIds.has(member.id) ? { ...member, status, lastActive: "刚刚" } : member)));
   }
 
-  function handleRelayRoomEvent(localRoomId: string, event: RelayEventEnvelope) {
-    const roomEventKey = `${localRoomId}:${event.id}`;
-    if (relayEventIdsRef.current.has(roomEventKey)) return;
-    relayEventIdsRef.current.add(roomEventKey);
-    const room = roomsRef.current.find((item) => item.id === localRoomId);
-    const binding = room?.relay;
-    if (!room || !binding) return;
-    if (event.actorMemberId === binding.memberId) return;
-
-    if (event.type === "member.joined") {
-      const payload = event.payload as { memberId?: string; displayName?: string; kind?: string };
-      const relayMemberId = payload.memberId || event.actorMemberId;
-      if (relayMemberId === binding.memberId) return;
-      const member = roomMemberFromRelayJoin({
-        relayMemberId,
-        displayName: payload.displayName || "远程员工",
-        kind: payload.kind,
-      });
-      setMembers((current) => current.some((item) => item.id === member.id) ? current : [...current, member]);
-      updateRoom(localRoomId, (currentRoom) => ({
-        ...currentRoom,
-        memberIds: currentRoom.memberIds.includes(member.id)
-          ? currentRoom.memberIds
-          : [...currentRoom.memberIds, member.id],
-        messages: currentRoom.messages.some((message) => message.id === event.id)
-          ? currentRoom.messages
-          : [
-            ...currentRoom.messages,
-            {
-              id: event.id,
-              senderId: "system",
-              senderName: "系统",
-              senderType: "system",
-              text: `${member.name} 已通过 Relay 加入群聊。`,
-              targetIds: [],
-              status: "done",
-              createdAt: event.createdAt || nowIso(),
-            },
-          ],
-        updatedAt: event.createdAt || nowIso(),
-      }));
-      return;
-    }
-
-    if (event.type === "room.message.created") {
-      const payload = event.payload as RelayMessagePayload;
-      if (!event.targetMemberIds?.includes(binding.memberId)) return;
-      void runRelayLocalReply(localRoomId, event, payload);
-      return;
-    }
-
-    if (event.type === "room.turn.final") {
-      const payload = event.payload as RelayTurnFinalPayload;
-      finalizeRelayRemoteReply(localRoomId, event, payload);
-    }
-  }
-
-  async function runRelayLocalReply(
-    localRoomId: string,
-    event: RelayEventEnvelope,
-    payload: RelayMessagePayload,
-  ) {
-    const room = roomsRef.current.find((item) => item.id === localRoomId);
-    const binding = room?.relay;
-    if (!room || !binding?.localMemberId) return;
-    const member = membersRef.current.find((item) => item.id === binding.localMemberId);
-    if (!member) return;
-    const prompt = String(payload.text || "").trim();
-    if (!prompt) return;
-    const createdAt = event.createdAt || nowIso();
-    const turnKey = relayTurnKey(event);
-    const userMessageId = payload.messageId || event.id;
-    const hasHandledTurn = room.messages.some((message) => (
-      message.id === userMessageId
-      || message.relayEventId === event.id
-      || message.relayTurnId === turnKey
-      || (message.senderId === member.id && message.runId === turnKey)
-    ));
-    if (hasHandledTurn) return;
-    const userMessage: RoomMessage = {
-      id: userMessageId,
-      senderId: `relay_actor_${event.actorMemberId}`,
-      senderName: payload.senderName || "远程成员",
-      senderType: "user",
-      text: prompt,
-      targetIds: [member.id],
-      status: "sent",
-      createdAt,
-      attachments: payload.attachments,
-      relayEventId: event.id,
-      relayTurnId: turnKey,
-    };
-    const assistantMessage: RoomMessage = {
-      id: stableRelayMessageId("relay_reply", member.id, turnKey),
-      senderId: member.id,
-      senderName: member.name,
-      senderType: "agent",
-      text: "",
-      targetIds: [member.id],
-      status: "running",
-      createdAt,
-      startedAt: createdAt,
-      runId: turnKey,
-      relayTurnId: turnKey,
-    };
-    updateRoom(localRoomId, (currentRoom) => {
-      if (currentRoom.messages.some((message) => (
-        message.id === userMessage.id
-        || message.id === assistantMessage.id
-        || message.relayEventId === event.id
-        || message.relayTurnId === turnKey
-      ))) {
-        return currentRoom;
-      }
-      return {
-        ...currentRoom,
-        messages: [...currentRoom.messages, userMessage, assistantMessage],
-        updatedAt: createdAt,
-      };
-    });
-    updateMemberStatus([member.id], "running");
-    try {
-      const result = await props.onRunPrompt({
-        roomId: localRoomId,
-        targetId: member.id,
-        targetName: member.name,
-        targetKernel: member.kernel,
-        targetModel: member.model,
-        targetRole: member.role,
-        prompt,
-        attachments: payload.attachments ?? [],
-        onRunId(runId) {
-          updateRoomMessage(localRoomId, assistantMessage.id, (message) => ({ ...message, runId }));
-        },
-        onAgentEvent(agentEvent) {
-          updateRoomMessage(localRoomId, assistantMessage.id, (message) => applyAgentEventToRoomMessage(message, agentEvent));
-        },
-      });
-      updateRoomMessage(localRoomId, assistantMessage.id, (message) => ({
-        ...finalizeRoomMessage(message, result),
-        duration: result.duration,
-      }));
-      updateMemberStatus([member.id], "done");
-      await publishRelayTurnFinal({
-        binding,
-        turnId: event.turnId || event.id,
-        targetMemberIds: [event.actorMemberId],
-        answer: result.answer ?? "",
-        duration: result.duration,
-        events: result.events,
-        memberName: member.name,
-      });
-    } catch (error) {
-      const messageText = error instanceof Error ? error.message : String(error);
-      updateRoomMessage(localRoomId, assistantMessage.id, (message) => failRoomMessage(message, messageText));
-      updateMemberStatus([member.id], "idle");
-      await publishRelayTurnFinal({
-        binding,
-        turnId: event.turnId || event.id,
-        targetMemberIds: [event.actorMemberId],
-        answer: `执行失败：${messageText}`,
-        memberName: member.name,
-      }).catch(() => undefined);
-    }
-  }
-
-  function finalizeRelayRemoteReply(
-    localRoomId: string,
-    event: RelayEventEnvelope,
-    payload: RelayTurnFinalPayload,
-  ) {
-    const room = roomsRef.current.find((item) => item.id === localRoomId);
-    if (!room) return;
-    const relayMember = membersRef.current.find((member) => member.relayMemberId === event.actorMemberId);
-    const answer = payload.answer || "";
-    updateRoom(localRoomId, (currentRoom) => ({
-      ...currentRoom,
-      messages: patchRelayFinalMessages(currentRoom.messages, event, payload, relayMember, answer),
-      updatedAt: event.createdAt || nowIso(),
-    }));
-    if (relayMember) {
-      updateMemberStatus([relayMember.id], "done");
-    }
-  }
-
-  function syncRelayRoomMembers(
-    localRoomId: string,
-    binding: NonNullable<Room["relay"]>,
-    relayMembers: RelayRoomMemberRecord[],
-  ) {
-    const remoteMembers = relayMembers
-      .filter((relayMember) => relayMember.id && relayMember.id !== binding.memberId)
-      .map((relayMember) => roomMemberFromRelayJoin({
-        relayMemberId: relayMember.id,
-        displayName: relayMember.displayName || "远程员工",
-        kind: relayMember.kind,
-      }));
-    if (!remoteMembers.length) return;
-    setMembers((current) => {
-      const existingIds = new Set(current.map((member) => member.id));
-      const additions = remoteMembers.filter((member) => !existingIds.has(member.id));
-      return additions.length ? [...current, ...additions] : current;
-    });
-    updateRoom(localRoomId, (currentRoom) => {
-      const existingIds = new Set(currentRoom.memberIds);
-      const additions = remoteMembers
-        .map((member) => member.id)
-        .filter((memberId) => !existingIds.has(memberId));
-      return additions.length
-        ? {
-          ...currentRoom,
-          memberIds: [...currentRoom.memberIds, ...additions],
-          updatedAt: nowIso(),
-        }
-        : currentRoom;
-    });
-  }
-
   function handleMatrixRoomEvent(localRoomId: string, event: MatrixRoomEvent) {
     const eventId = event.event_id || "";
     if (!eventId) return;
@@ -1403,24 +1050,7 @@ export function RoomsView(props: {
     if (!activeRoom) return null;
     try {
       const result = await createRemoteRoomInvite(activeRoom);
-      if (
-        result.invite.relayBaseUrl &&
-        result.invite.relayWorkspaceId &&
-        result.invite.relayRoomId &&
-        result.invite.ownerMemberId
-      ) {
-        updateRoom(activeRoom.id, (room) => ({
-          ...room,
-          relay: {
-            baseUrl: result.invite.relayBaseUrl!,
-            workspaceId: result.invite.relayWorkspaceId!,
-            roomId: result.invite.relayRoomId!,
-            memberId: result.invite.ownerMemberId!,
-            memberToken: result.invite.ownerMemberToken,
-            mode: "host",
-          },
-        }));
-      } else if (result.invite.matrixHomeserverUrl && result.invite.matrixRoomId) {
+      if (result.invite.matrixHomeserverUrl && result.invite.matrixRoomId) {
         updateRoom(activeRoom.id, (room) => ({
           ...room,
           badge: "Matrix",
@@ -1478,60 +1108,7 @@ export function RoomsView(props: {
       }
       return;
     }
-    if (remoteInvite.relayBaseUrl) {
-      try {
-        const accepted = await acceptRelayInvite({ invite: remoteInvite, member });
-        const relayRoom = roomFromAcceptedRelayInvite({
-          invite: remoteInvite,
-          accepted,
-          localMember: member,
-        });
-        setRooms((current) => {
-          const existing = current.find((room) => room.id === relayRoom.id);
-          if (!existing) return [relayRoom, ...current];
-          return current.map((room) => room.id === relayRoom.id ? {
-            ...room,
-            title: relayRoom.title,
-            relay: relayRoom.relay,
-            memberIds: room.memberIds.includes(member.id) ? room.memberIds : [...room.memberIds, member.id],
-            messages: [...room.messages, ...relayRoom.messages],
-            updatedAt: nowIso(),
-          } : room);
-        });
-        setActiveRoomId(relayRoom.id);
-        closeRemoteInviteDialog();
-      } catch (error) {
-        appendSystemMessageToRoom(activeRoom?.id || rooms[0]?.id || "room-open-group", `接受 Relay 邀请失败：${error instanceof Error ? error.message : String(error)}`);
-      }
-      return;
-    }
-    const remoteMember = remoteMemberFromInvite(member, remoteInvite);
-    const joinedAt = nowIso();
-    setMembers((current) => current.some((item) => item.id === remoteMember.id) ? current : [...current, remoteMember]);
-    setRooms((current) => {
-      const existing = current.find((room) => room.id === remoteInvite.roomId);
-      if (!existing) {
-        return [{
-          id: remoteInvite.roomId,
-          kind: "group",
-          title: remoteInvite.roomTitle,
-          badge: "远程",
-          memberIds: [remoteMember.id],
-          pinned: false,
-          unread: 0,
-          updatedAt: joinedAt,
-          messages: [remoteInviteJoinedMessage(member.name, joinedAt)],
-        }, ...current];
-      }
-      return current.map((room) => room.id === remoteInvite.roomId ? {
-        ...room,
-        memberIds: room.memberIds.includes(remoteMember.id) ? room.memberIds : [...room.memberIds, remoteMember.id],
-        messages: [...room.messages, remoteInviteJoinedMessage(member.name, joinedAt)],
-        updatedAt: joinedAt,
-      } : room);
-    });
-    setActiveRoomId(remoteInvite.roomId);
-    closeRemoteInviteDialog();
+    appendSystemMessageToRoom(activeRoom?.id || rooms[0]?.id || "room-open-group", "这个远程员工邀请不是 Matrix/Tuwunel 邀请，请重新生成链接。");
   }
 
   function toggleGroupDraftMember(memberId: string) {
@@ -1973,37 +1550,16 @@ export function RoomsView(props: {
     outgoingAttachments: AttachmentPayload[],
   ) {
     const runId = createId("room_run");
-    updateRoomMessage(roomId, messageId, (message) => ({ ...message, runId, relayTurnId: runId }));
-    const relayRoom = roomsRef.current.find((room) => room.id === roomId);
-    if (relayRoom?.matrix && target.matrixUserId && target.matrixAgentId) {
+    updateRoomMessage(roomId, messageId, (message) => ({ ...message, runId }));
+    const remoteRoom = roomsRef.current.find((room) => room.id === roomId);
+    if (remoteRoom?.matrix && target.matrixUserId && target.matrixAgentId) {
       updateRoomMessage(roomId, messageId, (message) => ({ ...message, matrixTurnId: runId }));
       try {
         await publishMatrixAgentRequest({
-          binding: relayRoom.matrix,
+          binding: remoteRoom.matrix,
           target,
           turnId: runId,
           prompt,
-          attachments: outgoingAttachments,
-        });
-        setMembers((current) => current.map((member) => (
-          member.id === target.id
-            ? { ...member, inviteStatus: "accepted", status: "running", lastActive: "刚刚" }
-            : member
-        )));
-      } catch (error) {
-        const messageText = error instanceof Error ? error.message : String(error);
-        updateRoomMessage(roomId, messageId, (message) => failRoomMessage(message, messageText));
-        updateMemberStatus([target.id], "idle");
-      }
-      return;
-    }
-    if (relayRoom?.relay && target.relayMemberId) {
-      try {
-        await publishRelayMessage({
-          binding: relayRoom.relay,
-          targetMemberId: target.relayMemberId,
-          turnId: runId,
-          text: prompt,
           attachments: outgoingAttachments,
         });
         setMembers((current) => current.map((member) => (

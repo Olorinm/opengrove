@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bug, Check, ChevronDown, Cpu, Globe2, Palette, PlugZap, Plus, Trash2 } from "lucide-react";
 import { useIconStylePreference, type IconStylePreference } from "../../appearance";
-import type { BridgeSettings, KernelOption, KernelPathOverride, KernelPreference, KernelProxySettings, MatrixSettings, ProviderProfile, RelaySettings } from "../../bridge";
+import type { BridgeSettings, InviteLandingSettings, KernelOption, KernelPathOverride, KernelPreference, KernelProxySettings, MatrixSettings, ProviderProfile } from "../../bridge";
 import { useI18n, type LanguagePreference, type TranslationFn } from "../../i18n";
 import { useThemePreference, type ThemePreference } from "../../theme";
 import { renderContextRecordCard } from "../system/system-views";
@@ -67,7 +67,7 @@ export function SettingsDialog(props: {
     providerHttpCaptureEnabled: boolean;
     codexRawEventCaptureEnabled: boolean;
     kernelProxy: KernelProxySettings;
-    relay: RelaySettings;
+    inviteLanding: InviteLandingSettings;
     matrix: MatrixSettings;
     kernelPathOverrides: Record<string, KernelPathOverride>;
     kernelKnowledgeSourceEnabled: Record<string, Record<string, boolean>>;
@@ -86,7 +86,7 @@ export function SettingsDialog(props: {
   const [providerHttpCaptureEnabled, setProviderHttpCaptureEnabled] = useState(false);
   const [codexRawEventCaptureEnabled, setCodexRawEventCaptureEnabled] = useState(false);
   const [kernelProxy, setKernelProxy] = useState<KernelProxySettings>(emptyKernelProxySettings());
-  const [relaySettings, setRelaySettings] = useState<RelaySettings>(emptyRelaySettings());
+  const [inviteLandingSettings, setInviteLandingSettings] = useState<InviteLandingSettings>(emptyInviteLandingSettings());
   const [matrixSettings, setMatrixSettings] = useState<MatrixSettings>(emptyMatrixSettings());
   const [kernelPathOverrides, setKernelPathOverrides] = useState<Record<string, KernelPathOverride>>({});
   const [sourceEnabled, setSourceEnabled] = useState<Record<string, Record<string, boolean>>>({});
@@ -108,7 +108,7 @@ export function SettingsDialog(props: {
     setProviderHttpCaptureEnabled(Boolean(props.settings.providerHttpCapture?.enabled));
     setCodexRawEventCaptureEnabled(Boolean(props.settings.codexRawEventCaptureEnabled));
     setKernelProxy(normalizeKernelProxySettings(props.settings.kernelProxy));
-    setRelaySettings(normalizeRelaySettings(props.settings.relay));
+    setInviteLandingSettings(normalizeInviteLandingSettings(props.settings.inviteLanding));
     setMatrixSettings(normalizeMatrixSettings(props.settings.matrix));
     setKernelPathOverrides(props.settings.kernelPathOverrides ?? {});
     setSourceEnabled(buildSourceEnabledState(props.settings));
@@ -163,7 +163,7 @@ export function SettingsDialog(props: {
     providerHttpCaptureEnabled?: boolean;
     codexRawEventCaptureEnabled?: boolean;
     kernelProxy?: KernelProxySettings;
-    relay?: RelaySettings;
+    inviteLanding?: InviteLandingSettings;
     matrix?: MatrixSettings;
     kernelPathOverrides?: Record<string, KernelPathOverride>;
     kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
@@ -175,7 +175,7 @@ export function SettingsDialog(props: {
       providerHttpCaptureEnabled: next.providerHttpCaptureEnabled ?? providerHttpCaptureEnabled,
       codexRawEventCaptureEnabled: next.codexRawEventCaptureEnabled ?? codexRawEventCaptureEnabled,
       kernelProxy: next.kernelProxy ?? kernelProxy,
-      relay: next.relay ?? relaySettings,
+      inviteLanding: next.inviteLanding ?? inviteLandingSettings,
       matrix: next.matrix ?? matrixSettings,
       kernelPathOverrides: next.kernelPathOverrides ?? kernelPathOverrides,
       kernelKnowledgeSourceEnabled: next.kernelKnowledgeSourceEnabled ?? sourceEnabled,
@@ -214,14 +214,17 @@ export function SettingsDialog(props: {
     saveSettings({ kernelProxy: next });
   };
 
-  const setRelayDraft = (patch: Partial<RelaySettings>) => {
-    setRelaySettings((current) => ({ ...current, ...patch }));
+  const setInviteLandingDraft = (patch: Partial<InviteLandingSettings>) => {
+    setInviteLandingSettings((current) => ({ ...current, ...patch }));
   };
 
-  const saveRelay = (patch: Partial<RelaySettings> = {}) => {
-    const next = normalizeRelaySettings({ ...relaySettings, ...patch });
-    setRelaySettings(next);
-    saveSettings({ relay: next });
+  const saveInviteLanding = (patch: Partial<InviteLandingSettings> = {}) => {
+    const next = normalizeInviteLandingSettings({
+      ...inviteLandingSettings,
+      ...patch,
+    });
+    setInviteLandingSettings(next);
+    saveSettings({ inviteLanding: next });
   };
 
   const setMatrixDraft = (patch: Partial<MatrixSettings>) => {
@@ -1025,67 +1028,29 @@ export function SettingsDialog(props: {
               <section className="settings-list-section">
                 <div className="settings-list-section-heading">
                   <h2>{t("settings.relayServer")}</h2>
-                  <span className={relaySettings.enabled && relaySettings.baseUrl ? "settings-status-pill" : "settings-status-pill muted"}>
-                    {relaySettings.enabled && relaySettings.baseUrl ? t("settings.relayReady") : t("settings.relayMissing")}
+                  <span className={inviteLandingSettings.baseUrl ? "settings-status-pill" : "settings-status-pill muted"}>
+                    {inviteLandingSettings.baseUrl ? t("settings.relayReady") : t("settings.relayMissing")}
                   </span>
                 </div>
                 <div className="settings-list">
-                  <label className="settings-list-row">
-                    <span className="settings-list-row-main">
-                      <strong>{t("settings.relayEnabled")}</strong>
-                      <small>{t("settings.relayEnabledCopy")}</small>
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={relaySettings.enabled}
-                      disabled={props.loading || props.saving}
-                      onChange={(event) => saveRelay({ enabled: event.target.checked })}
-                    />
-                  </label>
                   <label className="settings-list-row settings-list-row-field">
                     <span className="settings-list-row-main">
                       <strong>{t("settings.relayBaseUrl")}</strong>
                       <small>{t("settings.relayBaseUrlCopy")}</small>
                     </span>
                     <input
-                      value={relaySettings.baseUrl}
+                      value={inviteLandingSettings.baseUrl}
                       disabled={props.loading || props.saving}
-                      placeholder="https://relay.example.com"
-                      onBlur={() => saveRelay()}
+                      placeholder="https://invite.opengrove.example"
+                      onBlur={() => saveInviteLanding()}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.currentTarget.blur();
                         }
                       }}
-                      onChange={(event) => setRelayDraft({ baseUrl: event.target.value })}
+                      onChange={(event) => setInviteLandingDraft({ baseUrl: event.target.value })}
                     />
                   </label>
-                  <label className="settings-list-row settings-list-row-field">
-                    <span className="settings-list-row-main">
-                      <strong>{t("settings.relayToken")}</strong>
-                      <small>{t("settings.relayTokenCopy")}</small>
-                    </span>
-                    <input
-                      type="password"
-                      value={relaySettings.authToken ?? ""}
-                      disabled={props.loading || props.saving}
-                      placeholder={t("settings.relayTokenPlaceholder")}
-                      onBlur={() => saveRelay()}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.currentTarget.blur();
-                        }
-                      }}
-                      onChange={(event) => setRelayDraft({ authToken: event.target.value })}
-                    />
-                  </label>
-                  <div className="settings-list-row">
-                    <span className="settings-list-row-main">
-                      <strong>{t("settings.relayWorkspace")}</strong>
-                      <small>{t("settings.relayWorkspaceCopy")}</small>
-                    </span>
-                    <code>{relaySettings.workspaceId || t("settings.relayWorkspacePending")}</code>
-                  </div>
                 </div>
               </section>
             </div>
@@ -1491,26 +1456,19 @@ function normalizeKernelProxySettings(input: Partial<KernelProxySettings> | unde
   };
 }
 
-function emptyRelaySettings(): RelaySettings {
+function emptyInviteLandingSettings(): InviteLandingSettings {
   return {
-    enabled: false,
     baseUrl: "",
-    authToken: "",
-    workspaceId: "",
-    roomBindings: {},
   };
 }
 
-function normalizeRelaySettings(input: Partial<RelaySettings> | undefined): RelaySettings {
-  const defaults = emptyRelaySettings();
+function normalizeInviteLandingSettings(input: Partial<InviteLandingSettings> | undefined): InviteLandingSettings {
+  const defaults = emptyInviteLandingSettings();
+  const baseUrl = input?.baseUrl?.trim() || "";
   return {
     ...defaults,
     ...input,
-    enabled: Boolean(input?.enabled),
-    baseUrl: input?.baseUrl?.trim() || "",
-    authToken: input?.authToken?.trim() || undefined,
-    workspaceId: input?.workspaceId?.trim() || undefined,
-    roomBindings: input?.roomBindings ?? {},
+    baseUrl,
   };
 }
 

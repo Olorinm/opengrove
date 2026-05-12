@@ -409,19 +409,8 @@ export interface KernelProxySettings {
   source?: string;
 }
 
-export interface RelaySettings {
-  enabled: boolean;
+export interface InviteLandingSettings {
   baseUrl: string;
-  authToken?: string;
-  workspaceId?: string;
-  roomBindings?: Record<string, RelayRoomBinding>;
-}
-
-export interface RelayRoomBinding {
-  relayRoomId: string;
-  ownerMemberId: string;
-  title: string;
-  createdAt: string;
 }
 
 export interface MatrixSettings {
@@ -453,7 +442,7 @@ export interface BridgeSettings {
   kernelPathOverrides?: Record<string, KernelPathOverride>;
   kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
   kernelProxy: KernelProxySettings;
-  relay?: RelaySettings;
+  inviteLanding?: InviteLandingSettings;
   matrix?: MatrixSettings;
   providerHttpCapture: ProviderHttpCaptureSettings;
   codexRawEventCaptureEnabled?: boolean;

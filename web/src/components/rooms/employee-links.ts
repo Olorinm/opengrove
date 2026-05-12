@@ -58,7 +58,7 @@ export function memberFromEmployeeLinkUrl(rawLink: string): RoomMember {
     id: memberId,
     name: payload.name,
     kernel: "remote-agent",
-    model: "OpenGrove Relay",
+    model: "OpenGrove Link",
     role: payload.role || "员工",
     status: "waiting",
     color: payload.color || "#0ea5e9",

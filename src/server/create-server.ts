@@ -28,7 +28,6 @@ import { buildProviderHttpCaptureDiagnostics } from "./provider-http-captures.js
 import { listKnowledgeInventoryDocuments, listKnowledgeVaultFolders, resolveKnowledgeVaultFilePath, syncKnowledgeVaultFiles } from "./knowledge-files.js";
 import { serveStaticRoute } from "./routes/static.js";
 import { handleKnowledgeRoute } from "./routes/knowledge.js";
-import { handleRelayInviteRoute } from "./routes/relay-invites.js";
 import { handleMatrixRoomRoute } from "./routes/matrix-rooms.js";
 import { handleRemoteInviteRoute } from "./routes/remote-invites.js";
 import { handleRemoteAgentRoute } from "./routes/remote-agents.js";
@@ -393,10 +392,6 @@ export function startOpenGroveServer(options: LocalBridgeServerOptions = {}) {
       }
 
       if (await handleMatrixRoomRoute({ request, response, url: routeUrl, state, sendJson, readJsonBody })) {
-        return;
-      }
-
-      if (await handleRelayInviteRoute({ request, response, url: routeUrl, state, sendJson, readJsonBody })) {
         return;
       }
 

@@ -14,10 +14,9 @@ import { normalizeOpenGroveProfile } from "../profiles/profile.js";
 import { bridgeDataPath } from "./storage-paths.js";
 import type {
   BridgeKernelProxySettings,
+  BridgeInviteLandingSettings,
   BridgeMatrixRoomBinding,
   BridgeMatrixSettings,
-  BridgeRelayRoomBinding,
-  BridgeRelaySettings,
   BridgeSettings,
   BridgeState,
   LocalBridgeServerOptions,
@@ -64,7 +63,7 @@ export function createBridgeState(options: LocalBridgeServerOptions): BridgeStat
       providerHttpCaptureEnabled: false,
       codexRawEventCaptureEnabled: false,
       kernelProxy: defaultKernelProxySettings(),
-      relay: defaultRelaySettings(),
+      inviteLanding: defaultInviteLandingSettings(),
       matrix: defaultMatrixSettings(),
       kernelPathOverrides: {},
       kernelKnowledgeSourceEnabled: {},
@@ -121,7 +120,7 @@ export function getBridgeSettingsSnapshot(state: BridgeState): JsonObject {
     ) as unknown as JsonObject[],
     kernelKnowledgeSourceEnabled: state.settings.kernelKnowledgeSourceEnabled,
     kernelProxy: kernelProxySummary(resolveKernelProxySettings(state.settings.kernelProxy, process.env)),
-    relay: state.settings.relay as unknown as JsonObject,
+    inviteLanding: state.settings.inviteLanding as unknown as JsonObject,
     matrix: state.settings.matrix as unknown as JsonObject,
     providerHttpCapture: getProviderHttpCaptureSnapshot(state),
     codexRawEventCaptureEnabled: state.settings.providerHttpCaptureEnabled && state.settings.codexRawEventCaptureEnabled,
@@ -149,7 +148,7 @@ export function normalizeBridgeSettingsPatch(input: unknown, base: BridgeSetting
         : base.codexRawEventCaptureEnabled,
     ),
     kernelProxy: normalizeKernelProxySettings(source.kernelProxy, base.kernelProxy),
-    relay: normalizeRelaySettings(source.relay, base.relay),
+    inviteLanding: normalizeInviteLandingSettings(source.inviteLanding ?? source.relay, base.inviteLanding),
     matrix: normalizeMatrixSettings(source.matrix, base.matrix),
     kernelPathOverrides: normalizeKernelPathOverrides(
       source.kernelPathOverrides,
@@ -184,7 +183,7 @@ export function loadBridgeSettings(state: BridgeState): BridgeSettings {
           ? parsed.codexRawEventCaptureEnabled
           : defaults.codexRawEventCaptureEnabled,
       kernelProxy: normalizeKernelProxySettings(parsed.kernelProxy, defaults.kernelProxy),
-      relay: normalizeRelaySettings(parsed.relay, defaults.relay),
+      inviteLanding: normalizeInviteLandingSettings(parsed.inviteLanding ?? parsed.relay, defaults.inviteLanding),
       matrix: normalizeMatrixSettings(parsed.matrix, defaults.matrix),
       kernelPathOverrides: normalizeKernelPathOverrides(
         parsed.kernelPathOverrides,
@@ -221,7 +220,7 @@ function defaultBridgeSettings(): BridgeSettings {
     ),
     codexRawEventCaptureEnabled: isEnabledEnvFlag(readAppEnv("CODEX_RAW_EVENT_CAPTURE")),
     kernelProxy: defaultKernelProxySettings(),
-    relay: defaultRelaySettings(),
+    inviteLanding: defaultInviteLandingSettings(),
     matrix: defaultMatrixSettings(),
     kernelPathOverrides: {},
     kernelKnowledgeSourceEnabled: {},
@@ -239,14 +238,12 @@ function defaultKernelProxySettings(): BridgeKernelProxySettings {
   };
 }
 
-function defaultRelaySettings(): BridgeRelaySettings {
-  const baseUrl = readAppEnv("OPENGROVE_RELAY_URL") || readAppEnv("RELAY_URL") || "";
+function defaultInviteLandingSettings(): BridgeInviteLandingSettings {
+  const baseUrl = readAppEnv("OPENGROVE_INVITE_BASE_URL")
+    || readAppEnv("OPENGROVE_INVITE_URL")
+    || "";
   return {
-    enabled: isEnabledEnvFlag(readAppEnv("OPENGROVE_RELAY_ENABLED")) || Boolean(baseUrl),
     baseUrl,
-    authToken: readAppEnv("OPENGROVE_RELAY_TOKEN") || readAppEnv("RELAY_TOKEN") || undefined,
-    workspaceId: readAppEnv("OPENGROVE_RELAY_WORKSPACE_ID") || undefined,
-    roomBindings: {},
   };
 }
 
@@ -272,50 +269,15 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function normalizeRelaySettings(
+function normalizeInviteLandingSettings(
   input: unknown,
-  fallback: BridgeRelaySettings,
-): BridgeRelaySettings {
+  fallback: BridgeInviteLandingSettings,
+): BridgeInviteLandingSettings {
   const source = record(input);
+  const baseUrl = typeof source.baseUrl === "string" ? source.baseUrl.trim() : fallback.baseUrl;
   return {
-    enabled: typeof source.enabled === "boolean" ? source.enabled : fallback.enabled,
-    baseUrl: typeof source.baseUrl === "string" ? source.baseUrl.trim() : fallback.baseUrl,
-    authToken: Object.prototype.hasOwnProperty.call(source, "authToken")
-      ? stringOrUndefined(source.authToken)
-      : fallback.authToken,
-    workspaceId: Object.prototype.hasOwnProperty.call(source, "workspaceId")
-      ? stringOrUndefined(source.workspaceId)
-      : fallback.workspaceId,
-    roomBindings: normalizeRelayRoomBindings(source.roomBindings, fallback.roomBindings),
+    baseUrl,
   };
-}
-
-function normalizeRelayRoomBindings(
-  input: unknown,
-  fallback: Record<string, BridgeRelayRoomBinding>,
-): Record<string, BridgeRelayRoomBinding> {
-  if (input === undefined || input === null) {
-    return { ...fallback };
-  }
-  const source = record(input);
-  const bindings: Record<string, BridgeRelayRoomBinding> = {};
-  for (const [localRoomId, value] of Object.entries(source)) {
-    const item = record(value);
-    const relayRoomId = stringOrUndefined(item.relayRoomId);
-    const ownerMemberId = stringOrUndefined(item.ownerMemberId);
-    if (!localRoomId.trim() || !relayRoomId || !ownerMemberId) {
-      continue;
-    }
-    bindings[localRoomId] = {
-      relayRoomId,
-      ownerMemberId,
-      ownerMemberToken: stringOrUndefined(item.ownerMemberToken),
-      workspaceId: stringOrUndefined(item.workspaceId),
-      title: stringOrUndefined(item.title) ?? "群聊",
-      createdAt: stringOrUndefined(item.createdAt) ?? new Date(0).toISOString(),
-    };
-  }
-  return bindings;
 }
 
 function normalizeMatrixSettings(

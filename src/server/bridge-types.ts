@@ -242,7 +242,7 @@ export interface BridgeSettings {
   providerHttpCaptureEnabled: boolean;
   codexRawEventCaptureEnabled: boolean;
   kernelProxy: BridgeKernelProxySettings;
-  relay: BridgeRelaySettings;
+  inviteLanding: BridgeInviteLandingSettings;
   matrix: BridgeMatrixSettings;
   kernelPathOverrides: Record<string, BridgeKernelPathOverride>;
   kernelKnowledgeSourceEnabled: Record<string, Record<string, boolean>>;
@@ -250,21 +250,8 @@ export interface BridgeSettings {
   customProviders: BridgeProviderProfile[];
 }
 
-export interface BridgeRelaySettings {
-  enabled: boolean;
+export interface BridgeInviteLandingSettings {
   baseUrl: string;
-  authToken?: string;
-  workspaceId?: string;
-  roomBindings: Record<string, BridgeRelayRoomBinding>;
-}
-
-export interface BridgeRelayRoomBinding {
-  relayRoomId: string;
-  ownerMemberId: string;
-  ownerMemberToken?: string;
-  workspaceId?: string;
-  title: string;
-  createdAt: string;
 }
 
 export interface BridgeMatrixSettings {

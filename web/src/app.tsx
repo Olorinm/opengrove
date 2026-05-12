@@ -364,7 +364,7 @@ export function App() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("employeeLink")) {
       setView("contacts");
-    } else if (params.get("view") === "rooms" || params.get("roomInvite") || params.get("relayInviteToken")) {
+    } else if (params.get("view") === "rooms" || params.get("roomInvite")) {
       setView("rooms");
     }
   }, [setView]);
@@ -619,7 +619,7 @@ export function App() {
       providerHttpCaptureEnabled?: boolean;
       codexRawEventCaptureEnabled?: boolean;
       kernelProxy?: BridgeSettings["kernelProxy"];
-      relay?: BridgeSettings["relay"];
+      inviteLanding?: BridgeSettings["inviteLanding"];
       matrix?: BridgeSettings["matrix"];
       kernelPathOverrides?: BridgeSettings["kernelPathOverrides"];
       kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
