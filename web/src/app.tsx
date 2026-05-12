@@ -620,6 +620,7 @@ export function App() {
       codexRawEventCaptureEnabled?: boolean;
       kernelProxy?: BridgeSettings["kernelProxy"];
       relay?: BridgeSettings["relay"];
+      matrix?: BridgeSettings["matrix"];
       kernelPathOverrides?: BridgeSettings["kernelPathOverrides"];
       kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
       kernelProviderBindings?: Record<string, string>;

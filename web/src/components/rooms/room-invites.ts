@@ -2,12 +2,15 @@ import { postJson } from "../../bridge";
 import { nowIso, type Room } from "./rooms-storage";
 
 export type RemoteRoomInvitePayload = {
+  provider?: "relay" | "matrix";
   token: string;
   roomId: string;
   relayRoomId?: string;
   relayWorkspaceId?: string;
   ownerMemberId?: string;
   ownerMemberToken?: string;
+  matrixRoomId?: string;
+  matrixHomeserverUrl?: string;
   roomTitle: string;
   inviterName: string;
   createdAt: string;
@@ -25,7 +28,7 @@ const RELAY_BASE_URL_PARAM = "relayBaseUrl";
 const RELAY_INVITE_TOKEN_PARAM = "relayInviteToken";
 
 export async function createRemoteRoomInvite(room: Room): Promise<RemoteRoomInviteResult> {
-  const result = await postJson<RemoteRoomInviteBridgeResponse>("/rooms/relay-invites", {
+  const result = await postJson<RemoteRoomInviteBridgeResponse>("/rooms/remote-invites", {
     roomId: room.id,
     roomTitle: room.title,
   });
@@ -34,12 +37,15 @@ export async function createRemoteRoomInvite(room: Room): Promise<RemoteRoomInvi
   }
   return {
     invite: {
+      provider: result.invite.provider,
       token: result.invite.token,
       roomId: result.invite.roomId || room.id,
       relayRoomId: result.invite.relayRoomId,
       relayWorkspaceId: result.invite.relayWorkspaceId,
       ownerMemberId: result.invite.ownerMemberId,
       ownerMemberToken: result.invite.ownerMemberToken,
+      matrixRoomId: result.invite.matrixRoomId,
+      matrixHomeserverUrl: result.invite.matrixHomeserverUrl,
       roomTitle: result.invite.roomTitle || room.title,
       inviterName: result.invite.inviterName || "OpenGrove",
       createdAt: result.invite.createdAt || nowIso(),
@@ -62,6 +68,7 @@ export function readRemoteRoomInviteFromLocation(): RemoteRoomInvitePayload | nu
       inviterName: "OpenGrove",
       createdAt: nowIso(),
       relayBaseUrl,
+      provider: "relay",
     };
   }
   const raw = params.get(REMOTE_INVITE_PARAM);
@@ -73,11 +80,14 @@ export function readRemoteRoomInviteFromLocation(): RemoteRoomInvitePayload | nu
     if (!token || !roomId) return null;
     return {
       token,
+      provider: parsed.provider === "matrix" ? "matrix" : parsed.provider === "relay" ? "relay" : undefined,
       roomId,
       relayRoomId: typeof parsed.relayRoomId === "string" ? parsed.relayRoomId : undefined,
       relayWorkspaceId: typeof parsed.relayWorkspaceId === "string" ? parsed.relayWorkspaceId : undefined,
       ownerMemberId: typeof parsed.ownerMemberId === "string" ? parsed.ownerMemberId : undefined,
       ownerMemberToken: typeof parsed.ownerMemberToken === "string" ? parsed.ownerMemberToken : undefined,
+      matrixRoomId: typeof parsed.matrixRoomId === "string" ? parsed.matrixRoomId : undefined,
+      matrixHomeserverUrl: typeof parsed.matrixHomeserverUrl === "string" ? parsed.matrixHomeserverUrl : undefined,
       roomTitle: String(parsed.roomTitle || "OpenGrove 群聊").trim() || "OpenGrove 群聊",
       inviterName: String(parsed.inviterName || "OpenGrove").trim() || "OpenGrove",
       createdAt: String(parsed.createdAt || nowIso()),

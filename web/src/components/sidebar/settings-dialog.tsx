@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Bug, Check, ChevronDown, Cpu, Globe2, Palette, PlugZap, Plus, Trash2 } from "lucide-react";
 import { useIconStylePreference, type IconStylePreference } from "../../appearance";
-import type { BridgeSettings, KernelOption, KernelPathOverride, KernelPreference, KernelProxySettings, ProviderProfile, RelaySettings } from "../../bridge";
+import type { BridgeSettings, KernelOption, KernelPathOverride, KernelPreference, KernelProxySettings, MatrixSettings, ProviderProfile, RelaySettings } from "../../bridge";
 import { useI18n, type LanguagePreference, type TranslationFn } from "../../i18n";
 import { useThemePreference, type ThemePreference } from "../../theme";
 import { renderContextRecordCard } from "../system/system-views";
@@ -68,6 +68,7 @@ export function SettingsDialog(props: {
     codexRawEventCaptureEnabled: boolean;
     kernelProxy: KernelProxySettings;
     relay: RelaySettings;
+    matrix: MatrixSettings;
     kernelPathOverrides: Record<string, KernelPathOverride>;
     kernelKnowledgeSourceEnabled: Record<string, Record<string, boolean>>;
     kernelProviderBindings: Record<string, string>;
@@ -86,6 +87,7 @@ export function SettingsDialog(props: {
   const [codexRawEventCaptureEnabled, setCodexRawEventCaptureEnabled] = useState(false);
   const [kernelProxy, setKernelProxy] = useState<KernelProxySettings>(emptyKernelProxySettings());
   const [relaySettings, setRelaySettings] = useState<RelaySettings>(emptyRelaySettings());
+  const [matrixSettings, setMatrixSettings] = useState<MatrixSettings>(emptyMatrixSettings());
   const [kernelPathOverrides, setKernelPathOverrides] = useState<Record<string, KernelPathOverride>>({});
   const [sourceEnabled, setSourceEnabled] = useState<Record<string, Record<string, boolean>>>({});
   const [providerBindings, setProviderBindings] = useState<Record<string, string>>({});
@@ -107,6 +109,7 @@ export function SettingsDialog(props: {
     setCodexRawEventCaptureEnabled(Boolean(props.settings.codexRawEventCaptureEnabled));
     setKernelProxy(normalizeKernelProxySettings(props.settings.kernelProxy));
     setRelaySettings(normalizeRelaySettings(props.settings.relay));
+    setMatrixSettings(normalizeMatrixSettings(props.settings.matrix));
     setKernelPathOverrides(props.settings.kernelPathOverrides ?? {});
     setSourceEnabled(buildSourceEnabledState(props.settings));
     setProviderBindings(sanitizeProviderBindings(props.settings.kernelProviderBindings ?? {}, props.settings.providers ?? []));
@@ -161,6 +164,7 @@ export function SettingsDialog(props: {
     codexRawEventCaptureEnabled?: boolean;
     kernelProxy?: KernelProxySettings;
     relay?: RelaySettings;
+    matrix?: MatrixSettings;
     kernelPathOverrides?: Record<string, KernelPathOverride>;
     kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
     kernelProviderBindings?: Record<string, string>;
@@ -172,6 +176,7 @@ export function SettingsDialog(props: {
       codexRawEventCaptureEnabled: next.codexRawEventCaptureEnabled ?? codexRawEventCaptureEnabled,
       kernelProxy: next.kernelProxy ?? kernelProxy,
       relay: next.relay ?? relaySettings,
+      matrix: next.matrix ?? matrixSettings,
       kernelPathOverrides: next.kernelPathOverrides ?? kernelPathOverrides,
       kernelKnowledgeSourceEnabled: next.kernelKnowledgeSourceEnabled ?? sourceEnabled,
       kernelProviderBindings: next.kernelProviderBindings ?? providerBindings,
@@ -217,6 +222,16 @@ export function SettingsDialog(props: {
     const next = normalizeRelaySettings({ ...relaySettings, ...patch });
     setRelaySettings(next);
     saveSettings({ relay: next });
+  };
+
+  const setMatrixDraft = (patch: Partial<MatrixSettings>) => {
+    setMatrixSettings((current) => ({ ...current, ...patch }));
+  };
+
+  const saveMatrix = (patch: Partial<MatrixSettings> = {}) => {
+    const next = normalizeMatrixSettings({ ...matrixSettings, ...patch });
+    setMatrixSettings(next);
+    saveSettings({ matrix: next });
   };
 
   const setKernelPathDraft = (kernelId: string, key: keyof KernelPathOverride, value: string) => {
@@ -932,6 +947,83 @@ export function SettingsDialog(props: {
             <div className="settings-page-stack">
               <section className="settings-list-section">
                 <div className="settings-list-section-heading">
+                  <h2>{t("settings.matrixServer")}</h2>
+                  <span className={matrixSettings.enabled && matrixSettings.homeserverUrl && matrixSettings.userId && matrixSettings.accessToken ? "settings-status-pill" : "settings-status-pill muted"}>
+                    {matrixSettings.enabled && matrixSettings.homeserverUrl && matrixSettings.userId && matrixSettings.accessToken ? t("settings.relayReady") : t("settings.relayMissing")}
+                  </span>
+                </div>
+                <div className="settings-list">
+                  <label className="settings-list-row">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.matrixEnabled")}</strong>
+                      <small>{t("settings.matrixEnabledCopy")}</small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={matrixSettings.enabled}
+                      disabled={props.loading || props.saving}
+                      onChange={(event) => saveMatrix({ enabled: event.target.checked })}
+                    />
+                  </label>
+                  <label className="settings-list-row settings-list-row-field">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.matrixHomeserverUrl")}</strong>
+                      <small>{t("settings.matrixHomeserverUrlCopy")}</small>
+                    </span>
+                    <input
+                      value={matrixSettings.homeserverUrl}
+                      disabled={props.loading || props.saving}
+                      placeholder="https://matrix.example.com"
+                      onBlur={() => saveMatrix()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                      onChange={(event) => setMatrixDraft({ homeserverUrl: event.target.value })}
+                    />
+                  </label>
+                  <label className="settings-list-row settings-list-row-field">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.matrixUserId")}</strong>
+                      <small>{t("settings.matrixUserIdCopy")}</small>
+                    </span>
+                    <input
+                      value={matrixSettings.userId}
+                      disabled={props.loading || props.saving}
+                      placeholder="@alice:matrix.example.com"
+                      onBlur={() => saveMatrix()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                      onChange={(event) => setMatrixDraft({ userId: event.target.value })}
+                    />
+                  </label>
+                  <label className="settings-list-row settings-list-row-field">
+                    <span className="settings-list-row-main">
+                      <strong>{t("settings.matrixAccessToken")}</strong>
+                      <small>{t("settings.matrixAccessTokenCopy")}</small>
+                    </span>
+                    <input
+                      type="password"
+                      value={matrixSettings.accessToken ?? ""}
+                      disabled={props.loading || props.saving}
+                      placeholder={t("settings.relayTokenPlaceholder")}
+                      onBlur={() => saveMatrix()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.currentTarget.blur();
+                        }
+                      }}
+                      onChange={(event) => setMatrixDraft({ accessToken: event.target.value })}
+                    />
+                  </label>
+                </div>
+              </section>
+              <section className="settings-list-section">
+                <div className="settings-list-section-heading">
                   <h2>{t("settings.relayServer")}</h2>
                   <span className={relaySettings.enabled && relaySettings.baseUrl ? "settings-status-pill" : "settings-status-pill muted"}>
                     {relaySettings.enabled && relaySettings.baseUrl ? t("settings.relayReady") : t("settings.relayMissing")}
@@ -1418,6 +1510,29 @@ function normalizeRelaySettings(input: Partial<RelaySettings> | undefined): Rela
     baseUrl: input?.baseUrl?.trim() || "",
     authToken: input?.authToken?.trim() || undefined,
     workspaceId: input?.workspaceId?.trim() || undefined,
+    roomBindings: input?.roomBindings ?? {},
+  };
+}
+
+function emptyMatrixSettings(): MatrixSettings {
+  return {
+    enabled: false,
+    homeserverUrl: "",
+    userId: "",
+    accessToken: "",
+    roomBindings: {},
+  };
+}
+
+function normalizeMatrixSettings(input: Partial<MatrixSettings> | undefined): MatrixSettings {
+  const defaults = emptyMatrixSettings();
+  return {
+    ...defaults,
+    ...input,
+    enabled: Boolean(input?.enabled),
+    homeserverUrl: input?.homeserverUrl?.trim() || "",
+    userId: input?.userId?.trim() || "",
+    accessToken: input?.accessToken?.trim() || undefined,
     roomBindings: input?.roomBindings ?? {},
   };
 }

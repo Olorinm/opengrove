@@ -109,7 +109,7 @@ export async function handleRelayInviteRoute(options: {
   return true;
 }
 
-async function createRelayInviteForRoom(
+export async function createRelayInviteForRoom(
   state: BridgeState,
   relay: BridgeRelaySettings,
   baseUrl: string,
@@ -300,7 +300,7 @@ function relayHeaders(relay: BridgeRelaySettings): Record<string, string> {
   return headers;
 }
 
-function normalizeRelayBaseUrl(value: string): string {
+export function normalizeRelayBaseUrl(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
   try {

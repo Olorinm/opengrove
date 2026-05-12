@@ -30,6 +30,18 @@ import {
 } from "./room-invites";
 import { RoomMessageStream } from "./room-message-stream";
 import {
+  acceptMatrixInvite,
+  publishMatrixAgentFinal,
+  publishMatrixAgentRequest,
+  roomFromAcceptedMatrixInvite,
+  roomMemberFromMatrixAgentProfile,
+  syncMatrixRoomEvents,
+  type MatrixAgentFinalContent,
+  type MatrixAgentProfileContent,
+  type MatrixAgentRequestContent,
+  type MatrixRoomEvent,
+} from "./room-matrix";
+import {
   acceptRelayInvite,
   connectRelayRoom,
   listRelayRoomMembers,
@@ -236,6 +248,12 @@ function remoteInviteErrorMessage(error: unknown): string {
   if (message.includes("relay_not_configured")) {
     return "还没有配置 Relay，暂时不能生成远程员工邀请链接。请先到设置里填写公共 Relay 地址。";
   }
+  if (message.includes("matrix_not_configured") || message.includes("remote_messaging_not_configured")) {
+    return "还没有配置 Matrix/Tuwunel 或 Relay，暂时不能生成远程员工邀请链接。请先到设置里的远程通信填写服务器信息。";
+  }
+  if (message.includes("matrix_invite_failed")) {
+    return "生成 Matrix 共享群聊邀请失败，请检查 Tuwunel homeserver、用户 ID 和 access token。";
+  }
   return `生成远程员工邀请链接失败：${message}`;
 }
 
@@ -245,6 +263,66 @@ function relayTurnKey(event: Pick<RelayEventEnvelope, "id" | "turnId">): string 
 
 function stableRelayMessageId(prefix: string, ...parts: string[]): string {
   return `${prefix}_${parts.join("_")}`.replace(/[^A-Za-z0-9_-]/g, "_");
+}
+
+function matrixEventCreatedAt(event: MatrixRoomEvent): string {
+  const timestamp = typeof event.origin_server_ts === "number" ? event.origin_server_ts : 0;
+  return timestamp > 0 ? new Date(timestamp).toISOString() : nowIso();
+}
+
+function matrixTurnKey(event: MatrixRoomEvent, content: { turnId?: string }): string {
+  return content.turnId || event.event_id || createId("matrix_turn");
+}
+
+function stableMatrixMessageId(prefix: string, ...parts: string[]): string {
+  return `${prefix}_${parts.join("_")}`.replace(/[^A-Za-z0-9_-]/g, "_");
+}
+
+function patchMatrixFinalMessages(
+  messages: RoomMessage[],
+  event: MatrixRoomEvent,
+  payload: MatrixAgentFinalContent,
+  matrixMember: RoomMember | undefined,
+  answer: string,
+): RoomMessage[] {
+  const turnKey = matrixTurnKey(event, payload);
+  if (messages.some((message) => (
+    message.matrixEventId === event.event_id
+    || (matrixMember && message.senderId === matrixMember.id && message.matrixTurnId === turnKey && message.status !== "running")
+  ))) {
+    return messages;
+  }
+  let patched = false;
+  const next = messages.map((message) => {
+    if (message.matrixTurnId === turnKey || (message.runId && message.runId === turnKey)) {
+      patched = true;
+      return {
+        ...finalizeRoomMessage(message, {
+          answer,
+          duration: payload.duration,
+          events: payload.events,
+        }),
+        matrixEventId: event.event_id || message.matrixEventId,
+        matrixTurnId: turnKey,
+      };
+    }
+    return message;
+  });
+  if (patched || !matrixMember) return next;
+  return [...next, {
+    id: stableMatrixMessageId("matrix_final", matrixMember.id, turnKey),
+    senderId: matrixMember.id,
+    senderName: payload.displayName || matrixMember.name,
+    senderType: "agent",
+    text: answer,
+    targetIds: [matrixMember.id],
+    status: "done",
+    createdAt: matrixEventCreatedAt(event),
+    duration: payload.duration,
+    parts: [],
+    matrixEventId: event.event_id,
+    matrixTurnId: turnKey,
+  }];
 }
 
 function patchRelayFinalMessages(
@@ -331,6 +409,8 @@ export function RoomsView(props: {
   const attachedRoomRunIdsRef = useRef(new Set<string>());
   const localRoomRunIdsRef = useRef(new Set<string>());
   const relayEventIdsRef = useRef(new Set<string>());
+  const matrixEventIdsRef = useRef(new Set<string>());
+  const matrixSyncTokensRef = useRef(new Map<string, string>());
   const roomsRef = useRef<Room[]>([]);
   const membersRef = useRef<RoomMember[]>([]);
   const { rooms, setRooms, members, setMembers, activeRoomId, setActiveRoomId, storageWarning } = useRoomsStorage({
@@ -511,6 +591,19 @@ export function RoomsView(props: {
       .join("|"),
     [rooms],
   );
+  const matrixConnectionKey = useMemo(
+    () => rooms
+      .filter((room) => room.matrix?.homeserverUrl && room.matrix.roomId)
+      .map((room) => [
+        room.id,
+        room.matrix?.homeserverUrl,
+        room.matrix?.roomId,
+        room.matrix?.localMemberId,
+      ].join(":"))
+      .sort()
+      .join("|"),
+    [rooms],
+  );
 
   useEffect(() => {
     let closed = false;
@@ -531,6 +624,39 @@ export function RoomsView(props: {
       for (const source of sources) source.close();
     };
   }, [relayConnectionKey]);
+
+  useEffect(() => {
+    let closed = false;
+    async function pollMatrixRooms() {
+      const matrixRooms = roomsRef.current.filter((room) => room.matrix?.roomId);
+      for (const room of matrixRooms) {
+        const matrixRoomId = room.matrix?.roomId;
+        if (!matrixRoomId) continue;
+        const syncKey = `${room.id}:${matrixRoomId}`;
+        try {
+          const result = await syncMatrixRoomEvents({
+            roomId: matrixRoomId,
+            since: matrixSyncTokensRef.current.get(syncKey),
+          });
+          if (closed || !result.ok) continue;
+          if (result.nextBatch) {
+            matrixSyncTokensRef.current.set(syncKey, result.nextBatch);
+          }
+          for (const event of result.events ?? []) {
+            handleMatrixRoomEvent(room.id, event);
+          }
+        } catch {
+          // Matrix sync is best-effort; the next interval will retry.
+        }
+      }
+    }
+    void pollMatrixRooms();
+    const interval = window.setInterval(() => void pollMatrixRooms(), 2500);
+    return () => {
+      closed = true;
+      window.clearInterval(interval);
+    };
+  }, [matrixConnectionKey]);
 
   useEffect(() => {
     if (!props.onAttachRun || activeRunIds.size === 0) return;
@@ -1019,6 +1145,198 @@ export function RoomsView(props: {
     });
   }
 
+  function handleMatrixRoomEvent(localRoomId: string, event: MatrixRoomEvent) {
+    const eventId = event.event_id || "";
+    if (!eventId) return;
+    const eventKey = `${localRoomId}:${eventId}`;
+    if (matrixEventIdsRef.current.has(eventKey)) return;
+    matrixEventIdsRef.current.add(eventKey);
+    const room = roomsRef.current.find((item) => item.id === localRoomId);
+    if (!room?.matrix) return;
+
+    if (event.type === "org.opengrove.agent.profile") {
+      const payload = event.content as MatrixAgentProfileContent;
+      const ownerUserId = String(payload.ownerUserId || event.sender || "").trim();
+      const agentId = String(payload.agentId || "").trim();
+      if (!ownerUserId || !agentId || agentId === room.matrix.localMemberId) return;
+      const member = roomMemberFromMatrixAgentProfile({
+        ownerUserId,
+        agentId,
+        displayName: String(payload.displayName || "远程员工"),
+        kernel: payload.kernel,
+        model: payload.model,
+        role: payload.role,
+      });
+      setMembers((current) => current.some((item) => item.id === member.id) ? current : [...current, member]);
+      updateRoom(localRoomId, (currentRoom) => ({
+        ...currentRoom,
+        memberIds: currentRoom.memberIds.includes(member.id)
+          ? currentRoom.memberIds
+          : [...currentRoom.memberIds, member.id],
+        messages: currentRoom.messages.some((message) => message.matrixEventId === eventId)
+          ? currentRoom.messages
+          : [
+            ...currentRoom.messages,
+            {
+              id: stableMatrixMessageId("matrix_profile", member.id, eventId),
+              senderId: "system",
+              senderName: "系统",
+              senderType: "system",
+              text: `${member.name} 已通过 Matrix 加入共享群聊。`,
+              targetIds: [],
+              status: "done",
+              createdAt: matrixEventCreatedAt(event),
+              matrixEventId: eventId,
+            },
+          ],
+        updatedAt: matrixEventCreatedAt(event),
+      }));
+      return;
+    }
+
+    if (event.type === "org.opengrove.agent.request") {
+      const payload = event.content as MatrixAgentRequestContent;
+      void runMatrixLocalReply(localRoomId, event, payload);
+      return;
+    }
+
+    if (event.type === "org.opengrove.agent.final") {
+      const payload = event.content as MatrixAgentFinalContent;
+      finalizeMatrixRemoteReply(localRoomId, event, payload);
+    }
+  }
+
+  async function runMatrixLocalReply(
+    localRoomId: string,
+    event: MatrixRoomEvent,
+    payload: MatrixAgentRequestContent,
+  ) {
+    const room = roomsRef.current.find((item) => item.id === localRoomId);
+    const binding = room?.matrix;
+    if (!room || !binding?.localMemberId) return;
+    const member = membersRef.current.find((item) => item.id === binding.localMemberId);
+    if (!member) return;
+    if (payload.target?.agentId && payload.target.agentId !== member.id) return;
+    const prompt = String(payload.prompt || "").trim();
+    if (!prompt) return;
+    const turnKey = matrixTurnKey(event, payload);
+    if (room.messages.some((message) => (
+      message.matrixEventId === event.event_id
+      || message.matrixTurnId === turnKey
+      || (message.senderId === member.id && message.runId === turnKey)
+    ))) {
+      return;
+    }
+    const createdAt = matrixEventCreatedAt(event);
+    const userMessage: RoomMessage = {
+      id: stableMatrixMessageId("matrix_prompt", String(event.sender || "remote"), turnKey),
+      senderId: `matrix_actor_${event.sender || "remote"}`,
+      senderName: event.sender || "远程成员",
+      senderType: "user",
+      text: prompt,
+      targetIds: [member.id],
+      status: "sent",
+      createdAt,
+      attachments: payload.attachments,
+      matrixEventId: event.event_id,
+      matrixTurnId: turnKey,
+    };
+    const assistantMessage: RoomMessage = {
+      id: stableMatrixMessageId("matrix_reply", member.id, turnKey),
+      senderId: member.id,
+      senderName: member.name,
+      senderType: "agent",
+      text: "",
+      targetIds: [member.id],
+      status: "running",
+      createdAt,
+      startedAt: createdAt,
+      runId: turnKey,
+      matrixTurnId: turnKey,
+    };
+    updateRoom(localRoomId, (currentRoom) => {
+      if (currentRoom.messages.some((message) => (
+        message.id === userMessage.id
+        || message.id === assistantMessage.id
+        || message.matrixEventId === event.event_id
+        || message.matrixTurnId === turnKey
+      ))) {
+        return currentRoom;
+      }
+      return {
+        ...currentRoom,
+        messages: [...currentRoom.messages, userMessage, assistantMessage],
+        updatedAt: createdAt,
+      };
+    });
+    updateMemberStatus([member.id], "running");
+    try {
+      const result = await props.onRunPrompt({
+        roomId: localRoomId,
+        targetId: member.id,
+        targetName: member.name,
+        targetKernel: member.kernel,
+        targetModel: member.model,
+        targetRole: member.role,
+        prompt,
+        attachments: payload.attachments ?? [],
+        onRunId(runId) {
+          updateRoomMessage(localRoomId, assistantMessage.id, (message) => ({ ...message, runId }));
+        },
+        onAgentEvent(agentEvent) {
+          updateRoomMessage(localRoomId, assistantMessage.id, (message) => applyAgentEventToRoomMessage(message, agentEvent));
+        },
+      });
+      updateRoomMessage(localRoomId, assistantMessage.id, (message) => ({
+        ...finalizeRoomMessage(message, result),
+        duration: result.duration,
+      }));
+      updateMemberStatus([member.id], "done");
+      await publishMatrixAgentFinal({
+        binding,
+        turnId: turnKey,
+        agentId: member.id,
+        displayName: member.name,
+        answer: result.answer ?? "",
+        duration: result.duration,
+        events: result.events,
+      });
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      updateRoomMessage(localRoomId, assistantMessage.id, (message) => failRoomMessage(message, messageText));
+      updateMemberStatus([member.id], "idle");
+      await publishMatrixAgentFinal({
+        binding,
+        turnId: turnKey,
+        agentId: member.id,
+        displayName: member.name,
+        answer: `执行失败：${messageText}`,
+      }).catch(() => undefined);
+    }
+  }
+
+  function finalizeMatrixRemoteReply(
+    localRoomId: string,
+    event: MatrixRoomEvent,
+    payload: MatrixAgentFinalContent,
+  ) {
+    const room = roomsRef.current.find((item) => item.id === localRoomId);
+    if (!room) return;
+    const agentId = String(payload.agentId || "").trim();
+    const matrixMember = membersRef.current.find((member) => (
+      member.matrixAgentId === agentId && (!event.sender || member.matrixUserId === event.sender)
+    ));
+    const answer = payload.answer || "";
+    updateRoom(localRoomId, (currentRoom) => ({
+      ...currentRoom,
+      messages: patchMatrixFinalMessages(currentRoom.messages, event, payload, matrixMember, answer),
+      updatedAt: matrixEventCreatedAt(event),
+    }));
+    if (matrixMember) {
+      updateMemberStatus([matrixMember.id], "done");
+    }
+  }
+
   function insertPrompt(prompt: string) {
     setDraft(prompt);
     window.requestAnimationFrame(() => {
@@ -1102,8 +1420,18 @@ export function RoomsView(props: {
             mode: "host",
           },
         }));
+      } else if (result.invite.matrixHomeserverUrl && result.invite.matrixRoomId) {
+        updateRoom(activeRoom.id, (room) => ({
+          ...room,
+          badge: "Matrix",
+          matrix: {
+            homeserverUrl: result.invite.matrixHomeserverUrl!,
+            roomId: result.invite.matrixRoomId!,
+            mode: "host",
+          },
+        }));
       }
-      appendSystemMessageToRoom(activeRoom.id, "群聊邀请链接已通过 Relay 生成。朋友打开链接后会在自己的 OpenGrove 里选择员工加入。");
+      appendSystemMessageToRoom(activeRoom.id, "共享群聊邀请链接已生成。朋友打开链接后会在自己的 OpenGrove 里选择员工加入。");
       return result;
     } catch (error) {
       appendSystemMessageToRoom(activeRoom.id, remoteInviteErrorMessage(error));
@@ -1122,6 +1450,34 @@ export function RoomsView(props: {
 
   async function acceptRemoteInviteWithMember(member: RoomMember) {
     if (!remoteInvite) return;
+    if (remoteInvite.provider === "matrix" || remoteInvite.matrixRoomId || remoteInvite.matrixHomeserverUrl) {
+      try {
+        const accepted = await acceptMatrixInvite({ invite: remoteInvite, member });
+        const matrixRoom = roomFromAcceptedMatrixInvite({
+          invite: remoteInvite,
+          accepted,
+          localMember: member,
+        });
+        setRooms((current) => {
+          const existing = current.find((room) => room.id === matrixRoom.id);
+          if (!existing) return [matrixRoom, ...current];
+          return current.map((room) => room.id === matrixRoom.id ? {
+            ...room,
+            title: matrixRoom.title,
+            badge: "Matrix",
+            matrix: matrixRoom.matrix,
+            memberIds: room.memberIds.includes(member.id) ? room.memberIds : [...room.memberIds, member.id],
+            messages: [...room.messages, ...matrixRoom.messages],
+            updatedAt: nowIso(),
+          } : room);
+        });
+        setActiveRoomId(matrixRoom.id);
+        closeRemoteInviteDialog();
+      } catch (error) {
+        appendSystemMessageToRoom(activeRoom?.id || rooms[0]?.id || "room-open-group", `接受 Matrix 邀请失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+      return;
+    }
     if (remoteInvite.relayBaseUrl) {
       try {
         const accepted = await acceptRelayInvite({ invite: remoteInvite, member });
@@ -1619,6 +1975,28 @@ export function RoomsView(props: {
     const runId = createId("room_run");
     updateRoomMessage(roomId, messageId, (message) => ({ ...message, runId, relayTurnId: runId }));
     const relayRoom = roomsRef.current.find((room) => room.id === roomId);
+    if (relayRoom?.matrix && target.matrixUserId && target.matrixAgentId) {
+      updateRoomMessage(roomId, messageId, (message) => ({ ...message, matrixTurnId: runId }));
+      try {
+        await publishMatrixAgentRequest({
+          binding: relayRoom.matrix,
+          target,
+          turnId: runId,
+          prompt,
+          attachments: outgoingAttachments,
+        });
+        setMembers((current) => current.map((member) => (
+          member.id === target.id
+            ? { ...member, inviteStatus: "accepted", status: "running", lastActive: "刚刚" }
+            : member
+        )));
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : String(error);
+        updateRoomMessage(roomId, messageId, (message) => failRoomMessage(message, messageText));
+        updateMemberStatus([target.id], "idle");
+      }
+      return;
+    }
     if (relayRoom?.relay && target.relayMemberId) {
       try {
         await publishRelayMessage({

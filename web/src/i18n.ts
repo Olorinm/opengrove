@@ -139,6 +139,15 @@ export type TranslationKey =
   | "settings.relayWorkspace"
   | "settings.relayWorkspaceCopy"
   | "settings.relayWorkspacePending"
+  | "settings.matrixServer"
+  | "settings.matrixEnabled"
+  | "settings.matrixEnabledCopy"
+  | "settings.matrixHomeserverUrl"
+  | "settings.matrixHomeserverUrlCopy"
+  | "settings.matrixUserId"
+  | "settings.matrixUserIdCopy"
+  | "settings.matrixAccessToken"
+  | "settings.matrixAccessTokenCopy"
   | "settings.providerList"
   | "settings.providerBindings"
   | "settings.providerBindingsCopy"
@@ -406,7 +415,7 @@ const ZH_CN: Dictionary = {
   "composer.effortXHigh": "超高",
   "settings.kernels": "内核与知识",
   "settings.providers": "模型提供方",
-  "settings.relay": "Relay",
+  "settings.relay": "远程通信",
   "settings.network": "网络代理",
   "settings.diagnostics": "抓包与诊断",
   "settings.appearance": "外观",
@@ -415,7 +424,7 @@ const ZH_CN: Dictionary = {
   "settings.general": "常规",
   "settings.kernelsDescription": "选择默认内核，并管理它们暴露给资料库的本机知识来源。",
   "settings.providersDescription": "管理可绑定到不同内核的模型网关和 coding plan。",
-  "settings.relayDescription": "配置远程员工加入群聊时使用的公共 Relay。",
+  "settings.relayDescription": "配置远程员工加入共享群聊时使用的 Matrix/Tuwunel 或兼容 Relay。",
   "settings.networkDescription": "配置内核和安装命令使用的代理；未开启时会继承终端环境代理。",
   "settings.relayServer": "Relay 服务器",
   "settings.relayReady": "已配置",
@@ -430,6 +439,15 @@ const ZH_CN: Dictionary = {
   "settings.relayWorkspace": "工作区",
   "settings.relayWorkspaceCopy": "第一次生成邀请时会自动在 Relay 上创建。",
   "settings.relayWorkspacePending": "尚未创建",
+  "settings.matrixServer": "Matrix / Tuwunel",
+  "settings.matrixEnabled": "启用 Matrix",
+  "settings.matrixEnabledCopy": "使用 Matrix homeserver 创建共享群聊，商业化默认推荐 Tuwunel。",
+  "settings.matrixHomeserverUrl": "Homeserver 地址",
+  "settings.matrixHomeserverUrlCopy": "填写 Tuwunel 或兼容 Matrix homeserver 的公开地址。",
+  "settings.matrixUserId": "Matrix 用户 ID",
+  "settings.matrixUserIdCopy": "例如 @alice:matrix.example.com。",
+  "settings.matrixAccessToken": "访问 token",
+  "settings.matrixAccessTokenCopy": "OpenGrove 只在本机使用这个 token 调 Matrix API。",
   "settings.providerList": "供应商列表",
   "settings.providerBindings": "内核绑定",
   "settings.providerBindingsCopy": "给每个内核选择默认 provider。未选择时使用该内核自己的原生登录或配置。",
@@ -695,7 +713,7 @@ const EN: Dictionary = {
   "composer.effortXHigh": "Extra high",
   "settings.kernels": "Kernels & Knowledge",
   "settings.providers": "Providers",
-  "settings.relay": "Relay",
+  "settings.relay": "Remote messaging",
   "settings.network": "Network proxy",
   "settings.diagnostics": "Capture & Diagnostics",
   "settings.appearance": "Appearance",
@@ -704,7 +722,7 @@ const EN: Dictionary = {
   "settings.general": "General",
   "settings.kernelsDescription": "Choose the default kernel and manage the local knowledge sources it exposes to the library.",
   "settings.providersDescription": "Manage model gateways and coding plans that can be bound to different kernels.",
-  "settings.relayDescription": "Configure the public Relay used when remote employees join rooms.",
+  "settings.relayDescription": "Configure Matrix/Tuwunel or the compatible Relay used when remote employees join shared rooms.",
   "settings.networkDescription": "Configure the proxy used by kernels and install commands. When disabled, terminal proxy environment variables are inherited.",
   "settings.relayServer": "Relay server",
   "settings.relayReady": "Configured",
@@ -719,6 +737,15 @@ const EN: Dictionary = {
   "settings.relayWorkspace": "Workspace",
   "settings.relayWorkspaceCopy": "Created automatically on the Relay the first time you generate an invite.",
   "settings.relayWorkspacePending": "Not created yet",
+  "settings.matrixServer": "Matrix / Tuwunel",
+  "settings.matrixEnabled": "Enable Matrix",
+  "settings.matrixEnabledCopy": "Use a Matrix homeserver for shared rooms. Tuwunel is the commercial-friendly default target.",
+  "settings.matrixHomeserverUrl": "Homeserver URL",
+  "settings.matrixHomeserverUrlCopy": "Enter a public Tuwunel or compatible Matrix homeserver URL.",
+  "settings.matrixUserId": "Matrix user ID",
+  "settings.matrixUserIdCopy": "For example @alice:matrix.example.com.",
+  "settings.matrixAccessToken": "Access token",
+  "settings.matrixAccessTokenCopy": "OpenGrove uses this token locally to call the Matrix API.",
   "settings.providerList": "Provider list",
   "settings.providerBindings": "Kernel bindings",
   "settings.providerBindingsCopy": "Choose the default provider for each kernel. Empty means the kernel keeps using its native login/config.",

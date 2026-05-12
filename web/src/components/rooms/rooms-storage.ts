@@ -20,6 +20,8 @@ export type RoomMember = {
   inviteStatus?: RoomInviteStatus;
   homeNodeLabel?: string;
   relayMemberId?: string;
+  matrixUserId?: string;
+  matrixAgentId?: string;
   disabled?: boolean;
 };
 
@@ -40,6 +42,8 @@ export type RoomMessage = {
   finishedAt?: string;
   relayEventId?: string;
   relayTurnId?: string;
+  matrixEventId?: string;
+  matrixTurnId?: string;
 };
 
 export type Room = {
@@ -54,6 +58,7 @@ export type Room = {
   updatedAt: string;
   unread: number;
   relay?: RoomRelayBinding;
+  matrix?: RoomMatrixBinding;
 };
 
 export type RoomRelayBinding = {
@@ -62,6 +67,13 @@ export type RoomRelayBinding = {
   roomId: string;
   memberId: string;
   memberToken?: string;
+  localMemberId?: string;
+  mode: "host" | "guest";
+};
+
+export type RoomMatrixBinding = {
+  homeserverUrl: string;
+  roomId: string;
   localMemberId?: string;
   mode: "host" | "guest";
 };
@@ -357,6 +369,7 @@ export function normalizeStoredRoomsState(
       kind: room.kind ?? (room.directMemberId ? "direct" : "group"),
       directMemberId: room.directMemberId ? migrateMemberId(room.directMemberId, memberIdMigrations) : undefined,
       relay: normalizeRoomRelayBinding(room.relay),
+      matrix: normalizeRoomMatrixBinding(room.matrix),
       pinned: Boolean(room.pinned),
       memberIds: Array.isArray(room.memberIds)
         ? room.memberIds.map((memberId) => migrateMemberId(memberId, memberIdMigrations)).filter((memberId) => memberIds.has(memberId))
@@ -459,12 +472,16 @@ function mergeRoomMessage(left: RoomMessage, right: RoomMessage): RoomMessage {
     runId: preferred.runId || fallback.runId,
     relayEventId: preferred.relayEventId || fallback.relayEventId,
     relayTurnId: preferred.relayTurnId || fallback.relayTurnId,
+    matrixEventId: preferred.matrixEventId || fallback.matrixEventId,
+    matrixTurnId: preferred.matrixTurnId || fallback.matrixTurnId,
   };
 }
 
 function roomMessageMergeKey(message: RoomMessage): string {
   if (message.relayEventId) return `relay-event:${message.relayEventId}`;
+  if (message.matrixEventId) return `matrix-event:${message.matrixEventId}`;
   if (message.relayTurnId) return `relay-turn:${message.senderType}:${message.senderId}:${message.relayTurnId}`;
+  if (message.matrixTurnId) return `matrix-turn:${message.senderType}:${message.senderId}:${message.matrixTurnId}`;
   if (message.senderType === "agent" && message.runId) return `run:${message.senderId}:${message.runId}`;
   const text = message.text.trim();
   if (text) return `content:${message.senderType}:${message.senderId}:${message.createdAt}:${text}`;
@@ -604,6 +621,8 @@ function normalizeRoomMember(input: Partial<RoomMember>, fallback?: RoomMember):
     inviteStatus: normalizeInviteStatus(input.inviteStatus || fallback?.inviteStatus || (source === "remote" ? "pending" : "none")),
     homeNodeLabel: stringOrUndefined(input.homeNodeLabel ?? fallback?.homeNodeLabel),
     relayMemberId: stringOrUndefined(input.relayMemberId ?? fallback?.relayMemberId),
+    matrixUserId: stringOrUndefined(input.matrixUserId ?? fallback?.matrixUserId),
+    matrixAgentId: stringOrUndefined(input.matrixAgentId ?? fallback?.matrixAgentId),
     disabled: Boolean(input.disabled ?? fallback?.disabled ?? false),
   };
 }
@@ -622,6 +641,20 @@ function normalizeRoomRelayBinding(input: unknown): RoomRelayBinding | undefined
     roomId,
     memberId,
     memberToken: stringOrUndefined(source.memberToken),
+    localMemberId: stringOrUndefined(source.localMemberId),
+    mode: source.mode === "guest" ? "guest" : "host",
+  };
+}
+
+function normalizeRoomMatrixBinding(input: unknown): RoomMatrixBinding | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
+  const source = input as Partial<RoomMatrixBinding>;
+  const homeserverUrl = stringOrUndefined(source.homeserverUrl);
+  const roomId = stringOrUndefined(source.roomId);
+  if (!homeserverUrl || !roomId) return undefined;
+  return {
+    homeserverUrl,
+    roomId,
     localMemberId: stringOrUndefined(source.localMemberId),
     mode: source.mode === "guest" ? "guest" : "host",
   };

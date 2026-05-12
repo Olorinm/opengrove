@@ -424,6 +424,21 @@ export interface RelayRoomBinding {
   createdAt: string;
 }
 
+export interface MatrixSettings {
+  enabled: boolean;
+  homeserverUrl: string;
+  userId: string;
+  accessToken?: string;
+  roomBindings?: Record<string, MatrixRoomBinding>;
+}
+
+export interface MatrixRoomBinding {
+  matrixRoomId: string;
+  homeserverUrl: string;
+  title: string;
+  createdAt: string;
+}
+
 export interface BridgeSettings {
   kernel: KernelPreference;
   workspaceRoot?: string;
@@ -439,6 +454,7 @@ export interface BridgeSettings {
   kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
   kernelProxy: KernelProxySettings;
   relay?: RelaySettings;
+  matrix?: MatrixSettings;
   providerHttpCapture: ProviderHttpCaptureSettings;
   codexRawEventCaptureEnabled?: boolean;
   settingsPath?: string;
@@ -633,6 +649,13 @@ export async function postJson<T>(path: string, payload: unknown): Promise<T> {
     method: "POST",
     headers: bridgeHeaders(),
     body: JSON.stringify(payload),
+  });
+}
+
+export async function getJson<T>(path: string): Promise<T> {
+  return fetchJson<T>(path, {
+    method: "GET",
+    headers: bridgeHeaders(false),
   });
 }
 
