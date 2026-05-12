@@ -134,6 +134,10 @@ function readStoredLibraryAiPanelWidth(): number {
   );
 }
 
+function readStoredLibraryLastKnowledgeId(): string {
+  return window.localStorage.getItem(APP_STORAGE_KEYS.libraryLastKnowledgeId) || "";
+}
+
 function modelBindingKey(kernel: string | undefined, source: string | undefined): string {
   return `${kernel || "unknown"}:${source || "native"}`;
 }
@@ -241,7 +245,7 @@ export function App() {
   const [question, setQuestion] = useState("");
   const [attachments, setAttachments] = useState<AttachmentPayload[]>([]);
   const [contextArtifacts, setContextArtifacts] = useState<ContextArtifactPayload[]>([]);
-  const [focusedKnowledgeId, setFocusedKnowledgeId] = useState("");
+  const [focusedKnowledgeId, setFocusedKnowledgeId] = useState(readStoredLibraryLastKnowledgeId);
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const [librarySearchOpen, setLibrarySearchOpen] = useState(false);
   const [, setVaultActionRootPath] = useState("OpenGrove");
@@ -443,6 +447,19 @@ export function App() {
     () => libraryAiThreadOptions.find((thread) => thread.id === threadId)?.title || t("conversation.newThreadFallback"),
     [libraryAiThreadOptions, t, threadId],
   );
+
+  useEffect(() => {
+    if (!focusedKnowledgeId) return;
+    const exists = knowledge.some((document) => document?.id === focusedKnowledgeId);
+    if (exists) {
+      window.localStorage.setItem(APP_STORAGE_KEYS.libraryLastKnowledgeId, focusedKnowledgeId);
+      return;
+    }
+    if (inventoryQuery.isSuccess) {
+      window.localStorage.removeItem(APP_STORAGE_KEYS.libraryLastKnowledgeId);
+      setFocusedKnowledgeId("");
+    }
+  }, [focusedKnowledgeId, inventoryQuery.isSuccess, knowledge]);
 
   function syncRunningTurns() {
     const nextThreadIds = [...runningTurnsRef.current.keys()];

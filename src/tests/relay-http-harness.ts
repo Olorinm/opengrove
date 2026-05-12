@@ -31,6 +31,17 @@ try {
     createdByMemberId: owner.member.id,
     targetKind: "remote-agent",
   });
+  const invitePage = await fetch(`${baseUrl}/invites/accept?token=${encodeURIComponent(invite.invite.token)}`);
+  const inviteHtml = await invitePage.text();
+  assert.equal(invitePage.ok, true);
+  assert.match(inviteHtml, /OpenGrove 员工邀请/);
+  assert.match(inviteHtml, /检测并打开本机 OpenGrove/);
+  assert.match(inviteHtml, /opengrove-probe/);
+  assert.match(inviteHtml, /http:\/\/127\.0\.0\.1:37371\/ui\//);
+  assert.match(inviteHtml, /http:\/\/127\.0\.0\.1:37373\/ui\//);
+  assert.match(inviteHtml, /execCommand\('copy'\)/);
+  assert.doesNotMatch(inviteHtml, /opengrove:\/\//);
+
   const accepted = await postOrGet("POST", `${baseUrl}/invites/accept`, {
     token: invite.invite.token,
     displayName: "ReviewBot",

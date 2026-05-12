@@ -10,6 +10,8 @@ import {
   resolveKernelProxySettings,
 } from "../runtime/kernel-proxy.js";
 import { createJsonStateStore } from "../storage/json-state-store.js";
+import { normalizeOpenGroveProfile } from "../profiles/profile.js";
+import { bridgeDataPath } from "./storage-paths.js";
 import type {
   BridgeKernelProxySettings,
   BridgeRelayRoomBinding,
@@ -48,7 +50,8 @@ import {
 export function createBridgeState(options: LocalBridgeServerOptions): BridgeState {
   const state: BridgeState = {
     app: undefined as unknown as BridgeState["app"],
-    store: createJsonStateStore(options.statePath),
+    store: options.store ?? createJsonStateStore(options.statePath),
+    profile: normalizeOpenGroveProfile(options.profile, "local"),
     snapshot: {},
     computerSnapshot: {},
     model: DEFAULT_BRIDGE_MODEL_ID,
@@ -243,8 +246,7 @@ function defaultRelaySettings(): BridgeRelaySettings {
 function bridgeSettingsPath(state: BridgeState): string {
   const explicit = readAppEnv("BRIDGE_SETTINGS_PATH");
   if (explicit) return resolve(explicit);
-  const statePath = "path" in state.store && typeof state.store.path === "string" ? state.store.path : "";
-  return statePath ? resolve(dirname(statePath), "bridge-settings.json") : resolve(process.cwd(), "data", "bridge-settings.json");
+  return bridgeDataPath(state, "bridge-settings.json");
 }
 
 function record(value: unknown): Record<string, unknown> {

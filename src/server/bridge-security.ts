@@ -50,7 +50,10 @@ export function createBridgeSecurity(options: LocalBridgeServerOptions): BridgeS
 
 export function applyCors(response: ServerResponse, request: IncomingMessage, security: BridgeSecurity): void {
   const origin = request.headers.origin;
-  if (isAllowedOrigin(origin, security) && origin) {
+  if (isLocalProbeRequest(request) && origin) {
+    response.setHeader("Access-Control-Allow-Origin", origin);
+    response.setHeader("Access-Control-Allow-Private-Network", "true");
+  } else if (isAllowedOrigin(origin, security) && origin) {
     response.setHeader("Access-Control-Allow-Origin", origin);
   }
   response.setHeader("Vary", "Origin");
@@ -108,6 +111,15 @@ function isLoopbackHttpOrigin(origin: string): boolean {
       (url.protocol === "http:" || url.protocol === "https:") &&
       (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "::1")
     );
+  } catch {
+    return false;
+  }
+}
+
+export function isLocalProbeRequest(request: IncomingMessage): boolean {
+  try {
+    const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    return url.pathname === "/opengrove-probe";
   } catch {
     return false;
   }

@@ -84,6 +84,10 @@ export function VaultSidebarPanel(props: {
   );
   const activeRootPath = rootVaultPath(selectedFolderPath || focusedFolderPath || tree[0]?.path || "OpenGrove");
   const menuPath = menuState?.path ?? "";
+  const userNodes = tree.filter((node) => !isProtectedVaultRoot(node.name));
+  const kernelNodes = tree.filter((node) => isProtectedVaultRoot(node.name));
+  const hasKernelNodes = kernelNodes.length > 0;
+  const kernelsOpen = openPaths["__kernels__"] ?? true;
 
   function openMenu(path: string, anchor?: VaultMenuAnchor) {
     if (!path || !anchor) {
@@ -99,7 +103,8 @@ export function VaultSidebarPanel(props: {
   }
 
   const allFoldersOpen = folderStates.length > 0 &&
-    folderStates.every((folder) => props.forceOpen || (openPaths[folder.path] ?? folder.defaultOpen));
+    folderStates.every((folder) => props.forceOpen || (openPaths[folder.path] ?? folder.defaultOpen)) &&
+    (!hasKernelNodes || props.forceOpen || kernelsOpen);
 
   useEffect(() => {
     props.onActiveRootChange?.(activeRootPath);
@@ -121,8 +126,11 @@ export function VaultSidebarPanel(props: {
     if (!props.expandRequest) return;
     if (props.expandRequest.id === lastExpandRequestIdRef.current) return;
     lastExpandRequestIdRef.current = props.expandRequest.id;
-    setOpenPaths(Object.fromEntries(folderPaths.map((path) => [path, props.expandRequest!.open])));
-  }, [props.expandRequest?.id, props.expandRequest?.open, folderPaths]);
+    setOpenPaths({
+      ...Object.fromEntries(folderPaths.map((path) => [path, props.expandRequest!.open])),
+      ...(hasKernelNodes ? { __kernels__: props.expandRequest.open } : {}),
+    });
+  }, [props.expandRequest?.id, props.expandRequest?.open, folderPaths, hasKernelNodes]);
 
   useEffect(() => {
     lastFocusedKnowledgeIdRef.current = props.focusedKnowledgeId;
@@ -184,10 +192,6 @@ export function VaultSidebarPanel(props: {
     });
   }
 
-  const userNodes = tree.filter((node) => !isProtectedVaultRoot(node.name));
-  const kernelNodes = tree.filter((node) => isProtectedVaultRoot(node.name));
-  const kernelsOpen = openPaths["__kernels__"] ?? true;
-
   const renderNode = (node: VaultTreeNode, depth: number) => (
     <VaultTreeNodeView
       depth={depth}
@@ -222,7 +226,7 @@ export function VaultSidebarPanel(props: {
     <section className="sidebar-library-panel" aria-label={t("vault.files")}>
       <div className="sidebar-library-files">
         {userNodes.length ? userNodes.map((node) => renderNode(node, 0)) : null}
-        {kernelNodes.length ? (
+        {hasKernelNodes ? (
           <div className="vault-kernels-folder">
             <div
               className="sidebar-library-file sidebar-tree-folder"

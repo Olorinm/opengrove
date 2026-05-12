@@ -8,6 +8,7 @@ const projectRoot = resolve(scriptDir, "..");
 const outDir = join(projectRoot, "web-dist");
 const assetsDir = join(outDir, "assets");
 const sourcemap = process.env.OPENGROVE_WEB_SOURCEMAP === "1";
+const apiBase = process.env.OPENGROVE_WEB_API_BASE ?? "";
 
 await rm(outDir, { recursive: true, force: true });
 await mkdir(assetsDir, { recursive: true });
@@ -26,5 +27,17 @@ await build({
   sourcemap,
 });
 
-const indexTemplate = await readFile(join(projectRoot, "web", "index.html"), "utf8");
+const indexTemplate = (await readFile(join(projectRoot, "web", "index.html"), "utf8"))
+  .replace(
+    /<meta name="opengrove-api-base" content="[^"]*" \/>/,
+    `<meta name="opengrove-api-base" content="${escapeHtmlAttribute(apiBase)}" />`,
+  );
 await writeFile(join(outDir, "index.html"), indexTemplate, "utf8");
+
+function escapeHtmlAttribute(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}

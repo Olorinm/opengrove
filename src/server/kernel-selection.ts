@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import type { JsonObject } from "../core.js";
 import { packageRoot } from "../package-root.js";
 import {
@@ -86,6 +86,7 @@ import {
   kernelPathEnv,
 } from "./kernel-paths.js";
 import { resolveBridgeWorkspaceRoot } from "./workspace-root.js";
+import { bridgeDataPath } from "./storage-paths.js";
 
 export function createBridgeKernel(state: BridgeState): KernelAdapter {
   const kernel = resolveBridgeKernel(state.settings.kernel, state);
@@ -148,7 +149,7 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
       sandbox: readCodexSandbox(),
       allowServiceTier: !codexProviderConfig,
       runtimeBindingFingerprint,
-      statePath: resolve(dirname(state.store.path), "codex-threads.json"),
+      statePath: bridgeDataPath(state, "codex-threads.json"),
       providerHttpCapture,
       rawEventCapture: state.settings.providerHttpCaptureEnabled && state.settings.codexRawEventCaptureEnabled,
       env: providerEnv,

@@ -1,0 +1,37 @@
+services:
+  opengrove:
+    build: .
+    ports:
+      - "${OPENGROVE_BRIDGE_PORT:-37371}:37371"
+    environment:
+      OPENGROVE_PROFILE: server
+      OPENGROVE_BRIDGE_HOST: 0.0.0.0
+      OPENGROVE_BRIDGE_PORT: 37371
+      OPENGROVE_DATABASE_URL: postgres://opengrove:opengrove@postgres:5432/opengrove
+      OPENGROVE_WORKSPACE_ID: ${OPENGROVE_WORKSPACE_ID:-default}
+      OPENGROVE_BRIDGE_TOKEN: ${OPENGROVE_BRIDGE_TOKEN:?Set OPENGROVE_BRIDGE_TOKEN in your environment or .env file}
+      OPENGROVE_BRIDGE_ALLOWED_ORIGINS: ${OPENGROVE_BRIDGE_ALLOWED_ORIGINS:-}
+      OPENGROVE_DATA_DIR: /data
+    volumes:
+      - opengrove-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: opengrove
+      POSTGRES_PASSWORD: opengrove
+      POSTGRES_DB: opengrove
+    volumes:
+      - opengrove-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opengrove -d opengrove"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  opengrove-data:
+  opengrove-postgres:

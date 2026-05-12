@@ -1,4 +1,5 @@
 import type { BridgeStreamChunk } from "./runtime/agent-events";
+import { apiUrl } from "./api-base";
 import { APP_BRIDGE_TOKEN_HEADER, APP_STORAGE_KEYS } from "./identity";
 
 export const MODEL_OPTIONS = [
@@ -514,10 +515,30 @@ export interface HealthResponse {
   time: string;
   kernel?: string;
   settings?: BridgeSettings;
+  capabilities?: BridgeCapabilities;
   runtimeControls?: RuntimeControls;
   runtimeControlsByKernel?: Record<string, RuntimeControls>;
   tokenRequired: boolean;
   error?: string;
+}
+
+export interface BridgeCapabilities {
+  profile: "local" | "server" | "test";
+  auth: string;
+  multiUser: boolean;
+  storage: string;
+  blobStorage: string;
+  kernelRuntime: string;
+  workspaceScoped: boolean;
+  approvals: boolean;
+  api?: Record<string, unknown>;
+  desktop?: Record<string, unknown>;
+  features?: Record<string, unknown>;
+}
+
+export interface CapabilitiesResponse {
+  ok: boolean;
+  capabilities: BridgeCapabilities;
 }
 
 export interface AskFinalPayload {
@@ -600,7 +621,7 @@ export async function readBridgeError(response: Response): Promise<string> {
 }
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
+  const response = await fetch(apiUrl(path), init);
   if (!response.ok) {
     throw new Error(await readBridgeError(response));
   }
@@ -644,7 +665,7 @@ export async function runAskStream(
   onChunk: (chunk: BridgeStreamChunk) => void,
   options: { signal?: AbortSignal } = {},
 ): Promise<AskFinalPayload> {
-  const response = await fetch("/ask/stream", {
+  const response = await fetch(apiUrl("/ask/stream"), {
     method: "POST",
     headers: bridgeHeaders(),
     body: JSON.stringify(payload),
@@ -661,7 +682,7 @@ export async function attachAskStream(
   const params = new URLSearchParams();
   if (query.runId) params.set("runId", query.runId);
   if (query.threadId) params.set("threadId", query.threadId);
-  const response = await fetch(`/ask/stream?${params.toString()}`, {
+  const response = await fetch(apiUrl(`/ask/stream?${params.toString()}`), {
     method: "GET",
     headers: bridgeHeaders(),
     signal: options.signal,

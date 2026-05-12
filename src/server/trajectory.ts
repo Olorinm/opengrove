@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import type {
   AgentEvent,
   CapabilityManifest,
@@ -23,6 +23,7 @@ import {
   MAX_CONTEXT_RECORDS,
 } from "./bridge-types.js";
 import { attachProviderHttpCaptureDiagnostics } from "./provider-http-captures.js";
+import { bridgeDataPath } from "./storage-paths.js";
 
 export function writeTrajectoryRecord(
   state: BridgeState,
@@ -32,7 +33,7 @@ export function writeTrajectoryRecord(
   contextRecords: BridgeContextRecord[],
 ): void {
   const runId = events.find((event) => event.runId)?.runId ?? `run_${Date.now()}`;
-  const root = resolve(dirname(state.store.path), "trajectories");
+  const root = bridgeDataPath(state, "trajectories");
   const file = resolve(root, `${new Date().toISOString().replace(/[:.]/g, "-")}_${sanitizePathSegment(runId)}.json`);
   try {
     mkdirSync(root, { recursive: true });

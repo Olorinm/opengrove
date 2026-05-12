@@ -3,8 +3,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { packageRoot } from "./package-root.js";
-import { startLocalBridgeServer } from "./server/local-bridge.js";
 import { startRelayHttpServer } from "./relay/http-relay-server.js";
+import { normalizePersistedAgentState } from "./storage/json-state-store.js";
+import { savePostgresStateSnapshot } from "./storage/postgres-state-store.js";
+import { startLocalProfile } from "./profiles/local.js";
+import { startServerProfile } from "./profiles/server.js";
 
 type PackageInfo = {
   name: string;
@@ -16,13 +19,17 @@ const USAGE = `OpenGrove
 Usage:
   opengrove start [--host HOST] [--port PORT]
   opengrove bridge [--host HOST] [--port PORT]
+  opengrove server [--host HOST] [--port PORT] [--database-url URL] [--workspace-id ID]
   opengrove relay [--host HOST] [--port PORT]
+  opengrove migrate json-to-postgres --state PATH --database-url URL [--workspace-id ID]
   opengrove update
   opengrove version
 
 Commands:
   start, bridge   Start the local OpenGrove bridge and UI.
+  server          Start the deployable OpenGrove server profile.
   relay           Start the OpenGrove room relay HTTP/SSE server.
+  migrate         Run data migrations between storage profiles.
   update          Upgrade the npm global installation to the latest version.
   version         Print the installed OpenGrove version.
 `;
@@ -44,7 +51,13 @@ async function main(): Promise<void> {
 
   if (command === "start" || command === "bridge") {
     const options = parseStartOptions(command === args[0] ? args.slice(1) : args);
-    startLocalBridgeServer(options);
+    startLocalProfile(options);
+    return;
+  }
+
+  if (command === "server") {
+    const options = parseServerOptions(args.slice(1));
+    await startServerProfile(options);
     return;
   }
 
@@ -56,6 +69,11 @@ async function main(): Promise<void> {
 
   if (command === "update" || command === "upgrade") {
     runUpdate();
+    return;
+  }
+
+  if (command === "migrate") {
+    await runMigrate(args.slice(1));
     return;
   }
 
@@ -85,6 +103,95 @@ function parseStartOptions(args: string[]): { host?: string; port?: number } {
   }
 
   return options;
+}
+
+function parseServerOptions(args: string[]): {
+  host?: string;
+  port?: number;
+  databaseUrl?: string;
+  workspaceId?: string;
+} {
+  const options: {
+    host?: string;
+    port?: number;
+    databaseUrl?: string;
+    workspaceId?: string;
+  } = {};
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--host") {
+      options.host = readRequiredValue(args, index, "--host");
+      index += 1;
+    } else if (arg.startsWith("--host=")) {
+      options.host = arg.slice("--host=".length);
+    } else if (arg === "--port") {
+      options.port = parsePort(readRequiredValue(args, index, "--port"));
+      index += 1;
+    } else if (arg.startsWith("--port=")) {
+      options.port = parsePort(arg.slice("--port=".length));
+    } else if (arg === "--database-url") {
+      options.databaseUrl = readRequiredValue(args, index, "--database-url");
+      index += 1;
+    } else if (arg.startsWith("--database-url=")) {
+      options.databaseUrl = arg.slice("--database-url=".length);
+    } else if (arg === "--workspace-id") {
+      options.workspaceId = readRequiredValue(args, index, "--workspace-id");
+      index += 1;
+    } else if (arg.startsWith("--workspace-id=")) {
+      options.workspaceId = arg.slice("--workspace-id=".length);
+    } else {
+      throw new Error(`Unknown server option: ${arg}`);
+    }
+  }
+
+  return options;
+}
+
+async function runMigrate(args: string[]): Promise<void> {
+  const subcommand = args[0];
+  if (subcommand !== "json-to-postgres") {
+    throw new Error("Unknown migrate command. Use: opengrove migrate json-to-postgres --state PATH --database-url URL");
+  }
+
+  let statePath = "";
+  let databaseUrl = "";
+  let workspaceId = "default";
+  for (let index = 1; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--state") {
+      statePath = readRequiredValue(args, index, "--state");
+      index += 1;
+    } else if (arg.startsWith("--state=")) {
+      statePath = arg.slice("--state=".length);
+    } else if (arg === "--database-url") {
+      databaseUrl = readRequiredValue(args, index, "--database-url");
+      index += 1;
+    } else if (arg.startsWith("--database-url=")) {
+      databaseUrl = arg.slice("--database-url=".length);
+    } else if (arg === "--workspace-id") {
+      workspaceId = readRequiredValue(args, index, "--workspace-id");
+      index += 1;
+    } else if (arg.startsWith("--workspace-id=")) {
+      workspaceId = arg.slice("--workspace-id=".length);
+    } else {
+      throw new Error(`Unknown migrate option: ${arg}`);
+    }
+  }
+
+  if (!statePath) {
+    throw new Error("migrate json-to-postgres requires --state PATH");
+  }
+  if (!databaseUrl) {
+    throw new Error("migrate json-to-postgres requires --database-url URL");
+  }
+
+  const snapshot = normalizePersistedAgentState(JSON.parse(readFileSync(statePath, "utf8")));
+  await savePostgresStateSnapshot({
+    connectionString: databaseUrl,
+    workspaceId,
+  }, snapshot);
+  console.log(`Migrated ${statePath} to Postgres workspace ${workspaceId}.`);
 }
 
 function readRequiredValue(args: string[], index: number, name: string): string {

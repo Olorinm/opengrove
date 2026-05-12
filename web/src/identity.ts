@@ -24,5 +24,6 @@ export const APP_STORAGE_KEYS = {
   libraryAiPanelWidth: `${APP_PROTOCOL_ID}LibraryAiPanelWidth`,
   vaultOpenPaths: `${APP_PROTOCOL_ID}VaultOpenPaths`,
   vaultTreeOrder: `${APP_PROTOCOL_ID}VaultTreeOrder`,
+  libraryLastKnowledgeId: `${APP_PROTOCOL_ID}LibraryLastKnowledgeId`,
   libraryAiLastThreadId: `${APP_PROTOCOL_ID}LibraryAiLastThreadId`,
 } as const;

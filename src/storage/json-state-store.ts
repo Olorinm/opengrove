@@ -39,11 +39,16 @@ export interface PersistedAgentState {
   executions: ExecutionRecord[];
 }
 
-export interface JsonStateStore {
+export interface AgentStateStore {
   readonly path: string;
+  readonly kind: "json" | "postgres" | "memory";
   loadInto(app: PersistableAgentStatePorts): PersistedAgentState | undefined;
   saveFrom(app: PersistableAgentStatePorts): PersistedAgentState;
+  flush?(): Promise<void>;
+  close?(): Promise<void>;
 }
+
+export type JsonStateStore = AgentStateStore & { readonly kind: "json" };
 
 export interface PersistableAgentStatePorts {
   knowledge: {
@@ -100,51 +105,18 @@ export function createJsonStateStore(path = defaultStatePath()): JsonStateStore 
 
   return {
     path: resolved,
+    kind: "json",
     loadInto(app) {
       if (!existsSync(resolved)) {
         return undefined;
       }
 
       const state = normalizeState(JSON.parse(readFileSync(resolved, "utf8")));
-      app.knowledge.restore(state.knowledge);
-      app.memory.restore(state.memory);
-      app.artifacts.restore(state.artifacts);
-      app.knowledge.restoreLedgers({
-        evidence: state.knowledgeEvidence,
-        revisions: state.knowledgeRevisions,
-        deliveries: state.knowledgeDeliveries,
-        feedback: state.knowledgeFeedback,
-      });
-      app.workingState.restore(state.workingState);
-      app.approvals.restore(state.approvals);
-      app.events.restore(state.events);
-      app.routines.restore(state.routines);
-      app.sessions.restore({
-        sessions: state.sessions,
-        runs: state.runs,
-      });
-      app.executions.restore(state.executions);
+      restorePersistedAgentState(app, state);
       return state;
     },
     saveFrom(app) {
-      const state: PersistedAgentState = {
-        version: 7,
-        savedAt: new Date().toISOString(),
-        knowledge: app.knowledge.snapshot(),
-        knowledgeEvidence: app.knowledge.listEvidence(),
-        knowledgeRevisions: app.knowledge.listRevisions(),
-        knowledgeDeliveries: app.knowledge.listDeliveries(),
-        knowledgeFeedback: app.knowledge.listFeedback(),
-        memory: app.memory.list(),
-        artifacts: app.artifacts.list(),
-        workingState: app.workingState.get(),
-        approvals: app.approvals.list(),
-        events: app.events.list(),
-        routines: app.routines.list(),
-        sessions: app.sessions.list(),
-        runs: app.sessions.listRuns(),
-        executions: app.executions.list(),
-      };
+      const state = snapshotPersistedAgentState(app);
 
       mkdirSync(dirname(resolved), { recursive: true });
       writeFileSync(resolved, `${JSON.stringify(state, null, 2)}\n`, "utf8");
@@ -153,11 +125,56 @@ export function createJsonStateStore(path = defaultStatePath()): JsonStateStore 
   };
 }
 
+export function snapshotPersistedAgentState(app: PersistableAgentStatePorts): PersistedAgentState {
+  return {
+    version: 7,
+    savedAt: new Date().toISOString(),
+    knowledge: app.knowledge.snapshot(),
+    knowledgeEvidence: app.knowledge.listEvidence(),
+    knowledgeRevisions: app.knowledge.listRevisions(),
+    knowledgeDeliveries: app.knowledge.listDeliveries(),
+    knowledgeFeedback: app.knowledge.listFeedback(),
+    memory: app.memory.list(),
+    artifacts: app.artifacts.list(),
+    workingState: app.workingState.get(),
+    approvals: app.approvals.list(),
+    events: app.events.list(),
+    routines: app.routines.list(),
+    sessions: app.sessions.list(),
+    runs: app.sessions.listRuns(),
+    executions: app.executions.list(),
+  };
+}
+
+export function restorePersistedAgentState(
+  app: PersistableAgentStatePorts,
+  state: PersistedAgentState,
+): void {
+  app.knowledge.restore(state.knowledge);
+  app.memory.restore(state.memory);
+  app.artifacts.restore(state.artifacts);
+  app.knowledge.restoreLedgers({
+    evidence: state.knowledgeEvidence,
+    revisions: state.knowledgeRevisions,
+    deliveries: state.knowledgeDeliveries,
+    feedback: state.knowledgeFeedback,
+  });
+  app.workingState.restore(state.workingState);
+  app.approvals.restore(state.approvals);
+  app.events.restore(state.events);
+  app.routines.restore(state.routines);
+  app.sessions.restore({
+    sessions: state.sessions,
+    runs: state.runs,
+  });
+  app.executions.restore(state.executions);
+}
+
 function defaultStatePath(): string {
   return readAppEnv("STATE_PATH") ?? "data/local-state.json";
 }
 
-function normalizeState(input: unknown): PersistedAgentState {
+export function normalizePersistedAgentState(input: unknown): PersistedAgentState {
   const object =
     input && typeof input === "object" && !Array.isArray(input)
       ? (input as Record<string, unknown>)
@@ -196,3 +213,5 @@ function normalizeState(input: unknown): PersistedAgentState {
     executions: Array.isArray(object.executions) ? object.executions as ExecutionRecord[] : [],
   };
 }
+
+const normalizeState = normalizePersistedAgentState;

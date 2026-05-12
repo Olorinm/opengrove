@@ -22,25 +22,16 @@ export function KnowledgeLibraryView(props: {
 }) {
   const [selectedId, setSelectedId] = useState("");
   const selectedDocument =
-    props.filteredDocuments.find((document) => document.id === selectedId) ||
-    props.documents.find((document) => document.id === selectedId) ||
-    props.filteredDocuments[0] ||
-    props.documents[0];
+    selectedId
+      ? props.filteredDocuments.find((document) => document.id === selectedId) ||
+        props.documents.find((document) => document.id === selectedId)
+      : undefined;
 
   useEffect(() => {
-    if (props.focusedKnowledgeId && props.focusedKnowledgeId !== selectedId) {
+    if (props.focusedKnowledgeId !== selectedId) {
       setSelectedId(props.focusedKnowledgeId);
-      return;
     }
-    if (!selectedDocument?.id) {
-      setSelectedId("");
-      return;
-    }
-    if (selectedId !== selectedDocument.id) {
-      setSelectedId(selectedDocument.id);
-      props.onFocusKnowledge(selectedDocument.id);
-    }
-  }, [props.focusedKnowledgeId, selectedDocument?.id, selectedId, props.filteredDocuments]);
+  }, [props.focusedKnowledgeId, selectedId]);
 
   const content = (
     <div className="knowledge-page">

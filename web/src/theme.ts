@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import { apiUrl } from "./api-base";
 import { APP_STORAGE_KEYS } from "./identity";
 
 export type ThemePreference = "system" | "light" | "dark";
@@ -146,7 +147,7 @@ function syncHostSystemTheme(): Promise<void> {
   if (hostSystemThemeRequest) {
     return hostSystemThemeRequest;
   }
-  hostSystemThemeRequest = fetch("/health", { cache: "no-store" })
+  hostSystemThemeRequest = fetch(apiUrl("/health"), { cache: "no-store" })
     .then((response) => (response.ok ? response.json() as Promise<unknown> : undefined))
     .then((payload) => {
       const nextTheme = readSystemThemeFromHealth(payload);

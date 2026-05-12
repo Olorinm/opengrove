@@ -20,7 +20,8 @@ import type {
   ArtifactRecord,
   ApprovalRequest,
 } from "../core.js";
-import type { JsonStateStore } from "../storage/json-state-store.js";
+import type { AgentStateStore } from "../storage/json-state-store.js";
+import type { OpenGroveProfile } from "../profiles/profile.js";
 import type { KernelAdapter } from "../kernel/types.js";
 import type { KnowledgeDocument, KnowledgeLedgerSnapshot } from "../knowledge/types.js";
 import type { BrowserPageSnapshot } from "../environment/browser-adapter.js";
@@ -135,6 +136,8 @@ export interface LocalBridgeServerOptions {
   host?: string;
   port?: number;
   statePath?: string;
+  store?: AgentStateStore;
+  profile?: OpenGroveProfile;
   bridgeToken?: string;
   allowedOrigins?: string[];
 }
@@ -277,7 +280,8 @@ export interface BridgeKernelProxySettings {
 
 export interface BridgeState {
   app: OpenGroveApp;
-  store: JsonStateStore;
+  store: AgentStateStore;
+  profile: OpenGroveProfile;
   snapshot: BrowserPageSnapshot;
   computerSnapshot: ComputerStateSnapshot;
   model: BridgeModelId;

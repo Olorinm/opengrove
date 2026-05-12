@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import type { AgentEvent, PolicyRule } from "../core.js";
 import { hasComputerState } from "../environment/computer-adapter.js";
 import type { BrowserPageAttachmentSnapshot, BrowserPageSnapshot } from "../environment/browser-adapter.js";
@@ -20,6 +20,7 @@ import {
 } from "./trajectory.js";
 import { syncBridgeWorkingState } from "./bridge-working-state.js";
 import { runWithBridgeTurnContext, type BridgeTurnContext } from "./bridge-turn-context.js";
+import { bridgeDataPath } from "./storage-paths.js";
 
 type AskStreamChunk =
   | { type: "start"; ok: true; threadId: string; runId: string }
@@ -264,7 +265,7 @@ export function persistSnapshotAttachments(snapshot: BrowserPageSnapshot, state:
     return;
   }
 
-  const uploadRoot = resolve(dirname(state.store.path), "uploads");
+  const uploadRoot = bridgeDataPath(state, "uploads");
   mkdirSync(uploadRoot, { recursive: true });
 
   snapshot.attachments = snapshot.attachments.map((attachment) => {

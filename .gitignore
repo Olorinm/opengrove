@@ -17,3 +17,4 @@ scripts/__pycache__/
 .env.local
 .env.*
 !.env.local.example
+!.env.server.example
