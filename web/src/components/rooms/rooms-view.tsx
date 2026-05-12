@@ -239,6 +239,14 @@ function remoteInviteErrorMessage(error: unknown): string {
   return `生成远程员工邀请链接失败：${message}`;
 }
 
+function relayTurnKey(event: Pick<RelayEventEnvelope, "id" | "turnId">): string {
+  return event.turnId || event.id;
+}
+
+function stableRelayMessageId(prefix: string, ...parts: string[]): string {
+  return `${prefix}_${parts.join("_")}`.replace(/[^A-Za-z0-9_-]/g, "_");
+}
+
 function patchRelayFinalMessages(
   messages: RoomMessage[],
   event: RelayEventEnvelope,
@@ -246,21 +254,32 @@ function patchRelayFinalMessages(
   relayMember: RoomMember | undefined,
   answer: string,
 ): RoomMessage[] {
+  const turnKey = relayTurnKey(event);
+  if (messages.some((message) => (
+    message.relayEventId === event.id
+    || (relayMember && message.senderId === relayMember.id && message.relayTurnId === turnKey && message.status !== "running")
+  ))) {
+    return messages;
+  }
   let patched = false;
   const next = messages.map((message) => {
-    if (message.runId && event.turnId && message.runId === event.turnId) {
+    if ((message.runId && event.turnId && message.runId === event.turnId) || message.relayTurnId === turnKey) {
       patched = true;
-      return finalizeRoomMessage(message, {
-        answer,
-        duration: payload.duration,
-        events: payload.events,
-      });
+      return {
+        ...finalizeRoomMessage(message, {
+          answer,
+          duration: payload.duration,
+          events: payload.events,
+        }),
+        relayEventId: event.id,
+        relayTurnId: turnKey,
+      };
     }
     return message;
   });
   if (patched || !relayMember) return next;
   return [...next, {
-    id: createId("message"),
+    id: stableRelayMessageId("relay_final", relayMember.id, turnKey),
     senderId: relayMember.id,
     senderName: payload.memberName || relayMember.name,
     senderType: "agent",
@@ -270,6 +289,8 @@ function patchRelayFinalMessages(
     createdAt: event.createdAt || nowIso(),
     duration: payload.duration,
     parts: [],
+    relayEventId: event.id,
+    relayTurnId: turnKey,
   }];
 }
 
@@ -850,8 +871,17 @@ export function RoomsView(props: {
     const prompt = String(payload.text || "").trim();
     if (!prompt) return;
     const createdAt = event.createdAt || nowIso();
+    const turnKey = relayTurnKey(event);
+    const userMessageId = payload.messageId || event.id;
+    const hasHandledTurn = room.messages.some((message) => (
+      message.id === userMessageId
+      || message.relayEventId === event.id
+      || message.relayTurnId === turnKey
+      || (message.senderId === member.id && message.runId === turnKey)
+    ));
+    if (hasHandledTurn) return;
     const userMessage: RoomMessage = {
-      id: payload.messageId || event.id,
+      id: userMessageId,
       senderId: `relay_actor_${event.actorMemberId}`,
       senderName: payload.senderName || "远程成员",
       senderType: "user",
@@ -860,9 +890,11 @@ export function RoomsView(props: {
       status: "sent",
       createdAt,
       attachments: payload.attachments,
+      relayEventId: event.id,
+      relayTurnId: turnKey,
     };
     const assistantMessage: RoomMessage = {
-      id: createId("message"),
+      id: stableRelayMessageId("relay_reply", member.id, turnKey),
       senderId: member.id,
       senderName: member.name,
       senderType: "agent",
@@ -871,10 +903,18 @@ export function RoomsView(props: {
       status: "running",
       createdAt,
       startedAt: createdAt,
-      runId: event.turnId || event.id,
+      runId: turnKey,
+      relayTurnId: turnKey,
     };
     updateRoom(localRoomId, (currentRoom) => {
-      if (currentRoom.messages.some((message) => message.id === userMessage.id)) return currentRoom;
+      if (currentRoom.messages.some((message) => (
+        message.id === userMessage.id
+        || message.id === assistantMessage.id
+        || message.relayEventId === event.id
+        || message.relayTurnId === turnKey
+      ))) {
+        return currentRoom;
+      }
       return {
         ...currentRoom,
         messages: [...currentRoom.messages, userMessage, assistantMessage],
@@ -1577,7 +1617,7 @@ export function RoomsView(props: {
     outgoingAttachments: AttachmentPayload[],
   ) {
     const runId = createId("room_run");
-    updateRoomMessage(roomId, messageId, (message) => ({ ...message, runId }));
+    updateRoomMessage(roomId, messageId, (message) => ({ ...message, runId, relayTurnId: runId }));
     const relayRoom = roomsRef.current.find((room) => room.id === roomId);
     if (relayRoom?.relay && target.relayMemberId) {
       try {

@@ -38,6 +38,8 @@ export type RoomMessage = {
   parts?: MessagePart[];
   startedAt?: string;
   finishedAt?: string;
+  relayEventId?: string;
+  relayTurnId?: string;
 };
 
 export type Room = {
@@ -359,7 +361,9 @@ export function normalizeStoredRoomsState(
       memberIds: Array.isArray(room.memberIds)
         ? room.memberIds.map((memberId) => migrateMemberId(memberId, memberIdMigrations)).filter((memberId) => memberIds.has(memberId))
         : [],
-      messages: Array.isArray(room.messages) ? room.messages.map((message) => migrateRoomMessage(message, memberIdMigrations)) : [],
+      messages: Array.isArray(room.messages)
+        ? dedupeRoomMessages(room.messages.map((message) => migrateRoomMessage(message, memberIdMigrations)))
+        : [],
     }))
     .filter((room) => room.memberIds.length > 0);
   if (!rooms.length) return null;
@@ -381,9 +385,12 @@ export function mergeRoomsByUpdatedAt(current: Room[], incoming: Room[]): Room[]
   const merged = current.map((room) => {
     const nextRoom = incomingById.get(room.id);
     incomingById.delete(room.id);
-    if (nextRoom && roomUpdatedTime(nextRoom) > roomUpdatedTime(room)) {
-      changed = true;
-      return nextRoom;
+    if (nextRoom) {
+      const mergedRoom = mergeRoomRecords(room, nextRoom);
+      if (mergedRoom !== room) {
+        changed = true;
+      }
+      return mergedRoom;
     }
     return room;
   });
@@ -392,6 +399,107 @@ export function mergeRoomsByUpdatedAt(current: Room[], incoming: Room[]): Room[]
     merged.push(...incomingById.values());
   }
   return changed ? merged : current;
+}
+
+function mergeRoomRecords(current: Room, incoming: Room): Room {
+  const incomingIsNewer = roomUpdatedTime(incoming) > roomUpdatedTime(current);
+  const newer = incomingIsNewer ? incoming : current;
+  const older = incomingIsNewer ? current : incoming;
+  const messages = mergeRoomMessages(older.messages, newer.messages);
+  const memberIds = mergeUnique([...newer.memberIds, ...older.memberIds]);
+  if (
+    newer === current
+    && messages === current.messages
+    && memberIds.length === current.memberIds.length
+    && memberIds.every((memberId, index) => memberId === current.memberIds[index])
+  ) {
+    return current;
+  }
+  return {
+    ...newer,
+    memberIds,
+    messages,
+  };
+}
+
+function mergeRoomMessages(older: RoomMessage[], newer: RoomMessage[]): RoomMessage[] {
+  const byKey = new Map<string, { message: RoomMessage; order: number }>();
+  let order = 0;
+  for (const message of [...older, ...newer]) {
+    const key = roomMessageMergeKey(message);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, { message, order: order++ });
+      continue;
+    }
+    existing.message = mergeRoomMessage(existing.message, message);
+  }
+
+  const messages = [...byKey.values()]
+    .sort((left, right) => {
+      const leftTime = roomMessageTime(left.message);
+      const rightTime = roomMessageTime(right.message);
+      return leftTime === rightTime ? left.order - right.order : leftTime - rightTime;
+    })
+    .map((entry) => entry.message);
+  return roomMessagesEqual(messages, newer) ? newer : messages;
+}
+
+function dedupeRoomMessages(messages: RoomMessage[]): RoomMessage[] {
+  return mergeRoomMessages([], messages);
+}
+
+function mergeRoomMessage(left: RoomMessage, right: RoomMessage): RoomMessage {
+  const preferred = roomMessageScore(right) >= roomMessageScore(left) ? right : left;
+  const fallback = preferred === right ? left : right;
+  return {
+    ...preferred,
+    attachments: preferred.attachments?.length ? preferred.attachments : fallback.attachments,
+    parts: (preferred.parts?.length ?? 0) >= (fallback.parts?.length ?? 0) ? preferred.parts : fallback.parts,
+    runId: preferred.runId || fallback.runId,
+    relayEventId: preferred.relayEventId || fallback.relayEventId,
+    relayTurnId: preferred.relayTurnId || fallback.relayTurnId,
+  };
+}
+
+function roomMessageMergeKey(message: RoomMessage): string {
+  if (message.relayEventId) return `relay-event:${message.relayEventId}`;
+  if (message.relayTurnId) return `relay-turn:${message.senderType}:${message.senderId}:${message.relayTurnId}`;
+  if (message.senderType === "agent" && message.runId) return `run:${message.senderId}:${message.runId}`;
+  const text = message.text.trim();
+  if (text) return `content:${message.senderType}:${message.senderId}:${message.createdAt}:${text}`;
+  return `id:${message.id}`;
+}
+
+function roomMessageScore(message: RoomMessage): number {
+  const statusScore = message.status === "running" ? 1 : message.status === "sent" ? 0 : 2;
+  return (
+    statusScore * 1_000_000
+    + (message.text.trim().length * 100)
+    + ((message.parts?.length ?? 0) * 10)
+    + (message.duration ? 5 : 0)
+    + (message.finishedAt ? 5 : 0)
+  );
+}
+
+function roomMessageTime(message: RoomMessage): number {
+  const time = new Date(message.createdAt || "").getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function roomMessagesEqual(left: RoomMessage[], right: RoomMessage[]): boolean {
+  return left.length === right.length && left.every((message, index) => message === right[index]);
+}
+
+function mergeUnique(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
 }
 
 export function mergeStateForStorage(nextState: RoomsState, activeWorkspaceRoot: string): RoomsState {

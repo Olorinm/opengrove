@@ -253,6 +253,17 @@ export class InMemoryRelay {
   publishEvent<TPayload>(input: PublishRelayEventInput<TPayload>): RelayEventEnvelope<TPayload> {
     this.requireRoom(input.roomId, input.workspaceId);
     this.requireMember(input.actorMemberId, input.roomId);
+    const roomEvents = this.eventsByRoom.get(input.roomId) ?? [];
+    if (input.idempotencyKey) {
+      const existing = roomEvents.find((event) => (
+        event.idempotencyKey === input.idempotencyKey
+        && event.actorMemberId === input.actorMemberId
+        && event.type === input.type
+      ));
+      if (existing) {
+        return existing as RelayEventEnvelope<TPayload>;
+      }
+    }
     const event: RelayEventEnvelope<TPayload> = {
       id: createRelayId("event"),
       type: input.type,
@@ -267,7 +278,6 @@ export class InMemoryRelay {
       idempotencyKey: input.idempotencyKey,
       payload: input.payload,
     };
-    const roomEvents = this.eventsByRoom.get(input.roomId) ?? [];
     roomEvents.push(event);
     this.eventsByRoom.set(input.roomId, roomEvents);
     this.persist();

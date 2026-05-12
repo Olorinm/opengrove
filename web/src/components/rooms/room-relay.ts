@@ -104,6 +104,7 @@ export async function publishRelayMessage(input: {
     type: "room.message.created",
     targetMemberIds: [input.targetMemberId],
     turnId: input.turnId,
+    idempotencyKey: `room.message.created:${input.binding.memberId}:${input.targetMemberId}:${input.turnId}`,
     payload: {
       messageId: input.turnId,
       text: input.text,
@@ -128,6 +129,7 @@ export async function publishRelayTurnFinal(input: {
     type: "room.turn.final",
     targetMemberIds: input.targetMemberIds,
     turnId: input.turnId,
+    idempotencyKey: `room.turn.final:${input.binding.memberId}:${input.turnId}`,
     payload: {
       answer: input.answer,
       duration: input.duration,
@@ -234,6 +236,7 @@ async function publishRelayEvent<TPayload>(input: {
   type: string;
   targetMemberIds?: string[];
   turnId?: string;
+  idempotencyKey?: string;
   payload: TPayload;
 }): Promise<RelayEventEnvelope> {
   const response = await fetch(new URL(`/rooms/${encodeURIComponent(input.binding.roomId)}/events`, ensureTrailingSlash(input.binding.baseUrl)), {
@@ -248,6 +251,7 @@ async function publishRelayEvent<TPayload>(input: {
       actorMemberId: input.binding.memberId,
       targetMemberIds: input.targetMemberIds,
       turnId: input.turnId,
+      idempotencyKey: input.idempotencyKey,
       type: input.type,
       payload: input.payload,
     }),

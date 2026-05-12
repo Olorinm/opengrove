@@ -54,13 +54,24 @@ try {
     actorMemberId: owner.member.id,
     targetMemberIds: [accepted.member.id],
     type: "room.message.created",
+    idempotencyKey: "harness-message-turn",
     payload: { text: "@ReviewBot 看一下" },
   });
   assert.equal(published.event.type, "room.message.created");
+  const replayed = await postOrGet("POST", `${baseUrl}/rooms/${encodeURIComponent(roomId)}/events`, {
+    workspaceId,
+    actorMemberId: owner.member.id,
+    targetMemberIds: [accepted.member.id],
+    type: "room.message.created",
+    idempotencyKey: "harness-message-turn",
+    payload: { text: "@ReviewBot 看一下" },
+  });
+  assert.equal(replayed.event.id, published.event.id);
 
   const events = await postOrGet("GET", `${baseUrl}/rooms/${encodeURIComponent(roomId)}/events`);
   assert.equal(events.events.some((event: { type?: string }) => event.type === "invite.accepted"), true);
   assert.equal(events.events.some((event: { type?: string }) => event.type === "room.message.created"), true);
+  assert.equal(events.events.filter((event: { id?: string }) => event.id === published.event.id).length, 1);
   await assertProtectedRelay();
   console.log("relay-http-harness ok");
 } finally {
