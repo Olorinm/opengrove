@@ -88,7 +88,7 @@ import {
 } from "./components/sidebar/app-navigation";
 import { RoomsView } from "./components/rooms/rooms-view";
 import { ContactsView } from "./components/rooms/contacts-view";
-import { buildRoomMemberContext, roomThreadId } from "./components/rooms/room-runtime";
+import { buildRoomMemberContext, roomAgentThreadId, type RoomDeliveryContext } from "./components/rooms/room-runtime";
 import { ConversationSidebar } from "./components/sidebar/conversation-sidebar";
 import { VaultSidebarPanel } from "./components/sidebar/knowledge-sidebar-panels";
 import { buildSidebarProjectTree, sortSidebarThreads, type ConversationSortKey } from "./components/sidebar/conversation-sidebar-model";
@@ -1545,6 +1545,7 @@ export function App() {
     targetRole: string;
     prompt: string;
     attachments: AttachmentPayload[];
+    roomContext?: RoomDeliveryContext;
     onAgentEvent?(event: AgentEventRecord): void;
     onRunId?(runId: string): void;
   }): Promise<{ answer?: string; duration?: string; events?: AgentEventRecord[] }> {
@@ -1555,7 +1556,7 @@ export function App() {
     const contextPayload = buildContextPayload(roomMemberContext, turnAttachments, []);
     const userContext = contextPayload.text.trim() || turnAttachments.length ? contextPayload : null;
     const userPrompt = trimmedPrompt || (turnAttachments.length ? t("system.defaultAttachmentPrompt") : t("system.defaultTextPrompt"));
-    const turnThreadId = roomThreadId(input.roomId, input.targetId, input.targetKernel || input.targetId);
+    const turnThreadId = roomAgentThreadId(input.roomId, input.targetId, input.targetKernel || input.targetId);
     const turnModel = input.targetModel || model;
     const turnEffort = reasoningEffort;
     const turnResponseSpeed = responseSpeed;
@@ -1645,7 +1646,7 @@ export function App() {
     onRunId?(runId: string): void;
   }): Promise<{ answer?: string; duration?: string; events?: AgentEventRecord[] }> {
     const startedAt = performance.now();
-    const turnThreadId = roomThreadId(input.roomId, input.targetId, input.targetKernel || input.targetId);
+    const turnThreadId = roomAgentThreadId(input.roomId, input.targetId, input.targetKernel || input.targetId);
     if (!input.runId || runningTurnsRef.current.has(turnThreadId)) {
       const recoverable = new Error("room_stream_recoverable_disconnect");
       recoverable.name = "RecoverableRoomStreamDisconnect";

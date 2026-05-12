@@ -43,6 +43,7 @@ export interface ExternalCliKernelDefinition {
   versionArgs?: string[];
   runArgs?: string[];
   promptMode?: "stdin" | "arg";
+  promptLayout?: GenericCliRuntimeOptions["promptLayout"];
   preferredTransport?: KernelTransportKind;
   fallbackTransport?: KernelTransportKind;
   configHome: string;
@@ -97,6 +98,8 @@ export class ExternalCliKernelAdapter implements KernelAdapter {
         command,
         args: definition.runArgs,
         promptMode: definition.promptMode ?? "stdin",
+        promptLayout: definition.promptLayout,
+        outputFormat: definition.id === "openclaw" ? "openclaw-agent-json" : "text",
         cwd: options.cwd,
         env: options.env,
         providerHttpCapture: options.providerHttpCapture,
@@ -173,8 +176,9 @@ export const EXTERNAL_CLI_KERNELS: ExternalCliKernelDefinition[] = [
     title: "OpenClaw",
     envName: "OPENCLAW_BIN",
     commands: ["openclaw"],
-    runArgs: ["agent", "--message"],
+    runArgs: ["agent", "--agent", "main", "--json", "--message"],
     promptMode: "arg",
+    promptLayout: "input-only",
     configHome: resolveHomePath(".openclaw"),
     knowledgeSources: [
       directorySource({ id: "openclaw.skills", title: "skills", kind: "skills", scope: "user", path: "~/.openclaw/skills" }),

@@ -36,7 +36,9 @@ import {
   type ComputerStateSnapshot,
 } from "../environment/computer-adapter.js";
 import { createRequestChoicesTool } from "../tools/host-ui.js";
+import { createRoomLedgerReadTool } from "../tools/rooms.js";
 import { createSkillInvokeTool } from "../tools/skill.js";
+import { RoomChannelStore } from "../rooms/channel-store.js";
 import { createPackRegistry } from "../packs/catalog.js";
 import {
   createKernelRuntime,
@@ -88,6 +90,7 @@ export interface OpenGroveApp {
   executions: ExecutionStore;
   workingState: WorkingStateStore;
   routines: RoutineRegistry;
+  rooms: RoomChannelStore;
   tools: ToolRegistry;
   recordEvent(event: AgentEvent, options?: RecordEventOptions): AgentEvent;
   runTurn(input: string, options?: AgentTurnOptions): AsyncIterable<AgentEvent>;
@@ -170,6 +173,7 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
   const executions = new ExecutionStore();
   const workingState = new WorkingStateStore();
   const routines = new RoutineRegistry();
+  const rooms = new RoomChannelStore();
   const tools = new ToolRegistry();
   if (shouldExposeSkillTool(options.kernel)) {
     tools.register(
@@ -198,6 +202,34 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
       }),
     );
   }
+  tools.register(
+    createRoomLedgerReadTool({
+      id: "room.ledger.read",
+      title: "Read room ledger",
+      description: "Read recent or matching messages from the current OpenGrove room ledger when a room reply needs more channel context.",
+      activity: "chat",
+      risk: "read",
+      input: {
+        type: "json-schema",
+        schema: {
+          type: "object",
+          required: ["roomId"],
+          properties: {
+            roomId: { type: "string" },
+            query: { type: "string" },
+            limit: { type: "number" },
+            beforeSeq: { type: "number" },
+            afterSeq: { type: "number" },
+          },
+          additionalProperties: false,
+        },
+      },
+      permission: {
+        mode: "allow",
+        reason: "Reading the local room ledger is read-only.",
+      },
+    }, rooms),
+  );
   tools.register(
     createRequestChoicesTool({
       id: "host.ui.requestChoices",
@@ -269,6 +301,7 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
     executions,
     workingState,
     routines,
+    rooms,
     tools,
     recordEvent(event, recordOptions = {}) {
       const recorded = events.append(event);

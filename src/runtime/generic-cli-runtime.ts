@@ -23,6 +23,8 @@ export interface GenericCliRuntimeOptions {
   command: string;
   args?: string[];
   promptMode?: "stdin" | "arg";
+  promptLayout?: "full-context" | "input-only";
+  outputFormat?: "text" | "openclaw-agent-json";
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   providerHttpCapture?: ProviderHttpCaptureOptions;
@@ -34,7 +36,7 @@ export class GenericCliRuntime implements AgentRuntime {
   async *runTurn(request: AgentTurnRequest): AsyncIterable<AgentEvent> {
     const runId = request.runId ?? `run_${Date.now()}`;
     const capture = resolveProviderHttpCaptureOptions(this.options.providerHttpCapture, this.options.env);
-    const prompt = buildPrompt(request);
+    const prompt = buildPrompt(request, this.options.promptLayout);
     const priorMessages = recentSessionMessages(request);
     const args = this.options.promptMode === "arg"
       ? [...(this.options.args ?? []), prompt]
@@ -119,7 +121,7 @@ export class GenericCliRuntime implements AgentRuntime {
       yield { type: "error", runId, message: `${this.options.kernelId}_aborted` };
       return;
     }
-    const text = stdout.trimEnd();
+    const text = formatCliOutput(stdout.trimEnd(), this.options.outputFormat);
     if (text) yield { type: "assistant.delta", runId, text };
     if (spawnError || (exitCode && exitCode !== 0)) {
       yield {
@@ -133,13 +135,65 @@ export class GenericCliRuntime implements AgentRuntime {
   }
 }
 
-function buildPrompt(request: AgentTurnRequest): string {
+function formatCliOutput(stdout: string, outputFormat: GenericCliRuntimeOptions["outputFormat"]): string {
+  if (outputFormat !== "openclaw-agent-json" || !stdout) {
+    return stdout;
+  }
+  try {
+    const parsed = JSON.parse(stdout) as {
+      result?: {
+        finalAssistantVisibleText?: string;
+        finalAssistantRawText?: string;
+        payloads?: Array<{ text?: string | null }>;
+      };
+    };
+    const directText = parsed.result?.finalAssistantVisibleText?.trim()
+      || parsed.result?.finalAssistantRawText?.trim();
+    if (directText) {
+      return directText;
+    }
+    const payloadText = (parsed.result?.payloads ?? [])
+      .map((payload) => payload.text?.trim())
+      .filter((value): value is string => Boolean(value))
+      .join("\n\n");
+    return payloadText || stdout;
+  } catch {
+    return stdout;
+  }
+}
+
+function buildPrompt(
+  request: AgentTurnRequest,
+  promptLayout: GenericCliRuntimeOptions["promptLayout"] = "full-context",
+): string {
+  if (promptLayout === "input-only") {
+    return `${request.input}\n`;
+  }
+  const ambientContext = renderAmbientContext(request);
   const sections = [
-    request.assembledContext
-      ? `OpenGrove ambient context:\n${JSON.stringify(request.assembledContext, null, 2)}`
-      : "",
+    ambientContext,
     recentSessionPromptBlock(request),
     request.input,
   ].filter(Boolean);
   return `${sections.join("\n\n")}\n`;
+}
+
+function renderAmbientContext(request: AgentTurnRequest): string {
+  const context = request.assembledContext;
+  if (!context) {
+    return "";
+  }
+  const promptBlock = context.promptBlock?.trim();
+  if (promptBlock) {
+    return `OpenGrove host context:\n${promptBlock}`;
+  }
+  const summary = context.summary?.trim();
+  const hasItems = (context.items?.length ?? 0) > 0;
+  if (!hasItems && (!summary || summary === "empty context")) {
+    return "";
+  }
+  if (summary) {
+    return `OpenGrove context summary:\n${summary}`;
+  }
+  return "";
 }
