@@ -79,6 +79,7 @@ Useful development checks:
 npm run check:secrets
 npm run build
 npm run smoke
+npm run test:rooms
 npm run test:harness
 npm run eval
 ```
@@ -97,7 +98,8 @@ Modern agent tools are powerful, but their context, memory, generated files, pro
 
 - Talk to an agent through the local OpenGrove UI.
 - Switch between installed kernels from settings or environment variables.
-- Use Rooms for direct or group kernel conversations, including `@` mentions that route one prompt to one or more installed kernels.
+- Use server-backed Rooms for direct or group kernel conversations, including `@` mentions that route one prompt to one or more installed kernels.
+- Let room agents read older channel context through the read-only `room.ledger.read` host tool when the visible delivery window is not enough.
 - Invite a remote agent employee into a shared Room through Matrix/Tuwunel, so another OpenGrove node can choose one of its local employees to join and respond.
 - Index native knowledge sources such as `AGENTS.md`, `CLAUDE.md`, skills, configs, and local vault files.
 - Use a browser extension to send page context and selections into the bridge.
@@ -105,11 +107,19 @@ Modern agent tools are powerful, but their context, memory, generated files, pro
 - Publish OpenGrove skills into kernels that support native skill loading.
 - Keep provider credentials out of tracked repository files.
 
+## Rooms, Ledger, and Matrix
+
+Rooms are backed by the server-side `RoomChannelStore`, not browser `localStorage`. The UI fetches the current Rooms snapshot from `/rooms`, polls `/rooms/events` for incremental changes, and posts user messages back to the bridge. Room state is persisted under the `rooms` field in `data/local-state.json`.
+
+The room ledger is the local source of truth for rooms, members, messages, target ids, statuses, run ids, Matrix ids, and recent room events. When a message targets local members, the bridge schedules one room agent run per runnable target, builds a per-member prompt with the current message and a recent ledger window, then writes final results back to the same ledger. If an agent needs older context, it can call `room.ledger.read` with `roomId`, optional `query`, `limit`, `beforeSeq`, or `afterSeq`.
+
+Matrix/Tuwunel is the remote transport, not a replacement for the local ledger. The bridge joins and syncs Matrix rooms in the background, maps OpenGrove profile/request/final custom events into the local room ledger, and publishes local final replies back to Matrix. Matrix sync is fully bridge-side; the frontend does not own Matrix state or call Matrix directly.
+
 ## Remote Agent Employees
 
 OpenGrove uses Matrix-compatible homeservers for remote Room membership and message delivery. The commercial-friendly default target is Tuwunel; Synapse and other Matrix homeservers are useful reference deployments.
 
-The homeserver is the routing and persistence boundary. Local OpenGrove nodes still choose and run their own employees locally, and model/API credentials stay on each owner machine.
+The homeserver is the remote routing and remote persistence boundary. Each OpenGrove node still keeps its own local room ledger, chooses and runs its own employees locally, and keeps model/API credentials on the owner machine.
 
 Typical flow:
 
@@ -118,7 +128,7 @@ Typical flow:
 3. The friend opens the invite link in their browser.
 4. The friend's OpenGrove opens the Rooms view and asks which local employee should join.
 5. The selected employee joins the Matrix Room and publishes an OpenGrove agent profile event.
-6. Room messages and final replies move through Matrix custom events.
+6. The bridge Matrix sync loop maps remote messages into the local room ledger and publishes final local replies back through Matrix custom events.
 
 Friends accepting an invite need their own Matrix user/access token configured locally. The invite landing page only helps the browser find the friend's local OpenGrove port; it does not carry Room messages.
 
@@ -138,6 +148,7 @@ Security boundaries:
 - Matrix access tokens must stay local to each OpenGrove node.
 - Invite links should only be sent to the intended person.
 - The invite landing page does not carry Room messages; it only forwards the opaque invite payload into a local OpenGrove UI.
+- The browser UI does not perform Matrix sync; it only reads and writes the local bridge Room API.
 - Use HTTPS for Matrix and the invite landing page across untrusted networks.
 
 ## Kernels
@@ -223,6 +234,8 @@ Implemented runtime paths include Codex app-server JSON-RPC, Claude Code SDK/CLI
 
 Provider setup can be managed in the settings UI or through environment variables. OpenGrove supports native provider profiles and compatible API providers, including OpenAI, Anthropic, Gemini, DeepSeek, Zhipu GLM, Kimi, DashScope, Qianfan, SiliconFlow, ModelScope, MiniMax, Stepfun, OpenRouter, NewAPI, and others defined in `src/server/provider-profiles.ts`.
 
+The settings UI writes local bridge preferences to `data/bridge-settings.json`. That file is ignored by git and may contain pasted provider API keys, Matrix access tokens, custom provider definitions, kernel/provider bindings, invite landing settings, and Matrix room sync cursors. Treat it as a local secret file; prefer environment variables for shared or reproducible setups.
+
 Environment files are loaded in this order:
 
 1. `OPENGROVE_ENV_FILE`
@@ -249,8 +262,8 @@ By default, OpenGrove writes runtime state under `data/`:
 
 | Path | Purpose |
 | --- | --- |
-| `data/local-state.json` | persisted memory, artifacts, sessions, runs, approvals, routines, and events |
-| `data/bridge-settings.json` | local bridge settings and kernel/provider bindings |
+| `data/local-state.json` | persisted memory, artifacts, sessions, runs, approvals, routines, events, and the server-backed room ledger |
+| `data/bridge-settings.json` | ignored local bridge settings, including kernel/provider bindings, custom providers, optional API keys, Matrix settings, and sync cursors |
 | `data/opengrove-vault/` | file-first vault mirror for OpenGrove knowledge |
 | `data/codex-threads.json` | OpenGrove session to Codex thread bindings |
 | `data/provider-http-captures/` | optional provider HTTP capture diagnostics |
@@ -295,10 +308,19 @@ Common endpoints:
 | `/artifacts` | `GET` / `POST` | list or create artifacts |
 | `/routines` | `GET` | list routines |
 | `/context-records` | `GET` | recent prompt/context diagnostics |
+| `/rooms` | `GET` / `POST` | read the room ledger snapshot or create a room |
+| `/rooms/events` | `GET` | poll room ledger events after `afterEventSeq` |
+| `/rooms/dm` | `POST` | open or create a direct room with one member |
+| `/rooms/:roomId` | `PATCH` | update room title, pin/archive state, badge, or Matrix binding |
+| `/rooms/members` | `POST` | upsert a global room member |
+| `/rooms/:roomId/members` | `POST` | add a member to a room |
+| `/rooms/:roomId/members/:memberId` | `DELETE` | remove a member from a room |
+| `/rooms/:roomId/messages` | `GET` / `POST` | read room messages or post a user message and schedule room runs |
+| `/rooms/:roomId/messages/:messageId` | `PATCH` | update message status, run metadata, Matrix ids, or rendered parts |
 | `/rooms/remote-invites` | `POST` | create a Matrix/Tuwunel shared Room invite |
 | `/rooms/matrix/join` | `POST` | join a Matrix shared Room and publish the selected employee profile |
-| `/rooms/matrix/events` | `POST` | publish OpenGrove Matrix room events |
-| `/rooms/matrix/sync` | `GET` | sync Matrix room state and timeline events |
+
+Matrix timeline sync is handled by a bridge-side background loop, not a public frontend endpoint.
 
 When `OPENGROVE_BRIDGE_TOKEN` is set, non-health endpoints require the `x-opengrove-token` header.
 
@@ -318,7 +340,7 @@ OpenGrove Host
   - knowledge vault
   - memory and artifacts
   - approvals and policy
-  - rooms, contacts, and local workspace UI state
+  - server-backed room ledger, contacts, and Matrix sync
   - event log and diagnostics
         |
         v
@@ -348,6 +370,7 @@ src/app/               OpenGrove composition root and app wiring
 src/kernel/            Kernel contracts, discovery, tool bridge, and adapters
 src/runtime/           Codex, Claude Code, Hermes, Pi, HTTP, generic CLI, proxy, capture, transports, and projectors
 src/server/            Local bridge, settings, kernel selection, routes, approvals, artifacts
+src/rooms/             Server-backed room ledger, members, messages, Matrix bindings, and room events
 src/invite/            Public invite landing page server
 src/knowledge/         Knowledge store views, organizer helpers, feedback, and vault logic
 src/skills/            Skill catalog, runtime, and native publication helpers
@@ -355,7 +378,7 @@ src/tests/             Harness tests for skills, kernels, runtimes, and bridge s
 src/evals/             Evaluation runner
 web/                   React local UI
 web/src/components/rooms/
-                       Rooms, contacts, member targeting, mentions, and local room storage
+                       Rooms, contacts, member targeting, mentions, and room API integration
 extension/             Browser context adapter
 assets/brand/          Wordmark, sapling mark, and visual system assets
 ```
@@ -380,6 +403,7 @@ npm run check:secrets
 npm run typecheck
 npm run build
 npm run smoke
+npm run test:rooms
 npm run test:harness
 ```
 
@@ -407,7 +431,7 @@ When `opengrove update` detects a source checkout, it prints the `git pull`, `np
 - Keep host concepts small, typed, and visible.
 - Prefer explicit user context over ambient prompt stuffing.
 - Let native kernels use their own tools and skill loaders when possible.
-- Store secrets only in local environment files or provider-native config.
+- Store secrets only in ignored local files, environment variables, or provider-native config.
 - Make risky actions visible through policy, approvals, and event logs.
 - Keep the UI quiet: collapsed tool summaries, stable status rows, and no half-wired controls.
 
@@ -418,7 +442,7 @@ OpenGrove is local-first, but it can still connect to powerful native agents and
 - The local bridge binds to `127.0.0.1` by default.
 - Set `OPENGROVE_BRIDGE_TOKEN` before exposing the bridge to any non-local client.
 - Restrict CORS with `OPENGROVE_BRIDGE_ALLOWED_ORIGINS`.
-- Do not commit `.env`, `.env.local`, provider keys, OAuth tokens, native auth files, or capture logs.
+- Do not commit `.env`, `.env.local`, `data/bridge-settings.json`, provider keys, Matrix access tokens, OAuth tokens, native auth files, or capture logs.
 - Run `npm run check:secrets` before committing; it scans tracked and non-ignored untracked files for high-confidence secrets and local absolute paths.
 - Keep provider HTTP capture disabled unless you are actively debugging.
 - Review approvals for commands, file changes, desktop/browser actions, and durable memory writes.

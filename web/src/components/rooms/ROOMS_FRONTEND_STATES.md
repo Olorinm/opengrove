@@ -8,8 +8,8 @@ The UI owns room layout, member targeting, mentions, attachments, and message gr
 
 ## Reuse Contract
 
-- Execution: call the existing `runThreadTurn` path through `RoomsView.onRunPrompt`.
-- Runtime events: keep using `applyStreamEventToMessage`, `finalizeAssistantMessage`, and `markAssistantMessageError`.
+- Execution: post to the server Room API; the bridge records the user message, creates assistant placeholders, and schedules room runs in `src/server/room-runs.ts`.
+- Runtime events: keep rendering the server-projected message parts with the existing thread primitives.
 - Tool/activity UI: render tool, skill, approval, compaction, and choice-form parts with `AssistantProcessBlock`.
 - Text UI: render assistant markdown with `ThreadTextBlock`.
 - Attachment reading: keep using `readComposerAttachment`, `MAX_COMPOSER_ATTACHMENTS`, `attachmentIcon`, and `formatAttachmentMeta`.
@@ -177,11 +177,11 @@ The UI owns room layout, member targeting, mentions, attachments, and message gr
 
 ## Persistence And Recovery
 
-1. Rooms persist to local storage.
-2. Installed kernel list is refreshed from current `kernelOptions`.
-3. Stored rooms whose members are no longer installed are filtered.
+1. Rooms persist in the server-backed room ledger under `data/local-state.json`.
+2. The UI hydrates from `/rooms` and polls `/rooms/events` for ledger changes.
+3. Installed kernel members are refreshed by the bridge from current runtime controls.
 4. Runtime parts already stored on messages remain visible after refresh.
-5. If storage fails because attachments are large, the current in-memory chat should still work.
+5. Matrix-backed rooms are represented as local ledger rooms with Matrix bindings; Matrix sync stays in the bridge.
 
 ## Visual Acceptance Checklist
 
