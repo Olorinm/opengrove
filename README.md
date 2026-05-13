@@ -1,7 +1,5 @@
 <p align="center">
-  <img src="assets/brand/opengrove-sapling.svg" alt="OpenGrove sapling mark" width="72" align="absmiddle" />
-  &nbsp;&nbsp;&nbsp;
-  <img src="assets/brand/opengrove-wordmark.svg" alt="OpenGrove" width="260" align="absmiddle" />
+  <img src="assets/brand/opengrove-readme-lockup.svg" alt="OpenGrove" width="360" />
 </p>
 
 <h3 align="center">One grove, every agent.</h3>

@@ -8,6 +8,7 @@
 
 ## Wordmark
 
+- `opengrove-readme-lockup.svg`: README header lockup with sapling mark and green wordmark
 - `opengrove-wordmark.svg`: transparent vector source
 - `opengrove-wordmark.png`: transparent PNG export, 640 x 160
 - `opengrove-wordmark-on-light.svg`: warm white preview source
