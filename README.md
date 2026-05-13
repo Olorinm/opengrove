@@ -135,6 +135,7 @@ PRs welcome. Please run `npm run check:secrets` before committing.
 ## Documentation
 
 - [Technical Reference](docs/TECHNICAL_REFERENCE.md) — kernels, providers, Bridge API, rooms & ledger, data paths, troubleshooting
+- [Release Process](docs/RELEASE_PROCESS.md) — versioning, release notes, GitHub Release, and npm publish checklist
 - [Product Overview](PROJECT_OVERVIEW.md) — longer product notes and roadmap context
 - [产品概览 (中文)](PROJECT_OVERVIEW.zh-CN.md)
 

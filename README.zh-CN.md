@@ -135,6 +135,7 @@ npm run test:harness
 ## 文档
 
 - [技术参考](docs/TECHNICAL_REFERENCE.md) — 内核、Provider、Bridge API、Rooms & 账本、数据路径、故障排查
+- [发布流程](docs/RELEASE_PROCESS.md) — 版本号、release notes、GitHub Release 和 npm publish checklist
 - [产品概览](PROJECT_OVERVIEW.md)
 - [产品概览 (中文)](PROJECT_OVERVIEW.zh-CN.md)
 
