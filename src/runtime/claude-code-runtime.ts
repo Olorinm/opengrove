@@ -194,39 +194,44 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     }
 
     child.stdout.setEncoding("utf8");
-    for await (const chunk of child.stdout) {
-      stdoutBuffer += chunk;
-      let newlineIndex = stdoutBuffer.indexOf("\n");
-      while (newlineIndex >= 0) {
-        const line = stdoutBuffer.slice(0, newlineIndex).trim();
-        stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
-        newlineIndex = stdoutBuffer.indexOf("\n");
-        if (!line) {
-          continue;
-        }
-        const parsed = parseClaudeStreamEvent(line);
-        if (!parsed) {
-          capture?.recordParseError(line);
-          continue;
-        }
-        capture?.recordStdoutEvent(line, parsed);
+    let stdoutReadError: Error | undefined;
+    try {
+      for await (const chunk of child.stdout) {
+        stdoutBuffer += chunk;
+        let newlineIndex = stdoutBuffer.indexOf("\n");
+        while (newlineIndex >= 0) {
+          const line = stdoutBuffer.slice(0, newlineIndex).trim();
+          stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
+          newlineIndex = stdoutBuffer.indexOf("\n");
+          if (!line) {
+            continue;
+          }
+          const parsed = parseClaudeStreamEvent(line);
+          if (!parsed) {
+            capture?.recordParseError(line);
+            continue;
+          }
+          capture?.recordStdoutEvent(line, parsed);
 
-        const mappedEvents = mapClaudeStreamEvent(parsed, {
-          runId,
-          toolCalls,
-          onAssistantText(text) {
-            assistantText += text;
-          },
-          onResult(value, isError) {
-            resultText = value;
-            resultIsError = isError;
-          },
-        });
-        capture?.recordMappedEvents(mappedEvents);
-        for (const event of mappedEvents) {
-          yield event;
+          const mappedEvents = mapClaudeStreamEvent(parsed, {
+            runId,
+            toolCalls,
+            onAssistantText(text) {
+              assistantText += text;
+            },
+            onResult(value, isError) {
+              resultText = value;
+              resultIsError = isError;
+            },
+          });
+          capture?.recordMappedEvents(mappedEvents);
+          for (const event of mappedEvents) {
+            yield event;
+          }
         }
       }
+    } catch (error) {
+      stdoutReadError = error instanceof Error ? error : new Error(String(error));
     }
 
     const exitCode = await new Promise<number | null>((resolveExit) => {
@@ -239,6 +244,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       sessionId: claudeSessionId,
       exitCode,
       stderrBytes: Buffer.byteLength(stderrBuffer, "utf8"),
+      stdoutReadError: stdoutReadError?.message,
     });
     if (aborted) {
       yield {
@@ -279,13 +285,13 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       yield {
         type: "error",
         runId,
-        message: finalText || stderrBuffer.trim() || `claude_code_failed:${exitCode ?? "unknown"}`,
+        message: finalText || claudeProcessErrorMessage(stderrBuffer, stdoutReadError, exitCode),
       };
-    } else if (exitCode && exitCode !== 0) {
+    } else if (stdoutReadError || (exitCode && exitCode !== 0)) {
       yield {
         type: "error",
         runId,
-        message: stderrBuffer.trim() || `claude_code_failed:${exitCode}`,
+        message: claudeProcessErrorMessage(stderrBuffer, stdoutReadError, exitCode),
       };
     }
 
@@ -446,6 +452,14 @@ function normalizeClaudeToolResult(
     ok: true,
     value: value === null ? undefined : value,
   };
+}
+
+function claudeProcessErrorMessage(
+  stderr: string,
+  stdoutReadError: Error | undefined,
+  exitCode: number | null,
+): string {
+  return stderr.trim() || stdoutReadError?.message || `claude_code_failed:${exitCode ?? "unknown"}`;
 }
 
 function buildClaudeSystemPrompt(request: AgentTurnRequest): string {

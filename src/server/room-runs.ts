@@ -81,7 +81,12 @@ async function executeRoomRun(
   const startedAt = Date.now();
   const model = resolveRoomTargetModel(state, input.target);
   const target = { ...input.target, model };
-  const sessionId = roomAgentThreadId(input.roomId, target.id, target.kernel);
+  const sessionId = roomAgentThreadId(
+    input.roomId,
+    target.id,
+    target.kernel,
+    target.kernel === "claude-code" ? input.runId : undefined,
+  );
   const question = buildRoomRunPrompt(state, { ...input, target });
   const events: AgentEvent[] = [];
 
@@ -280,8 +285,8 @@ function durationLabel(durationMs: number): string {
   return `${Math.max(0.1, durationMs / 1000).toFixed(1)}s`;
 }
 
-function roomAgentThreadId(roomId: string, targetId: string, targetKernel: string): string {
-  const safeTarget = `${roomId || "room"}-${targetId || "member"}-${targetKernel || "kernel"}`
+function roomAgentThreadId(roomId: string, targetId: string, targetKernel: string, runId?: string): string {
+  const safeTarget = `${roomId || "room"}-${targetId || "member"}-${targetKernel || "kernel"}-${runId || "shared"}`
     .replace(/[^a-zA-Z0-9_-]/g, "-");
   return `room-agent-${safeTarget}`;
 }
