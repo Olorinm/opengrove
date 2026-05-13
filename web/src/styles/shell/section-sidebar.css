@@ -1,0 +1,435 @@
+/* Unified section sidebar language: quiet index lists across chat, library, rooms, and contacts. */
+.app-shell {
+  --og-section-text: #303431;
+  --og-section-title: #8f948f;
+  --og-section-muted: #8f948f;
+  --og-section-icon: #6f756f;
+  --og-section-hover: rgba(0, 0, 0, 0.045);
+  --og-section-active: rgba(0, 0, 0, 0.065);
+  --og-section-border: rgba(0, 0, 0, 0.08);
+}
+
+:root[data-resolved-theme="dark"] .app-shell {
+  --og-section-text: #e7e7e7;
+  --og-section-title: #9c9c9c;
+  --og-section-muted: #9c9c9c;
+  --og-section-icon: #b8b8b8;
+  --og-section-hover: rgba(255, 255, 255, 0.08);
+  --og-section-active: rgba(255, 255, 255, 0.11);
+  --og-section-border: rgba(255, 255, 255, 0.12);
+}
+
+.sidebar,
+.rooms-list-panel,
+.contacts-nav-panel {
+  border-right: 1px solid var(--og-section-border);
+  background: var(--og-sidebar-bg);
+  padding: 14px 10px 16px;
+}
+
+.rooms-list-panel,
+.contacts-nav-panel {
+  gap: 10px;
+}
+
+.rooms-list-panel {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.rooms-people-strip {
+  display: none;
+}
+
+.thread-heading-row,
+.sidebar-space-header,
+.rooms-list-header,
+.contacts-nav-header {
+  min-height: 36px;
+  border: 0;
+  background: transparent;
+  padding: 0 6px 0 8px;
+}
+
+.rooms-list-title {
+  gap: 0;
+}
+
+.rooms-title-icon {
+  display: none;
+}
+
+.rooms-list-title p {
+  display: none;
+}
+
+.thread-heading-row > span:first-child,
+.sidebar-space-title,
+.rooms-list-title h1,
+.contacts-nav-header h1 {
+  color: var(--og-section-title);
+  font-size: 13px;
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
+}
+
+.thread-heading-actions,
+.sidebar-space-actions,
+.rooms-create-menu-wrap,
+.contacts-nav-header .rooms-icon-button {
+  opacity: 0.58;
+  transition: opacity 120ms ease;
+}
+
+.thread-heading-row:hover .thread-heading-actions,
+.thread-heading-row:focus-within .thread-heading-actions,
+.sidebar-space-header:hover .sidebar-space-actions,
+.sidebar-space-header:focus-within .sidebar-space-actions,
+.rooms-list-header:hover .rooms-create-menu-wrap,
+.rooms-list-header:focus-within .rooms-create-menu-wrap,
+.contacts-nav-header:hover .rooms-icon-button,
+.contacts-nav-header:focus-within .rooms-icon-button,
+.thread-heading-actions.active,
+.sidebar-space-actions.active {
+  opacity: 1;
+}
+
+.sidebar-mini-action,
+.rooms-icon-button,
+.contacts-primary-action,
+.contacts-message-button {
+  border: 0;
+  background: transparent;
+  color: var(--og-section-muted);
+  box-shadow: none;
+}
+
+.sidebar-mini-action:hover,
+.sidebar-mini-action:focus-visible,
+.rooms-icon-button:hover,
+.rooms-icon-button:focus-visible,
+.contacts-primary-action:hover,
+.contacts-primary-action:focus-visible,
+.contacts-message-button:hover,
+.contacts-message-button:focus-visible {
+  background: var(--og-section-hover);
+  color: var(--og-section-text);
+}
+
+.contacts-message-button.primary {
+  background: var(--rooms-blue);
+  color: #ffffff;
+}
+
+.contacts-message-button.primary:hover,
+.contacts-message-button.primary:focus-visible {
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.project-tree,
+.project-group,
+.project-thread-list,
+.sidebar-library-files,
+.sidebar-vault-tree-item,
+.sidebar-vault-tree-children,
+.rooms-list-items,
+.contacts-section-list,
+.contacts-list,
+.contacts-group-list {
+  gap: 2px;
+}
+
+.project-item,
+.project-thread-list .thread-item,
+.sidebar-library-file,
+.rooms-list-item,
+.contacts-org-card,
+.contacts-section-list button,
+.contacts-person-row,
+.contacts-group-row {
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--og-section-text);
+  font-size: 13px;
+  font-weight: var(--fw-normal);
+  box-shadow: none;
+}
+
+.project-item,
+.sidebar-tree-folder,
+.contacts-org-card,
+.contacts-section-list button {
+  color: #626861;
+  font-weight: var(--fw-medium);
+}
+
+:root[data-resolved-theme="dark"] .project-item,
+:root[data-resolved-theme="dark"] .sidebar-tree-folder,
+:root[data-resolved-theme="dark"] .contacts-org-card,
+:root[data-resolved-theme="dark"] .contacts-section-list button {
+  color: #d2d2d2;
+}
+
+.project-item,
+.project-thread-list .thread-item,
+.sidebar-library-file,
+.contacts-section-list button {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.rooms-list-item {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 8px;
+}
+
+.contacts-person-row,
+.contacts-group-row {
+  min-height: 42px;
+  padding: 4px 8px;
+}
+
+.project-group[data-active="true"] .project-item,
+.sidebar-tree-folder[data-active="true"] {
+  background: transparent;
+  color: #626861;
+}
+
+.project-item:hover,
+.project-item:focus-visible,
+.project-group[data-active="true"] .project-item:hover,
+.project-group[data-active="true"] .project-item:focus-visible,
+.project-thread-list .thread-item:hover,
+.project-thread-list .thread-item:focus-visible,
+.sidebar-library-file:hover,
+.sidebar-library-file:focus-visible,
+.sidebar-tree-folder[data-active="true"]:hover,
+.sidebar-tree-folder[data-active="true"]:focus-visible,
+.rooms-list-item:hover,
+.rooms-list-item:focus-visible,
+.contacts-org-card:hover,
+.contacts-section-list button:hover,
+.contacts-section-list button:focus-visible,
+.contacts-person-row:hover,
+.contacts-person-row:focus-visible,
+.contacts-group-row:hover,
+.contacts-group-row:focus-visible {
+  background: var(--og-section-hover);
+  color: var(--og-section-text);
+}
+
+.thread-item.active,
+.sidebar-library-file[data-active="true"],
+.rooms-list-item[data-active="true"],
+.contacts-section-list button[data-active="true"],
+.contacts-person-row[data-active="true"] {
+  background: var(--og-section-active);
+  color: var(--og-section-text);
+  font-weight: var(--fw-normal);
+}
+
+.project-item-main {
+  gap: 8px;
+}
+
+.project-item-main svg,
+.sidebar-tree-folder svg,
+.sidebar-tree-file svg,
+.rooms-list-item svg,
+.contacts-section-list svg,
+.contacts-person-row svg,
+.contacts-group-row svg {
+  color: var(--og-section-icon);
+}
+
+.sidebar-tree-folder {
+  grid-template-columns: 12px 22px minmax(0, 1fr) 22px;
+  gap: 4px;
+}
+
+.sidebar-tree-file {
+  grid-template-columns: 22px minmax(0, 1fr) 22px;
+  gap: 6px;
+}
+
+.sidebar-tree-folder .pixel-icon,
+.sidebar-tree-file .pixel-icon,
+.rooms-list-item .pixel-icon,
+.contacts-section-list .pixel-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.project-item-main .pixel-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.project-thread-list {
+  padding-left: 30px;
+}
+
+.project-thread-list .thread-item .thread-item-meta,
+.rooms-list-time,
+.rooms-list-preview,
+.rooms-list-meta,
+.contacts-org-card small,
+.contacts-person-row small,
+.contacts-group-row small {
+  color: var(--og-section-muted);
+  font-size: 12px;
+  font-weight: var(--fw-normal);
+}
+
+.rooms-list-preview,
+.rooms-room-badge {
+  display: none;
+}
+
+.rooms-list-name {
+  color: var(--og-section-text);
+  font-size: 13px;
+  font-weight: var(--fw-normal);
+}
+
+.rooms-list-copy {
+  gap: 0;
+}
+
+.rooms-list-meta {
+  justify-items: end;
+  gap: 0;
+}
+
+.rooms-room-avatar,
+.rooms-list-item .rooms-avatar,
+.contacts-person-row .rooms-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--og-section-icon);
+  box-shadow: none;
+  font-size: 10px;
+}
+
+.room-group-avatar {
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.rooms-room-avatar.room-group-avatar {
+  color: var(--og-text-strong);
+  font-size: 13px;
+}
+
+.room-header-avatar.room-group-avatar {
+  font-size: 17px;
+}
+
+.rooms-pin-avatar.room-group-avatar {
+  font-size: 16px;
+}
+
+.rooms-group-profile-icon.room-group-avatar {
+  font-size: 14px;
+}
+
+.rooms-list-item .rooms-avatar::after,
+.contacts-person-row .rooms-avatar::after {
+  right: -1px;
+  bottom: -1px;
+  width: 6px;
+  height: 6px;
+  border-width: 1px;
+  border-color: var(--og-sidebar-bg);
+}
+
+.rooms-list-item .rooms-room-avatar,
+.rooms-kernel-result .rooms-room-avatar,
+.rooms-kernel-icon {
+  overflow: hidden;
+}
+
+.rooms-list-item .rooms-room-avatar.direct .entity-icon,
+.rooms-kernel-result .rooms-room-avatar.direct .entity-icon,
+.rooms-kernel-icon .entity-icon {
+  width: 20px;
+  height: 20px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+}
+
+.rooms-list-item .rooms-room-avatar.direct .entity-icon svg,
+.rooms-kernel-result .rooms-room-avatar.direct .entity-icon svg,
+.rooms-kernel-icon .entity-icon svg {
+  max-width: 16px;
+  max-height: 16px;
+}
+
+.contacts-org-card {
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 8px;
+}
+
+.contacts-org-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--og-green);
+  font-size: 13px;
+}
+
+.contacts-section-list button {
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 8px;
+  color: #626861;
+}
+
+.contacts-section-list button[data-active="true"] {
+  color: var(--og-section-text);
+}
+
+.contacts-nav-panel .rooms-icon-button,
+.rooms-list-panel .rooms-icon-button {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+}
+
+.rooms-search,
+.contacts-search,
+.sidebar-library-search {
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--og-section-hover);
+  color: var(--og-section-muted);
+}
+
+.rooms-search:focus-within,
+.contacts-search:focus-within,
+.sidebar-library-search:focus-within {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px var(--og-section-border);
+}
+
+:root[data-resolved-theme="dark"] .rooms-search:focus-within,
+:root[data-resolved-theme="dark"] .contacts-search:focus-within,
+:root[data-resolved-theme="dark"] .sidebar-library-search:focus-within {
+  background: #171717;
+}
+

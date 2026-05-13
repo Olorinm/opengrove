@@ -1,0 +1,113 @@
+.topbar[data-view="chat"] {
+  justify-content: flex-end;
+}
+
+.topbar[data-view="chat"] > div:first-child {
+  display: none;
+}
+
+.topbar[data-view="library"],
+.topbar[data-view="settings"] {
+  display: none;
+}
+
+.app-topbar-actions {
+  gap: 8px;
+}
+
+.topbar-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 30px;
+  border: 1px solid var(--codex-line);
+  border-radius: var(--r-md);
+  background: rgba(255, 254, 250, 0.9);
+  color: #666861;
+  cursor: pointer;
+}
+
+.topbar-icon-button:hover,
+.topbar-icon-button:focus-visible {
+  background: var(--c-surface);
+  outline: 0;
+}
+
+.topbar-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  border: 1px solid var(--codex-line);
+  border-radius: var(--r-md);
+  background: rgba(255, 254, 250, 0.9);
+  padding: 0 10px;
+  color: var(--c-text-3);
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+}
+
+.topbar-kernel-icon {
+  width: 18px;
+  height: 18px;
+  margin-left: -3px;
+  border: 0;
+  border-radius: 7px;
+}
+
+.chat-layout[data-inspector="false"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.chat-view[data-empty="true"] .conversation {
+  grid-template-rows: auto auto;
+  align-content: center;
+  justify-items: center;
+  overflow: visible;
+  padding: 0 36px 62px;
+}
+
+.chat-view[data-empty="true"] .thread {
+  width: 100%;
+  min-height: auto;
+  overflow: visible;
+  padding: 0;
+}
+
+.chat-view[data-empty="true"] .thread-shell {
+  width: min(780px, 100%);
+}
+
+.chat-view[data-empty="true"] .composer-region {
+  position: static;
+  width: min(780px, 100%);
+  padding: 0;
+  background: transparent;
+}
+
+.thread-shell {
+  width: min(760px, 100%);
+}
+
+.thread-welcome {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0 0 42px;
+  text-align: center;
+}
+
+.thread-welcome-copy {
+  gap: 0;
+}
+
+.thread-welcome strong {
+  color: #202329;
+  font-size: clamp(26px, 2.1vw, 32px);
+  font-weight: var(--fw-medium);
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+}
+

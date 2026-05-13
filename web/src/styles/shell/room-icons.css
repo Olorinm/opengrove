@@ -1,0 +1,35 @@
+/* Keep brand kernel marks visually inside compact room-list icon slots. */
+.rooms-list-item .rooms-room-avatar.direct,
+.rooms-kernel-result .rooms-room-avatar.direct {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.rooms-list-item .rooms-room-avatar.direct .entity-icon,
+.rooms-kernel-result .rooms-room-avatar.direct .entity-icon {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.rooms-list-item .rooms-room-avatar.direct .entity-icon > svg,
+.rooms-kernel-result .rooms-room-avatar.direct .entity-icon > svg {
+  width: 16px !important;
+  height: 16px !important;
+  max-width: 16px;
+  max-height: 16px;
+  flex: none;
+}
+

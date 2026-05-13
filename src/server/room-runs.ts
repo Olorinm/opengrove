@@ -3,6 +3,7 @@ import type { BridgeKernelId, BridgeState } from "./bridge-types.js";
 import type { RoomChannelMember, RoomChannelMessage } from "../rooms/channel-store.js";
 import { recreateBridgeApp } from "./bridge-state.js";
 import { runWithBridgeTurnContext } from "./bridge-turn-context.js";
+import { resolveKernelRuntimeModel } from "./kernel-selection.js";
 import { attachModelId } from "./trajectory.js";
 
 interface RoomRunInput {
@@ -11,6 +12,12 @@ interface RoomRunInput {
   prompt: string;
   targets: RoomChannelMember[];
   assistantMessages: RoomChannelMessage[];
+  onMessageFinalized?(result: {
+    target: RoomChannelMember;
+    message: RoomChannelMessage;
+    events: AgentEvent[];
+    error?: string;
+  }): void | Promise<void>;
 }
 
 const roomRunQueues = new WeakMap<BridgeState, Map<string, Promise<void>>>();
@@ -18,6 +25,7 @@ const roomRunQueues = new WeakMap<BridgeState, Map<string, Promise<void>>>();
 export function scheduleRoomAssistantRuns(state: BridgeState, input: RoomRunInput): RoomChannelMessage[] {
   const updatedMessages: RoomChannelMessage[] = [];
   for (const [index, target] of input.targets.entries()) {
+    if (!isRunnableRoomAssistantTarget(target)) continue;
     const message = input.assistantMessages[index];
     if (!message) continue;
     const runId = createRoomRunId();
@@ -34,9 +42,14 @@ export function scheduleRoomAssistantRuns(state: BridgeState, input: RoomRunInpu
       runId,
       prompt: input.prompt,
       target,
+      onMessageFinalized: input.onMessageFinalized,
     }));
   }
   return updatedMessages;
+}
+
+export function isRunnableRoomAssistantTarget(target: RoomChannelMember): boolean {
+  return !target.disabled && (target.source ?? "local") === "local" && isBridgeKernelId(target.kernel);
 }
 
 function enqueueRoomRun(state: BridgeState, memberId: string, task: () => Promise<void>): void {
@@ -62,16 +75,18 @@ async function executeRoomRun(
     runId: string;
     prompt: string;
     target: RoomChannelMember;
+    onMessageFinalized?: RoomRunInput["onMessageFinalized"];
   },
 ): Promise<void> {
   const startedAt = Date.now();
-  const sessionId = roomAgentThreadId(input.roomId, input.target.id, input.target.kernel);
-  const model = input.target.model || state.model;
-  const question = buildRoomRunPrompt(state, input);
+  const model = resolveRoomTargetModel(state, input.target);
+  const target = { ...input.target, model };
+  const sessionId = roomAgentThreadId(input.roomId, target.id, target.kernel);
+  const question = buildRoomRunPrompt(state, { ...input, target });
   const events: AgentEvent[] = [];
 
   try {
-    const executionState = roomExecutionState(state, input.target);
+    const executionState = roomExecutionState(state, target);
     const turnContext = {
       threadId: sessionId,
       model,
@@ -105,14 +120,20 @@ async function executeRoomRun(
       }
     }
 
-    const answer = collectAssistantText(events);
-    state.app.rooms.updateMessage(input.roomId, input.assistantMessageId, {
+    const errorMessage = collectErrorText(events);
+    const answer = collectAssistantText(events) || errorMessage;
+    const updatedMessage = state.app.rooms.updateMessage(input.roomId, input.assistantMessageId, {
       text: answer,
-      status: hasError(events) ? "failed" : "done",
+      status: errorMessage ? "failed" : "done",
       finishedAt: new Date().toISOString(),
       duration: durationLabel(Date.now() - startedAt),
     });
     state.store.saveFrom(state.app);
+    void input.onMessageFinalized?.({
+      target: input.target,
+      message: updatedMessage,
+      events,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const errorEvent: AgentEvent = {
@@ -125,22 +146,32 @@ async function executeRoomRun(
       activity: "chat",
       input: question,
     });
-    state.app.rooms.updateMessage(input.roomId, input.assistantMessageId, {
+    const updatedMessage = state.app.rooms.updateMessage(input.roomId, input.assistantMessageId, {
       text: message,
       status: "failed",
       finishedAt: new Date().toISOString(),
       duration: durationLabel(Date.now() - startedAt),
     });
     state.store.saveFrom(state.app);
+    void input.onMessageFinalized?.({
+      target: input.target,
+      message: updatedMessage,
+      events: [errorEvent],
+      error: message,
+    });
   }
 }
 
 function roomExecutionState(state: BridgeState, target: RoomChannelMember): BridgeState {
-  if (!isBridgeKernelId(target.kernel) || target.kernel === state.kernel) {
+  if (!isBridgeKernelId(target.kernel)) {
+    throw new Error(`room_member_kernel_not_runnable:${target.kernel || "unknown"}`);
+  }
+  if (target.kernel === state.kernel) {
     return state;
   }
   const scopedState = {
     ...state,
+    model: target.model || state.model,
     settings: {
       ...state.settings,
       kernel: target.kernel,
@@ -149,6 +180,13 @@ function roomExecutionState(state: BridgeState, target: RoomChannelMember): Brid
   } satisfies BridgeState;
   recreateBridgeApp(scopedState);
   return scopedState;
+}
+
+function resolveRoomTargetModel(state: BridgeState, target: RoomChannelMember): string {
+  if (!isBridgeKernelId(target.kernel)) {
+    return target.model || state.model;
+  }
+  return resolveKernelRuntimeModel(state, target.kernel, target.model);
 }
 
 function buildRoomRunPrompt(
@@ -225,8 +263,13 @@ function collectAssistantText(events: AgentEvent[]): string {
     .join("");
 }
 
-function hasError(events: AgentEvent[]): boolean {
-  return events.some((event) => event.type === "error");
+function collectErrorText(events: AgentEvent[]): string {
+  const error = [...events]
+    .reverse()
+    .find((event): event is Extract<AgentEvent, { type: "error" }> => (
+      event.type === "error" && Boolean(event.message.trim())
+    ));
+  return error?.message.trim() || "";
 }
 
 function createRoomRunId(): string {

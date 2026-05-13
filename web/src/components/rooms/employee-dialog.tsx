@@ -4,7 +4,6 @@ import type { KernelOption, ModelId, RuntimeControls } from "../../bridge";
 import { modelLabel, modelOptionsForKernel, resolveDefaultModelForKernel, runtimeControlsForKernel } from "../../runtime/kernel-models";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { KernelIcon } from "../ui/entity-icons";
-import { memberFromEmployeeLinkUrl } from "./employee-links";
 import { RoomInlineSelect } from "./room-inline-select";
 import type { RemoteRoomInviteResult } from "./room-invites";
 import {
@@ -14,11 +13,10 @@ import {
   roomMemberFromKernel,
   roomMemberSourceLabel,
   selectableKernelOptions,
-  type RoomMemberSource,
   type RoomMember,
-} from "./rooms-storage";
+} from "./rooms-model";
 
-type EmployeeSource = Extract<RoomMemberSource, "local"> | "employee-link" | "room-invite";
+type EmployeeSource = "local" | "room-invite";
 
 type EmployeeDraft = {
   source: EmployeeSource;
@@ -26,12 +24,10 @@ type EmployeeDraft = {
   kernel: string;
   model: string;
   role: string;
-  employeeLink: string;
 };
 
 const EMPLOYEE_SOURCE_OPTIONS: Array<{ id: EmployeeSource; label: string }> = [
   { id: "local", label: "本机员工" },
-  { id: "employee-link", label: "从员工链接添加" },
   { id: "room-invite", label: "邀请员工加入" },
 ];
 
@@ -43,7 +39,6 @@ export function EmployeeDialog(props: {
   runtimeControlsByKernel?: Record<string, RuntimeControls>;
   kernelOptions: KernelOption[];
   initialMember?: RoomMember;
-  initialEmployeeLink?: string;
   allowRemoteInvite?: boolean;
   onOpenChange(open: boolean): void;
   onCreate(member: RoomMember): void;
@@ -55,7 +50,7 @@ export function EmployeeDialog(props: {
     () => EMPLOYEE_SOURCE_OPTIONS.filter((option) => {
       if (editing) return option.id === "local";
       if (option.id === "room-invite") return Boolean(props.allowRemoteInvite && props.onCreateRemoteInvite);
-      return true;
+      return option.id === "local";
     }),
     [editing, props.allowRemoteInvite, props.onCreateRemoteInvite],
   );
@@ -78,13 +73,12 @@ export function EmployeeDialog(props: {
         props.runtimeControls,
         props.runtimeControlsByKernel,
         props.initialMember,
-        props.initialEmployeeLink,
       ));
       setInviteResult(null);
       setInvitePending(false);
       setCopyState("");
     }
-  }, [defaultKernel, props.activeKernel, props.activeModel, props.open, props.runtimeControls, props.runtimeControlsByKernel, props.initialMember, props.initialEmployeeLink]);
+  }, [defaultKernel, props.activeKernel, props.activeModel, props.open, props.runtimeControls, props.runtimeControlsByKernel, props.initialMember]);
 
   const selectedKernel = availableKernels.find((kernel) => kernel.id === draft.kernel) ?? defaultKernel;
   const selectedRuntimeControls = runtimeControlsForKernel(draft.kernel, props.runtimeControls, props.runtimeControlsByKernel);
@@ -117,15 +111,6 @@ export function EmployeeDialog(props: {
         setCopyState(formatInviteError(error));
       } finally {
         setInvitePending(false);
-      }
-      return;
-    }
-    if (draft.source === "employee-link") {
-      try {
-        props.onCreate(memberFromEmployeeLinkUrl(draft.employeeLink));
-        props.onOpenChange(false);
-      } catch {
-        setCopyState("员工链接无效");
       }
       return;
     }
@@ -247,26 +232,6 @@ export function EmployeeDialog(props: {
               />
             </label>
           </>
-        ) : draft.source === "employee-link" ? (
-          <div className="employee-dialog-runtime">
-            <div className="employee-dialog-runtime-title">员工链接</div>
-            <div className="employee-dialog-warning">
-              粘贴朋友发来的员工链接，会把这个员工添加到你的通讯录。
-            </div>
-            <label className="employee-dialog-field">
-              <span>员工链接</span>
-              <textarea
-                value={draft.employeeLink}
-                onChange={(event) => {
-                  setCopyState("");
-                  setDraft((current) => ({ ...current, employeeLink: event.target.value }));
-                }}
-                placeholder="粘贴员工链接"
-                rows={3}
-              />
-            </label>
-            {copyState ? <div className="employee-dialog-warning">{copyState}</div> : null}
-          </div>
         ) : (
           <div className="employee-dialog-runtime">
             <div className="employee-dialog-runtime-title">邀请链接</div>
@@ -312,7 +277,7 @@ function kernelSubline(kernel: KernelOption): string {
 }
 
 function normalizeEmployeeSource(value: string): EmployeeSource {
-  if (value === "employee-link" || value === "room-invite") return value;
+  if (value === "room-invite") return value;
   return "local";
 }
 
@@ -321,7 +286,6 @@ function canSubmitDraft(
   selectedKernelReady: boolean,
   createRemoteInvite: (() => Promise<RemoteRoomInviteResult | null> | RemoteRoomInviteResult | null) | undefined,
 ): boolean {
-  if (draft.source === "employee-link") return Boolean(draft.employeeLink.trim());
   if (draft.source === "room-invite") return Boolean(createRemoteInvite);
   return Boolean(draft.name.trim() && draft.kernel && draft.model && selectedKernelReady);
 }
@@ -342,7 +306,6 @@ function formatInviteError(error: unknown): string {
 
 function submitLabel(editing: boolean, source: EmployeeSource): string {
   if (editing) return "保存";
-  if (source === "employee-link") return "添加";
   if (source === "room-invite") return "生成邀请链接";
   return "创建";
 }
@@ -354,26 +317,14 @@ function createDefaultDraft(
   runtimeControls: RuntimeControls | undefined,
   runtimeControlsByKernel: Record<string, RuntimeControls> | undefined,
   initialMember: RoomMember | undefined,
-  initialEmployeeLink?: string,
 ): EmployeeDraft {
   const kernelId = initialMember?.kernel || kernel?.id || activeKernel || "";
-  if (initialEmployeeLink?.trim()) {
-    return {
-      source: "employee-link",
-      name: "",
-      kernel: kernelId,
-      model: resolveDefaultModel(kernelId, activeKernel, activeModel, runtimeControls, runtimeControlsByKernel),
-      role: "",
-      employeeLink: initialEmployeeLink,
-    };
-  }
   return {
     source: "local",
     name: initialMember?.name || "",
     kernel: kernelId,
     model: initialMember?.model || resolveDefaultModel(kernelId, activeKernel, activeModel, runtimeControls, runtimeControlsByKernel),
     role: initialMember?.role || kernel?.description || "员工",
-    employeeLink: "",
   };
 }
 
@@ -396,22 +347,12 @@ function createDraftForSource(
       role: current.role.trim() ? current.role : kernel?.description || "员工",
     };
   }
-  if (source === "employee-link") {
-    return {
-      ...current,
-      source,
-      name: "",
-      role: "",
-      employeeLink: "",
-    };
-  }
   if (source === "room-invite") {
     return {
       ...current,
       source,
       name: "",
       role: "",
-      employeeLink: "",
     };
   }
   return current;

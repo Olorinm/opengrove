@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { memberInitial, type MemberStatus, type RoomMember } from "./rooms-storage";
+import { memberInitial, type MemberStatus, type RoomMember } from "./rooms-model";
 
 type MemberAvatarInput = Pick<RoomMember, "name" | "status" | "color" | "avatarDataUrl">;
 

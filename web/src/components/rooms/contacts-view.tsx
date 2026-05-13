@@ -1,31 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { Camera, Check, Copy, MessageCircle, Pencil, Search, UserPlus, UsersRound, X } from "lucide-react";
+import { Camera, Check, MessageCircle, Pencil, Search, Trash2, UserPlus, UsersRound, X } from "lucide-react";
 import type { KernelOption, ModelId, RuntimeControls } from "../../bridge";
 import { modelLabel, modelOptionsForKernel, resolveDefaultModelForKernel, runtimeControlsForKernel } from "../../runtime/kernel-models";
 import { ThemedPixelIcon } from "../sidebar/app-navigation";
 import { KernelIcon } from "../ui/entity-icons";
 import { EmployeeDialog } from "./employee-dialog";
-import { clearEmployeeLinkFromLocation, createEmployeeLink, employeeLinkCode, employeeLinkPreview, readEmployeeLinkFromLocation } from "./employee-links";
 import { RoomMemberAvatar } from "./member-avatar";
+import { createRemoteRoomInvite, type RemoteRoomInviteResult } from "./room-invites";
+import {
+  createServerRoom,
+  fetchRoomsInit,
+  mergeRoomsFromServerSnapshot,
+  openServerDirectRoom,
+  patchServerRoomMember,
+  upsertServerRoomMember,
+} from "./rooms-api";
 import { RoomInlineSelect } from "./room-inline-select";
 import {
   KERNEL_COLORS,
-  ROOMS_STATE_EVENT,
   createId,
   directRoomId,
   memberModelLabel,
   nowIso,
-  readStoredState,
   roomMemberSourceDetail,
   roomMemberSourceLabel,
+  roomMemberStatusLabel,
   selectableKernelOptions,
-  statusLabel,
-  writeRoomsState,
   type Room,
   type RoomMember,
   type RoomsState,
-} from "./rooms-storage";
+} from "./rooms-model";
 
 type ContactEditDraft = {
   name: string;
@@ -34,6 +39,8 @@ type ContactEditDraft = {
   model: string;
   avatarDataUrl?: string;
 };
+
+const CONTACT_INVITE_ROOM_TITLE = "远程员工邀请";
 
 export function ContactsView(props: {
   activeKernel?: string;
@@ -44,50 +51,58 @@ export function ContactsView(props: {
   runtimeControlsByKernel?: Record<string, RuntimeControls>;
   onOpenRooms(): void;
 }) {
-  const [state, setState] = useState<RoomsState>(() => readStoredState(props.activeKernel, props.activeModel, props.activeWorkspaceRoot, props.kernelOptions));
+  const [state, setState] = useState<RoomsState>({ rooms: [], members: [], activeRoomId: "", deletedMemberIds: [] });
   const [query, setQuery] = useState("");
   const [activeSection, setActiveSection] = useState<"employees" | "groups">("employees");
   const [selectedMemberId, setSelectedMemberId] = useState(state.members[0]?.id || "");
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
-  const [incomingEmployeeLink, setIncomingEmployeeLink] = useState(() => readEmployeeLinkFromLocation() || "");
   const [editingMemberId, setEditingMemberId] = useState("");
   const [editDraft, setEditDraft] = useState<ContactEditDraft | null>(null);
-  const [employeeLinkCopyState, setEmployeeLinkCopyState] = useState("");
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    setState(readStoredState(props.activeKernel, props.activeModel, props.activeWorkspaceRoot, props.kernelOptions));
-  }, [props.activeKernel, props.activeModel, props.activeWorkspaceRoot, props.kernelOptions]);
-
-  useEffect(() => {
-    function syncFromStorage() {
-      setState(readStoredState(props.activeKernel, props.activeModel, props.activeWorkspaceRoot, props.kernelOptions));
+    let cancelled = false;
+    async function refreshFromLedger() {
+      try {
+        const snapshot = await fetchRoomsInit();
+        if (cancelled || !snapshot.ok) return;
+        setState((current) => {
+          const merged = mergeRoomsFromServerSnapshot(current.rooms, current.members, current.deletedMemberIds ?? [], snapshot);
+          const activeRoomId = merged.rooms.some((room) => room.id === current.activeRoomId)
+            ? current.activeRoomId
+            : merged.rooms[0]?.id ?? "";
+          return {
+            ...merged,
+            activeRoomId,
+          };
+        });
+      } catch {
+        // Contacts remains editable in-memory until the bridge is available again.
+      }
     }
-    window.addEventListener("storage", syncFromStorage);
-    window.addEventListener(ROOMS_STATE_EVENT, syncFromStorage);
+    void refreshFromLedger();
+    const interval = window.setInterval(() => void refreshFromLedger(), 2500);
     return () => {
-      window.removeEventListener("storage", syncFromStorage);
-      window.removeEventListener(ROOMS_STATE_EVENT, syncFromStorage);
+      cancelled = true;
+      window.clearInterval(interval);
     };
-  }, [props.activeKernel, props.activeModel, props.activeWorkspaceRoot, props.kernelOptions]);
+  }, []);
 
   useEffect(() => {
-    if (selectedMemberId && state.members.some((member) => member.id === selectedMemberId)) return;
-    setSelectedMemberId(state.members[0]?.id || "");
-  }, [selectedMemberId, state.members]);
+    const deletedMembers = new Set(state.deletedMemberIds ?? []);
+    if (selectedMemberId && state.members.some((member) => member.id === selectedMemberId && !deletedMembers.has(member.id) && !member.disabled)) return;
+    setSelectedMemberId(state.members.find((member) => !deletedMembers.has(member.id) && !member.disabled)?.id || "");
+  }, [selectedMemberId, state.deletedMemberIds, state.members]);
 
-  useEffect(() => {
-    setEmployeeLinkCopyState("");
-  }, [selectedMemberId]);
-
-  useEffect(() => {
-    if (incomingEmployeeLink) setEmployeeDialogOpen(true);
-  }, [incomingEmployeeLink]);
+  const contactMembers = useMemo(() => {
+    const deletedMembers = new Set(state.deletedMemberIds ?? []);
+    return state.members.filter((member) => !deletedMembers.has(member.id) && !member.disabled);
+  }, [state.deletedMemberIds, state.members]);
 
   const filteredMembers = useMemo(() => {
     const value = query.trim().toLowerCase();
-    if (!value) return state.members;
-    return state.members.filter((member) => (
+    if (!value) return contactMembers;
+    return contactMembers.filter((member) => (
       member.name.toLowerCase().includes(value)
       || member.role.toLowerCase().includes(value)
       || member.kernel.toLowerCase().includes(value)
@@ -95,13 +110,10 @@ export function ContactsView(props: {
       || roomMemberSourceLabel(member).toLowerCase().includes(value)
       || roomMemberSourceDetail(member).toLowerCase().includes(value)
     ));
-  }, [query, state.members]);
+  }, [contactMembers, query]);
 
   const groupRooms = useMemo(() => state.rooms.filter((room) => room.kind === "group"), [state.rooms]);
-  const selectedMember = state.members.find((member) => member.id === selectedMemberId) ?? filteredMembers[0] ?? state.members[0];
-  const selectedEmployeeLinkCode = selectedMember && selectedMember.source !== "human"
-    ? employeeLinkCode(createEmployeeLink(selectedMember))
-    : "";
+  const selectedMember = contactMembers.find((member) => member.id === selectedMemberId) ?? filteredMembers[0] ?? contactMembers[0];
   const editingSelectedMember = Boolean(selectedMember && editingMemberId === selectedMember.id && editDraft);
   const availableKernels = useMemo(() => selectableKernelOptions(props.kernelOptions, props.activeKernel), [props.activeKernel, props.kernelOptions]);
   const selectedDraftRuntimeControls = runtimeControlsForKernel(editDraft?.kernel || selectedMember?.kernel || "", props.runtimeControls, props.runtimeControlsByKernel);
@@ -115,30 +127,85 @@ export function ContactsView(props: {
   );
 
   function persist(nextState: RoomsState) {
-    const written = writeRoomsState(nextState, props.activeWorkspaceRoot);
-    setState(written);
-    return written;
+    setState(nextState);
+    return nextState;
   }
 
   function createEmployee(member: RoomMember) {
+    const restoredMember: RoomMember = {
+      ...member,
+      disabled: false,
+      status: member.status === "offline" ? "idle" : member.status,
+      lastActive: "刚刚",
+    };
     const nextState = persist({
       ...state,
-      members: state.members.some((item) => item.id === member.id) ? state.members : [...state.members, member],
+      members: state.members.some((item) => item.id === restoredMember.id)
+        ? state.members.map((item) => (item.id === restoredMember.id ? { ...item, ...restoredMember } : item))
+        : [...state.members, restoredMember],
+      deletedMemberIds: (state.deletedMemberIds ?? []).filter((memberId) => memberId !== restoredMember.id),
     });
-    setSelectedMemberId(member.id);
-    clearIncomingEmployeeLink();
+    setSelectedMemberId(restoredMember.id);
+    void upsertServerRoomMember(restoredMember).catch(() => undefined);
     return nextState;
+  }
+
+  async function createRemoteInviteLink(): Promise<RemoteRoomInviteResult | null> {
+    const localMember = selectedMember ?? contactMembers[0];
+    if (!localMember) {
+      throw new Error("请先添加一个本机员工，再邀请外部员工加入。");
+    }
+    const existingRoom = state.rooms.find((room) => (
+      room.kind === "group"
+      && room.title === CONTACT_INVITE_ROOM_TITLE
+      && room.matrix?.mode === "host"
+    ));
+    const createdAt = nowIso();
+    const roomForInvite: Room = existingRoom ?? {
+      id: createId("room"),
+      kind: "group",
+      title: CONTACT_INVITE_ROOM_TITLE,
+      badge: "Matrix",
+      memberIds: [localMember.id],
+      pinned: false,
+      unread: 0,
+      updatedAt: createdAt,
+      messages: [],
+    };
+    if (!existingRoom) {
+      await createServerRoom(roomForInvite);
+    }
+    const result = await createRemoteRoomInvite(roomForInvite);
+    if (!result.invite.matrixHomeserverUrl || !result.invite.matrixRoomId) {
+      throw new Error("matrix_invite_missing_room");
+    }
+    const nextRoom: Room = {
+      ...roomForInvite,
+      badge: "Matrix",
+      memberIds: roomForInvite.memberIds.includes(localMember.id)
+        ? roomForInvite.memberIds
+        : [localMember.id, ...roomForInvite.memberIds],
+      matrix: {
+        homeserverUrl: result.invite.matrixHomeserverUrl,
+        roomId: result.invite.matrixRoomId,
+        localMemberId: localMember.id,
+        mode: "host",
+      },
+      messages: roomForInvite.messages,
+      updatedAt: nowIso(),
+    };
+    persist({
+      ...state,
+      rooms: existingRoom
+        ? state.rooms.map((room) => (room.id === existingRoom.id ? nextRoom : room))
+        : [nextRoom, ...state.rooms],
+      activeRoomId: state.activeRoomId || nextRoom.id,
+    });
+    return result;
   }
 
   function updateEmployeeDialogOpen(open: boolean) {
     setEmployeeDialogOpen(open);
-    if (!open) clearIncomingEmployeeLink();
-  }
-
-  function clearIncomingEmployeeLink() {
-    if (!incomingEmployeeLink) return;
-    setIncomingEmployeeLink("");
-    clearEmployeeLinkFromLocation();
   }
 
   function saveEmployee(member: RoomMember) {
@@ -157,7 +224,32 @@ export function ContactsView(props: {
       members: state.members.map((item) => (item.id === member.id ? member : item)),
       rooms: nextRooms,
     });
+    void upsertServerRoomMember(member).catch(() => undefined);
     setSelectedMemberId(member.id);
+    setEditingMemberId("");
+    setEditDraft(null);
+  }
+
+  function deleteEmployee(member: RoomMember) {
+    const nextState: RoomsState = {
+      ...state,
+      members: state.members.map((item) => (item.id === member.id ? {
+        ...item,
+        disabled: true,
+        status: "offline" as const,
+        lastActive: "已移除",
+      } : item)),
+      deletedMemberIds: Array.from(new Set([...(state.deletedMemberIds ?? []), member.id])),
+    };
+    const writtenState = persist(nextState);
+    void patchServerRoomMember(member.id, {
+      disabled: true,
+      status: "offline",
+      lastActive: "已移除",
+    }).catch(() => undefined);
+    const nextDeletedMembers = new Set(writtenState.deletedMemberIds ?? []);
+    const nextSelectedId = writtenState.members.find((item) => !nextDeletedMembers.has(item.id) && !item.disabled)?.id || "";
+    setSelectedMemberId(nextSelectedId);
     setEditingMemberId("");
     setEditDraft(null);
   }
@@ -209,15 +301,6 @@ export function ContactsView(props: {
     saveEmployee(nextMember);
   }
 
-  async function copyEmployeeLink(member: RoomMember) {
-    const link = employeeLinkCode(createEmployeeLink(member));
-    if (await writeClipboardText(link)) {
-      setEmployeeLinkCopyState("已复制");
-      return;
-    }
-    setEmployeeLinkCopyState("复制失败");
-  }
-
   function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -266,6 +349,7 @@ export function ContactsView(props: {
       rooms: nextRooms.map((room) => room.id === roomId ? { ...room, updatedAt: room.updatedAt || createdAt } : room),
       activeRoomId: roomId,
     });
+    void openServerDirectRoom(member.id, member.name).catch(() => undefined);
     props.onOpenRooms();
   }
 
@@ -282,7 +366,7 @@ export function ContactsView(props: {
           <span className="contacts-org-icon" aria-hidden="true">#</span>
           <div>
             <strong>OpenGrove</strong>
-            <small>{state.members.length} 位员工</small>
+            <small>{contactMembers.length} 位员工</small>
           </div>
         </div>
         <nav className="contacts-section-list" aria-label="通讯录分类">
@@ -375,6 +459,10 @@ export function ContactsView(props: {
                             <ThemedPixelIcon pixelIcon="chat" professionalIcon={MessageCircle} professionalSize={16} pixelSize={17} />
                             <span>发消息</span>
                           </button>
+                          <button className="contacts-message-button danger" type="button" onClick={() => deleteEmployee(selectedMember)}>
+                            <Trash2 size={15} />
+                            <span>删除</span>
+                          </button>
                         </>
                       )}
                     </div>
@@ -436,7 +524,7 @@ export function ContactsView(props: {
                     </div>
                     <div>
                       <dt>状态</dt>
-                      <dd>{statusLabel(selectedMember.status)}</dd>
+                      <dd>{roomMemberStatusLabel(selectedMember)}</dd>
                     </div>
                     <div>
                       <dt>最近活跃</dt>
@@ -446,22 +534,6 @@ export function ContactsView(props: {
                       <dt>员工 ID</dt>
                       <dd>{selectedMember.id}</dd>
                     </div>
-                    {selectedMember.source !== "human" ? (
-                      <div>
-                        <dt>员工链接</dt>
-                        <dd>
-                          <button
-                            className="contacts-message-button"
-                            type="button"
-                            onClick={() => void copyEmployeeLink(selectedMember)}
-                            title={selectedEmployeeLinkCode}
-                          >
-                            <Copy size={15} />
-                            <span>{employeeLinkCopyState || employeeLinkPreview(selectedEmployeeLinkCode)}</span>
-                          </button>
-                        </dd>
-                      </div>
-                    ) : null}
                   </dl>
                 </>
               ) : (
@@ -494,31 +566,13 @@ export function ContactsView(props: {
         runtimeControls={props.runtimeControls}
         runtimeControlsByKernel={props.runtimeControlsByKernel}
         kernelOptions={props.kernelOptions}
-        initialEmployeeLink={incomingEmployeeLink}
+        allowRemoteInvite
         onOpenChange={updateEmployeeDialogOpen}
         onCreate={createEmployee}
+        onCreateRemoteInvite={createRemoteInviteLink}
       />
     </section>
   );
-}
-
-async function writeClipboardText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.readOnly = true;
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
-    textarea.style.top = "0";
-    document.body.appendChild(textarea);
-    textarea.select();
-    const copied = document.execCommand("copy");
-    textarea.remove();
-    return copied;
-  }
 }
 
 function resolveDefaultModel(

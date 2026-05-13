@@ -1,13 +1,7 @@
 import type { AgentEventRecord, MessagePart, SkillPart, StoredMessage, TextPart, ToolPart } from "../../bridge";
 import { applyStreamEventToMessage, closeDanglingMessageActivity, finalizeAssistantMessage, markAssistantMessageError } from "../../messages";
 import { activityItemStatus, buildActivityItems, choiceFormFromItem, summarizeActivityItems } from "../chat/message-activity";
-import type { MessageStatus, RoomMember, RoomMessage } from "./rooms-storage";
-
-export type RoomRunPromptResult = {
-  answer?: string;
-  duration?: string;
-  events?: AgentEventRecord[];
-};
+import type { MessageStatus, RoomMember, RoomMessage } from "./rooms-model";
 
 export function cloneMessageParts(parts: MessagePart[] | undefined): MessagePart[] {
   return Array.isArray(parts) ? parts.map((part) => ({ ...part })) : [];
@@ -39,25 +33,6 @@ export function roomMessageFromStored(message: RoomMessage, stored: StoredMessag
   };
 }
 
-export function applyAgentEventToRoomMessage(message: RoomMessage, event: AgentEventRecord): RoomMessage {
-  const stored = roomMessageToStored(message);
-  applyStreamEventToMessage(stored, event);
-  return roomMessageFromStored(message, stored, "running");
-}
-
-export function finalizeRoomMessage(message: RoomMessage, result: RoomRunPromptResult): RoomMessage {
-  const stored = roomMessageToStored(message);
-  if (!stored.parts.some((part) => part.type === "tool" || part.type === "skill") && result.events?.some(isRoomActivityEvent)) {
-    for (const event of result.events) {
-      if (isRoomActivityEvent(event)) {
-        applyStreamEventToMessage(stored, event);
-      }
-    }
-  }
-  finalizeAssistantMessage(stored, { answer: result.answer, events: result.events });
-  return roomMessageFromStored(message, stored, "done");
-}
-
 export function isRoomActivityEvent(event: AgentEventRecord | undefined): event is AgentEventRecord {
   return [
     "turn.started",
@@ -74,6 +49,15 @@ export function isRoomActivityEvent(event: AgentEventRecord | undefined): event 
     "compaction.finished",
     "error",
   ].includes(String(event?.type || ""));
+}
+
+export function shouldUseRoomActivityEvent(
+  event: AgentEventRecord | undefined,
+  status: MessageStatus,
+  text: string,
+): event is AgentEventRecord {
+  if (!isRoomActivityEvent(event)) return false;
+  return !(event.type === "error" && status !== "running" && text.trim());
 }
 
 export function failRoomMessage(message: RoomMessage, errorMessage: string): RoomMessage {
@@ -145,11 +129,10 @@ export function finalizeRoomMessageFromRun(
   answer?: string,
 ): RoomMessage {
   const stored = roomMessageToStored(message);
-  if (!roomActivityParts(stored.parts).length && events?.some(isRoomActivityEvent)) {
-    for (const event of events) {
-      if (isRoomActivityEvent(event)) {
-        applyStreamEventToMessage(stored, event);
-      }
+  const activityEvents = events?.filter((event) => shouldUseRoomActivityEvent(event, status, answer || message.text)) ?? [];
+  if (!roomActivityParts(stored.parts).length && activityEvents.length) {
+    for (const event of activityEvents) {
+      applyStreamEventToMessage(stored, event);
     }
   }
   finalizeAssistantMessage(stored, { answer, events });

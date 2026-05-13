@@ -1,0 +1,237 @@
+.nav-list {
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.nav-section {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sidebar-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--sp-2);
+}
+
+.sidebar-action,
+.sidebar-mini-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--c-text-2);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+
+.sidebar-action {
+  gap: var(--sp-2);
+  min-height: 34px;
+  border-radius: var(--r-md);
+  padding: 7px var(--sp-3);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+}
+
+.sidebar-action.primary {
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.sidebar-action:hover,
+.sidebar-mini-action:hover {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.sidebar-action:disabled,
+.sidebar-mini-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.project-section {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.thread-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  color: var(--c-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.04em;
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+}
+
+.sidebar-mini-action {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.project-tree,
+.project-group,
+.project-thread-list {
+  display: grid;
+  min-width: 0;
+}
+
+.project-tree {
+  gap: 6px;
+}
+
+.project-group {
+  gap: 2px;
+}
+
+.project-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-height: var(--sp-8);
+  border-radius: var(--r-md);
+  padding: 7px var(--sp-3);
+  background: transparent;
+  color: var(--c-text);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.project-group[data-active="true"] .project-item {
+  color: var(--c-text);
+  font-weight: var(--fw-bold);
+}
+
+.project-item:hover {
+  background: rgba(255, 253, 248, 0.54);
+}
+
+.project-item-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.project-item-main span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-item-count {
+  color: var(--c-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+
+.project-thread-list {
+  gap: 2px;
+  padding-left: 18px;
+  position: relative;
+}
+
+.project-thread-list::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 3px;
+  bottom: 4px;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.project-thread-list .thread-item {
+  min-height: 31px;
+  border-radius: var(--r-md);
+  padding: 7px 9px;
+}
+
+.project-thread-list .thread-item span:last-child {
+  flex: 0 0 auto;
+  color: #8a8276;
+  font-size: 11px;
+}
+
+.nav-section-title,
+.nav-section-summary {
+  color: var(--c-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.04em;
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+}
+
+.nav-section-title {
+  padding: 0 var(--sp-3) 2px;
+}
+
+.nav-section-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  border-radius: var(--r-md);
+  padding: 5px var(--sp-3);
+  cursor: pointer;
+  list-style: none;
+}
+
+.nav-section-summary::-webkit-details-marker {
+  display: none;
+}
+
+.nav-section-summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translate(-1px, -1px);
+  transition: transform 140ms ease;
+}
+
+.nav-section-advanced[open] .nav-section-summary::after,
+.knowledge-nav-section[open] .nav-section-summary::after {
+  transform: rotate(225deg) translate(-1px, -1px);
+}
+
+.nav-section-summary:hover {
+  background: rgba(255, 253, 248, 0.58);
+}
+
+.nav-section-advanced > .nav-section,
+.knowledge-nav-list {
+  margin-top: 2px;
+}
+
+.nav-item-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nav-item-label span,
+.nav-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

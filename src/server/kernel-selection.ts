@@ -63,6 +63,7 @@ import {
   withCodexResponsesChatProxy,
 } from "./codex-responses-chat-proxy.js";
 import {
+  readKernelNativeConfiguredModel,
   readKernelNativeProviderProfile,
 } from "./kernel-native-profiles.js";
 import {
@@ -94,11 +95,7 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
   state.kernel = kernel;
   const providerHttpCapture = readProviderHttpCaptureOptions(state, kernel);
   const provider = resolveProviderForKernel(kernel, state.settings.kernelProviderBindings, state.settings.customProviders);
-  const providerModelOptions = providerModelsForKernel(kernel, provider);
-  const providerDefaultModel = providerModelOptions.some((item) => item.id === state.model)
-    ? state.model
-    : providerModelOptions[0]?.id;
-  const selectedModel = providerDefaultModel || state.model;
+  const selectedModel = resolveProviderSelectedModelForKernel(state, kernel, state.model);
   const kernelSelectedModel = kernelModelForProviderSelection(kernel, provider, selectedModel);
   const modelAliases = kernelModelAliasesForProvider(kernel, provider);
   const providerEnv = resolveKernelEnv(state, kernel, provider, selectedModel);
@@ -248,6 +245,42 @@ export function getBridgeKernelOptions(state: BridgeState): JsonObject[] {
   }
 
   return options;
+}
+
+export function resolveProviderSelectedModelForKernel(
+  state: BridgeState,
+  kernel: BridgeKernelId,
+  requestedModel?: string,
+): string {
+  const provider = resolveProviderForKernel(kernel, state.settings.kernelProviderBindings, state.settings.customProviders);
+  const providerModelOptions = providerModelsForKernel(kernel, provider);
+  const requested = requestedModel?.trim();
+  if (providerModelOptions.length) {
+    if (requested && providerModelOptions.some((item) => item.id === requested)) {
+      return requested;
+    }
+    if (providerModelOptions.some((item) => item.id === state.model)) {
+      return state.model;
+    }
+    return providerModelOptions[0]?.id ?? requested ?? state.model ?? DEFAULT_BRIDGE_MODEL_ID;
+  }
+  return requested || state.model || DEFAULT_BRIDGE_MODEL_ID;
+}
+
+export function resolveKernelRuntimeModel(
+  state: BridgeState,
+  kernel: BridgeKernelId,
+  requestedModel?: string,
+): string {
+  const provider = resolveProviderForKernel(kernel, state.settings.kernelProviderBindings, state.settings.customProviders);
+  if (!provider) {
+    const nativeModel = readKernelNativeConfiguredModel(kernel, nativeProfileOptions(state, kernel));
+    if (nativeModel) {
+      return nativeModel;
+    }
+  }
+  const selectedModel = resolveProviderSelectedModelForKernel(state, kernel, requestedModel);
+  return kernelModelForProviderSelection(kernel, provider, selectedModel) || selectedModel;
 }
 
 export function getBridgeRuntimeControls(state: BridgeState): JsonObject {

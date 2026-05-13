@@ -167,7 +167,9 @@ export type TranslationKey =
   | "settings.protocol"
   | "settings.openaiBaseUrl"
   | "settings.anthropicBaseUrl"
+  | "settings.apiKey"
   | "settings.apiKeyEnv"
+  | "settings.apiKeyPlaceholder"
   | "settings.apiKeyConfigured"
   | "settings.models"
   | "settings.modelsCount"
@@ -459,7 +461,9 @@ const ZH_CN: Dictionary = {
   "settings.protocol": "协议",
   "settings.openaiBaseUrl": "OpenAI 兼容地址",
   "settings.anthropicBaseUrl": "Anthropic 兼容地址",
-  "settings.apiKeyEnv": "密钥或环境变量",
+  "settings.apiKey": "API Key",
+  "settings.apiKeyEnv": "环境变量名",
+  "settings.apiKeyPlaceholder": "直接粘贴 provider key",
   "settings.apiKeyConfigured": "已配置密钥",
   "settings.models": "模型",
   "settings.modelsCount": "{count} 个模型",
@@ -749,7 +753,9 @@ const EN: Dictionary = {
   "settings.protocol": "Protocol",
   "settings.openaiBaseUrl": "OpenAI-compatible URL",
   "settings.anthropicBaseUrl": "Anthropic-compatible URL",
-  "settings.apiKeyEnv": "Secret or environment variable",
+  "settings.apiKey": "API key",
+  "settings.apiKeyEnv": "Environment variable",
+  "settings.apiKeyPlaceholder": "Paste the provider key directly",
   "settings.apiKeyConfigured": "API key configured",
   "settings.models": "Models",
   "settings.modelsCount": "{count} models",

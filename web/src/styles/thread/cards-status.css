@@ -1,0 +1,203 @@
+.thread-card {
+  display: grid;
+  gap: 12px;
+  max-width: min(760px, 100%);
+  border: 0;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.82);
+  padding: var(--sp-4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+}
+
+.thread-card.tone-success {
+  background: rgba(248, 255, 251, 0.96);
+}
+
+.thread-card.tone-warn {
+  background: rgba(255, 250, 247, 0.96);
+}
+
+.thread-card.tone-approval,
+.thread-card.status-requires-action {
+  background: rgba(247, 251, 255, 0.96);
+}
+
+.thread-card.status-rejected {
+  background: rgba(248, 250, 252, 0.96);
+}
+
+.thread-card-header {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: start;
+}
+
+.thread-card-title-group {
+  display: flex;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+}
+
+.thread-card-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-md);
+  background: rgba(31, 41, 55, 0.08);
+  color: var(--c-muted);
+  flex: 0 0 auto;
+}
+
+.thread-card-icon.tone-info,
+.thread-card.status-loaded .thread-card-icon,
+.thread-card.status-finished .thread-card-icon {
+  background: rgba(21, 101, 192, 0.1);
+  color: #1556a6;
+}
+
+.thread-card-icon.tone-approval {
+  background: rgba(21, 101, 192, 0.1);
+  color: #1556a6;
+}
+
+.thread-card-title {
+  color: var(--opengrove-text);
+  font-size: 14px;
+  font-weight: var(--fw-bold);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.thread-card-subtitle {
+  margin-top: 3px;
+  color: var(--c-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.thread-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: var(--r-pill);
+  padding: 2px 8px;
+  background: rgba(31, 41, 55, 0.08);
+  color: var(--c-muted);
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+.thread-status-badge.status-complete,
+.thread-status-badge.status-staged,
+.thread-status-badge.status-approved {
+  background: rgba(20, 138, 91, 0.12);
+  color: #0f6d49;
+}
+
+.thread-status-badge.status-loaded,
+.thread-status-badge.status-finished,
+.thread-status-badge.status-requires-action {
+  background: rgba(21, 101, 192, 0.12);
+  color: #1556a6;
+}
+
+.thread-status-badge.status-blocked {
+  background: rgba(241, 90, 36, 0.12);
+  color: var(--c-warning);
+}
+
+.thread-status-badge.status-incomplete,
+.thread-status-badge.status-rejected {
+  background: rgba(183, 28, 28, 0.12);
+  color: #8d1f1f;
+}
+
+.thread-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.thread-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: rgba(31, 41, 55, 0.04);
+  padding: 2px 8px;
+  color: var(--c-muted);
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  line-height: 1.45;
+}
+
+.thread-chip.tone-strong {
+  background: rgba(31, 41, 55, 0.08);
+  color: #344054;
+}
+
+.thread-turn-status {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 0 0 11px;
+  color: #85837c;
+  font-size: 15px;
+  font-weight: var(--fw-normal);
+  line-height: 1.35;
+}
+
+.thread-turn-status.is-thinking {
+  border-bottom: 0;
+  padding: 0;
+}
+
+.thread-turn-status[data-active="true"] {
+  color: var(--c-muted);
+  font-weight: var(--fw-medium);
+}
+
+.thread-turn-status-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.thread-turn-status-label.thinking-shimmer {
+  width: fit-content;
+  color: transparent;
+  background: linear-gradient(90deg, #85837c 0%, #85837c 34%, #b9bab4 50%, #85837c 66%, #85837c 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: thinking-text-sheen 1.55s ease-in-out infinite;
+}
+
+.thread-tail-thinking {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  color: #85837c;
+  font-size: 15px;
+  font-weight: var(--fw-normal);
+  line-height: 1.35;
+}
+
+.thread-tail-thinking .thinking-shimmer {
+  width: fit-content;
+  color: transparent;
+  background: linear-gradient(90deg, #85837c 0%, #85837c 34%, #b9bab4 50%, #85837c 66%, #85837c 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: thinking-text-sheen 1.55s ease-in-out infinite;
+}
+

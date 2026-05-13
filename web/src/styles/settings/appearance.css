@@ -1,0 +1,248 @@
+/* Appearance preferences */
+.settings-appearance-section {
+  max-width: 780px;
+}
+
+.settings-preference-list {
+  border-radius: 16px;
+}
+
+.settings-preference-row {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  min-height: 78px;
+  padding: 18px 24px;
+}
+
+.settings-preference-row .settings-list-row-main {
+  gap: 7px;
+}
+
+.settings-preference-row .settings-list-row-main strong {
+  font-size: 16px;
+  font-weight: var(--fw-medium);
+}
+
+.settings-preference-row .settings-list-row-main small {
+  font-size: 14px;
+}
+
+.settings-preference-row .settings-list-row-control {
+  width: 100%;
+}
+
+.settings-preference-row .settings-inline-select {
+  width: 100%;
+}
+
+.settings-preference-row .settings-inline-select > button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--og-surface-subtle);
+  color: var(--og-text);
+  padding: 0 16px;
+  font-size: 15px;
+}
+
+.settings-preference-row .settings-inline-menu {
+  min-width: 100%;
+}
+
+.settings-inline-menu {
+  border-color: var(--og-border);
+  background: color-mix(in srgb, var(--og-surface) 96%, transparent);
+}
+
+.settings-screen-footer {
+  background: color-mix(in srgb, var(--og-surface) 88%, transparent);
+}
+
+@media (max-width: 700px) {
+  .settings-preference-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 16px;
+  }
+}
+
+:root[data-resolved-theme="dark"] .settings-screen,
+:root[data-resolved-theme="dark"] .settings-screen-sidebar,
+:root[data-resolved-theme="dark"] .settings-screen-main {
+  background: #000000;
+}
+
+:root[data-resolved-theme="dark"] .settings-list,
+:root[data-resolved-theme="dark"] .settings-panel,
+:root[data-resolved-theme="dark"] .settings-kernel-card,
+:root[data-resolved-theme="dark"] .settings-choice-card,
+:root[data-resolved-theme="dark"] .settings-source-row,
+:root[data-resolved-theme="dark"] .settings-switch-card,
+:root[data-resolved-theme="dark"] .settings-install-card,
+:root[data-resolved-theme="dark"] .settings-install-action {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: #111111;
+}
+
+:root[data-resolved-theme="dark"] .settings-choice-card.active,
+:root[data-resolved-theme="dark"] .settings-choice-card:hover,
+:root[data-resolved-theme="dark"] .settings-choice-card:focus-visible,
+:root[data-resolved-theme="dark"] .settings-list-row.choice:hover,
+:root[data-resolved-theme="dark"] .settings-list-row.choice:focus-visible,
+:root[data-resolved-theme="dark"] .settings-list-row.choice.active {
+  border-color: rgba(69, 166, 255, 0.62);
+  background: #1f2933;
+}
+
+:root[data-resolved-theme="dark"] .settings-choice-card.unavailable,
+:root[data-resolved-theme="dark"] .settings-choice-card.unavailable:hover,
+:root[data-resolved-theme="dark"] .settings-choice-card.unavailable:focus-visible,
+:root[data-resolved-theme="dark"] .settings-choice-card:disabled {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: #111111;
+}
+
+:root[data-resolved-theme="dark"] .settings-choice-card strong,
+:root[data-resolved-theme="dark"] .settings-choice-card.unavailable strong,
+:root[data-resolved-theme="dark"] .settings-choice-card:disabled strong {
+  color: #f4f4f4;
+}
+
+:root[data-resolved-theme="dark"] .settings-choice-card span,
+:root[data-resolved-theme="dark"] .settings-choice-card.unavailable span,
+:root[data-resolved-theme="dark"] .settings-choice-card:disabled span {
+  color: #b4b4b4;
+}
+
+:root[data-resolved-theme="dark"] .settings-choice-card.unavailable .settings-choice-card-icon,
+:root[data-resolved-theme="dark"] .settings-choice-card:disabled .settings-choice-card-icon {
+  opacity: 1;
+}
+
+:root[data-resolved-theme="dark"] .settings-kernel-install-button,
+:root[data-resolved-theme="dark"] .settings-inline-link,
+:root[data-resolved-theme="dark"] .settings-provider-actions button,
+:root[data-resolved-theme="dark"] .settings-form-actions button,
+:root[data-resolved-theme="dark"] .settings-inline-select > button,
+:root[data-resolved-theme="dark"] .settings-model-add-button,
+:root[data-resolved-theme="dark"] .settings-provider-icon-button:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: #2f2f2f;
+  color: #f4f4f4;
+}
+
+:root[data-resolved-theme="dark"] .settings-kernel-install-button:hover,
+:root[data-resolved-theme="dark"] .settings-kernel-install-button:focus-visible,
+:root[data-resolved-theme="dark"] .settings-inline-link:hover,
+:root[data-resolved-theme="dark"] .settings-inline-link:focus-visible,
+:root[data-resolved-theme="dark"] .settings-provider-actions button:hover,
+:root[data-resolved-theme="dark"] .settings-form-actions button:hover,
+:root[data-resolved-theme="dark"] .settings-provider-actions button:focus-visible,
+:root[data-resolved-theme="dark"] .settings-form-actions button:focus-visible,
+:root[data-resolved-theme="dark"] .settings-inline-menu button:hover,
+:root[data-resolved-theme="dark"] .settings-inline-menu button:focus-visible {
+  background: #3a3a3a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-screen,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-screen-sidebar,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-screen-main,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-screen,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-screen-sidebar,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-screen-main {
+    background: #000000;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-list,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-panel,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-kernel-card,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-source-row,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-switch-card,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-install-card,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-install-action,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-list,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-panel,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-kernel-card,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-source-row,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-switch-card,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-install-card,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-install-action {
+    border-color: rgba(255, 255, 255, 0.16);
+    background: #111111;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card.active,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card:hover,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card:focus-visible,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-list-row.choice:hover,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-list-row.choice:focus-visible,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-list-row.choice.active,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card.active,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card:focus-visible,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-list-row.choice:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-list-row.choice:focus-visible,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-list-row.choice.active {
+    border-color: rgba(69, 166, 255, 0.62);
+    background: #1f2933;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card.unavailable,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card.unavailable:hover,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card.unavailable:focus-visible,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card:disabled,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card.unavailable,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card.unavailable:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card.unavailable:focus-visible,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card:disabled {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: #111111;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card strong,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card.unavailable strong,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card:disabled strong,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card strong,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card.unavailable strong,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card:disabled strong {
+    color: #f4f4f4;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card span,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card.unavailable span,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card:disabled span,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card span,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card.unavailable span,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card:disabled span {
+    color: #b4b4b4;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card.unavailable .settings-choice-card-icon,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-choice-card:disabled .settings-choice-card-icon,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card.unavailable .settings-choice-card-icon,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-choice-card:disabled .settings-choice-card-icon {
+    opacity: 1;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-kernel-install-button,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-inline-link,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-provider-actions button,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-form-actions button,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-inline-select > button,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-model-add-button,
+  :root[data-theme="system"]:not([data-resolved-theme]) .settings-provider-icon-button:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-kernel-install-button,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-inline-link,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-provider-actions button,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-form-actions button,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-inline-select > button,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-model-add-button,
+  :root:not([data-theme]):not([data-resolved-theme]) .settings-provider-icon-button:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    background: #2f2f2f;
+    color: #f4f4f4;
+  }
+}
+

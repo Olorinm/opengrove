@@ -13,6 +13,7 @@ import { createJsonStateStore } from "../storage/json-state-store.js";
 import { normalizeOpenGroveProfile } from "../profiles/profile.js";
 import { bridgeDataPath } from "./storage-paths.js";
 import type {
+  BridgeKernelId,
   BridgeKernelProxySettings,
   BridgeInviteLandingSettings,
   BridgeMatrixRoomBinding,
@@ -22,6 +23,7 @@ import type {
   LocalBridgeServerOptions,
 } from "./bridge-types.js";
 import {
+  BRIDGE_KERNEL_IDS,
   DEFAULT_BRIDGE_MODEL_ID,
 } from "./bridge-types.js";
 import {
@@ -30,6 +32,7 @@ import {
   getProviderHttpCaptureSnapshot,
   isEnabledEnvFlag,
   normalizeBridgeKernelPreference,
+  resolveKernelRuntimeModel,
 } from "./kernel-selection.js";
 import {
   getAllBridgeProviderProfiles,
@@ -274,15 +277,26 @@ function seedRoomMembers(state: BridgeState): RoomChannelMember[] {
         id: defaultRoomMemberId(kernelId),
         name: String(kernel.label || kernel.id),
         kernel: kernelId,
-        model: kernelId === state.kernel ? state.model : String(kernel.providerLabel || kernel.version || "native"),
+        model: roomMemberRuntimeModel(state, kernelId, kernel),
         role: String(kernel.description || "Agent"),
         status: kernelId === state.kernel ? "idle" : "waiting",
         color: kernelColor(kernelId),
         lastActive: kernelId === state.kernel ? "now" : "waiting",
         source: "local",
-        sourceLabel: "local",
+        sourceLabel: "本机",
       };
     });
+}
+
+function roomMemberRuntimeModel(state: BridgeState, kernelId: string, kernel: JsonObject): string {
+  if (isBridgeKernelId(kernelId) && state.settings.kernelProviderBindings[kernelId]) {
+    return resolveKernelRuntimeModel(state, kernelId, state.model);
+  }
+  return String(kernel.providerLabel || kernel.version || "native") || DEFAULT_BRIDGE_MODEL_ID;
+}
+
+function isBridgeKernelId(value: string): value is BridgeKernelId {
+  return (BRIDGE_KERNEL_IDS as readonly string[]).includes(value);
 }
 
 function defaultRoomMemberId(kernelId: string): string {
@@ -361,6 +375,7 @@ function normalizeMatrixRoomBindings(
       homeserverUrl,
       title: stringOrUndefined(item.title) ?? "群聊",
       createdAt: stringOrUndefined(item.createdAt) ?? new Date(0).toISOString(),
+      syncToken: stringOrUndefined(item.syncToken),
     };
   }
   return bindings;

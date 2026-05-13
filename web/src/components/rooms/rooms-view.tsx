@@ -11,15 +11,12 @@ import { RoomComposer, type MentionOption } from "./room-composer";
 import { RoomGroupAvatar } from "./room-group-avatar";
 import { RemoteInviteDialog } from "./remote-invite-dialog";
 import {
-  applyAgentEventToRoomMessage,
   failRoomMessage,
-  finalizeRoomMessage,
   finalizeRoomMessageFromRun,
   interruptRoomMessage,
   roomMessageFromStored,
   roomMessageToStored,
   roomMessageText,
-  type RoomRunPromptResult,
 } from "./room-message-model";
 import {
   clearRemoteRoomInviteFromLocation,
@@ -29,35 +26,23 @@ import {
   type RemoteRoomInviteResult,
 } from "./room-invites";
 import { RoomMessageStream } from "./room-message-stream";
-import {
-  acceptMatrixInvite,
-  publishMatrixAgentFinal,
-  publishMatrixAgentRequest,
-  roomFromAcceptedMatrixInvite,
-  roomMemberFromMatrixAgentProfile,
-  syncMatrixRoomEvents,
-  type MatrixAgentFinalContent,
-  type MatrixAgentProfileContent,
-  type MatrixAgentRequestContent,
-  type MatrixRoomEvent,
-} from "./room-matrix";
-import { runRemoteRoomAgent } from "./room-remote-agent";
-import { roomAgentThreadId, type RoomDeliveryContext } from "./room-runtime";
+import { acceptMatrixInvite } from "./room-matrix";
 import { RoomSettingsPanel } from "./room-settings-panel";
 import { RoomSidebar } from "./room-sidebar";
-import { useRoomsStorage } from "./use-rooms-storage";
 import {
   addServerRoomMember,
   applyRoomEvents,
   createServerRoom,
   fetchRoomEvents,
   fetchRoomsInit,
+  mergeRoomsFromServerSnapshot,
   openServerDirectRoom,
   patchServerRoom,
-  patchServerRoomMessage,
   postServerRoomMessage,
   removeServerRoomMember,
-  roomsFromServerSnapshot,
+  sortRoomMessages,
+  type RoomEvent,
+  upsertServerRoomMember,
 } from "./rooms-api";
 import {
   ROOM_OWNER_MEMBER,
@@ -65,13 +50,13 @@ import {
   directRoomId,
   nowIso,
   roomMemberSourceLabel,
-  statusLabel,
+  roomMemberStatusLabel,
   type MemberStatus,
   type MessageStatus,
   type Room,
   type RoomMember,
   type RoomMessage,
-} from "./rooms-storage";
+} from "./rooms-model";
 
 type MentionMenuState = {
   open: boolean;
@@ -80,33 +65,6 @@ type MentionMenuState = {
   end: number;
   activeIndex: number;
 };
-
-type RoomRunPromptInput = {
-  roomId: string;
-  targetId: string;
-  targetName: string;
-  targetKernel: string;
-  targetModel: string;
-  targetRole: string;
-  prompt: string;
-  attachments: AttachmentPayload[];
-  roomContext?: RoomDeliveryContext;
-  onAgentEvent?(event: AgentEventRecord): void;
-  onRunId?(runId: string): void;
-};
-
-type RoomAttachRunInput = {
-  roomId: string;
-  targetId: string;
-  targetKernel: string;
-  runId: string;
-  onAgentEvent?(event: AgentEventRecord): void;
-  onRunId?(runId: string): void;
-};
-
-function isRecoverableRoomRunError(error: unknown): boolean {
-  return error instanceof Error && error.name === "RecoverableRoomStreamDisconnect";
-}
 
 function runRecordId(run: RunRecord | undefined): string {
   return String(run?.id || run?.runId || "");
@@ -163,14 +121,24 @@ function finalRoomAnswerFromEvents(events: AgentEventRecord[] | undefined): stri
       return text;
     }
   }
-  return events
+  const deltaText = events
     .filter((event) => event?.type === "assistant.delta" && typeof event.text === "string")
     .map((event) => event.text)
     .join("");
+  if (deltaText.trim()) return deltaText;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    const text = event?.type === "error" ? event.message : "";
+    if (typeof text === "string" && text.trim()) {
+      return text;
+    }
+  }
+  return "";
 }
 
 function runRecordFinalAnswer(run: RunRecord | undefined): string {
-  if (!run || isFailedRunStatus(run.status) || !isTerminalRunStatus(run.status)) return "";
+  if (!run || !isTerminalRunStatus(run.status)) return "";
+  if (isFailedRunStatus(run.status)) return String(run.error || "").trim();
   const summary = String(run.summary || "").trim();
   const input = String(run.input || "").trim();
   return summary && summary !== input ? summary : "";
@@ -179,9 +147,10 @@ function runRecordFinalAnswer(run: RunRecord | undefined): string {
 function resolveTargets(text: string, members: RoomMember[]): RoomMember[] {
   const normalized = text.toLowerCase();
   if (/@all\b/i.test(text) || /@全部|@所有人/.test(text)) {
-    return members.filter((member) => member.status !== "offline");
+    return members.filter((member) => !member.disabled && member.status !== "offline");
   }
   return members.filter((member) => {
+    if (member.disabled) return false;
     const aliases = [member.name, member.id, member.kernel].map((value) => `@${value.toLowerCase()}`);
     return aliases.some((alias) => normalized.includes(alias));
   });
@@ -194,130 +163,14 @@ function canSendRoomDraft(rawText: string, attachmentCount: number): boolean {
   return !/^@\S*$/.test(text);
 }
 
-function buildRoomDeliveryContext(
-  room: Room,
-  allMembers: RoomMember[],
-  target: RoomMember,
-  currentMessageId: string,
-): RoomDeliveryContext {
-  const memberNames = new Map(allMembers.map((member) => [member.id, member.name]));
-  memberNames.set("user", "You");
+function removedMemberForRoom(member: RoomMember, deletedMemberIds: Set<string>): RoomMember {
+  if (!member.disabled && !deletedMemberIds.has(member.id)) return member;
   return {
-    room: {
-      id: room.id,
-      kind: room.kind,
-      title: room.title,
-    },
-    target: {
-      id: target.id,
-      name: target.name,
-      kernel: target.kernel,
-      model: target.model,
-    },
-    currentMessageId,
-    messages: room.messages.map((message, index) => ({
-      id: message.id,
-      seq: index + 1,
-      senderName: message.senderName,
-      senderType: message.senderType,
-      text: roomMessageText(message),
-      targetNames: message.targetIds.map((id) => memberNames.get(id) || id).filter(Boolean),
-      status: message.status,
-      createdAt: message.createdAt,
-    })),
+    ...member,
+    disabled: true,
+    status: "offline",
+    lastActive: "已移除",
   };
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-function shouldRunLocally(member: RoomMember): boolean {
-  return !member.source || member.source === "local";
-}
-
-function buildPassiveMemberAnswer(member: RoomMember): string {
-  if (member.disabled) {
-    return `${member.name} 已被禁用，不能参与这次对话。`;
-  }
-  if (member.source === "human") {
-    return `${member.name} 是人类成员，不会自动执行 agent 回复。`;
-  }
-  return "";
-}
-
-function remoteInviteErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("matrix_not_configured") || message.includes("remote_messaging_not_configured")) {
-    return "还没有配置 Matrix/Tuwunel，暂时不能生成远程员工邀请链接。请先到设置里的远程通信填写服务器信息。";
-  }
-  if (message.includes("invite_landing_not_configured")) {
-    return "还没有配置公开邀请落地页，暂时不能生成可分享的远程员工邀请链接。请先到设置里的远程通信填写落地页地址。";
-  }
-  if (message.includes("matrix_invite_failed")) {
-    return "生成 Matrix 共享群聊邀请失败，请检查 Tuwunel homeserver、用户 ID 和 access token。";
-  }
-  return `生成远程员工邀请链接失败：${message}`;
-}
-
-function matrixEventCreatedAt(event: MatrixRoomEvent): string {
-  const timestamp = typeof event.origin_server_ts === "number" ? event.origin_server_ts : 0;
-  return timestamp > 0 ? new Date(timestamp).toISOString() : nowIso();
-}
-
-function matrixTurnKey(event: MatrixRoomEvent, content: { turnId?: string }): string {
-  return content.turnId || event.event_id || createId("matrix_turn");
-}
-
-function stableMatrixMessageId(prefix: string, ...parts: string[]): string {
-  return `${prefix}_${parts.join("_")}`.replace(/[^A-Za-z0-9_-]/g, "_");
-}
-
-function patchMatrixFinalMessages(
-  messages: RoomMessage[],
-  event: MatrixRoomEvent,
-  payload: MatrixAgentFinalContent,
-  matrixMember: RoomMember | undefined,
-  answer: string,
-): RoomMessage[] {
-  const turnKey = matrixTurnKey(event, payload);
-  if (messages.some((message) => (
-    message.matrixEventId === event.event_id
-    || (matrixMember && message.senderId === matrixMember.id && message.matrixTurnId === turnKey && message.status !== "running")
-  ))) {
-    return messages;
-  }
-  let patched = false;
-  const next = messages.map((message) => {
-    if (message.matrixTurnId === turnKey || (message.runId && message.runId === turnKey)) {
-      patched = true;
-      return {
-        ...finalizeRoomMessage(message, {
-          answer,
-          duration: payload.duration,
-          events: payload.events,
-        }),
-        matrixEventId: event.event_id || message.matrixEventId,
-        matrixTurnId: turnKey,
-      };
-    }
-    return message;
-  });
-  if (patched || !matrixMember) return next;
-  return [...next, {
-    id: stableMatrixMessageId("matrix_final", matrixMember.id, turnKey),
-    senderId: matrixMember.id,
-    senderName: payload.displayName || matrixMember.name,
-    senderType: "agent",
-    text: answer,
-    targetIds: [matrixMember.id],
-    status: "done",
-    createdAt: matrixEventCreatedAt(event),
-    duration: payload.duration,
-    parts: [],
-    matrixEventId: event.event_id,
-    matrixTurnId: turnKey,
-  }];
 }
 
 function findMentionContext(value: string, cursor: number): Pick<MentionMenuState, "query" | "start" | "end"> | null {
@@ -342,8 +195,6 @@ export function RoomsView(props: {
   runtimeEvents?: AgentEventRecord[];
   runs?: RunRecord[];
   pendingApprovalCount: number;
-  onRunPrompt(input: RoomRunPromptInput): Promise<RoomRunPromptResult>;
-  onAttachRun?(input: RoomAttachRunInput): Promise<RoomRunPromptResult>;
   onResolveApproval?(approvalId: string, action: "approve" | "reject", response?: unknown): Promise<unknown> | void;
   onOpenSettings(): void;
 }) {
@@ -354,21 +205,15 @@ export function RoomsView(props: {
   const compositionGuardTimerRef = useRef<number | null>(null);
   const isComposingTextRef = useRef(false);
   const suppressNextEnterRef = useRef(false);
-  const attachedRoomRunIdsRef = useRef(new Set<string>());
-  const localRoomRunIdsRef = useRef(new Set<string>());
-  const matrixEventIdsRef = useRef(new Set<string>());
-  const matrixSyncTokensRef = useRef(new Map<string, string>());
   const roomsRef = useRef<Room[]>([]);
   const membersRef = useRef<RoomMember[]>([]);
-  const agentQueuesRef = useRef(new Map<string, Promise<void>>());
+  const deletedMemberIdsRef = useRef<string[]>([]);
   const serverRoomsEventSeqRef = useRef(0);
   const serverRoomsPollingRef = useRef(false);
-  const { rooms, setRooms, members, setMembers, activeRoomId, setActiveRoomId, storageWarning } = useRoomsStorage({
-    activeKernel: props.activeKernel,
-    activeModel: props.activeModel,
-    activeWorkspaceRoot: props.activeWorkspaceRoot,
-    kernelOptions: props.kernelOptions,
-  });
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [members, setMembers] = useState<RoomMember[]>([]);
+  const [deletedMemberIds, setDeletedMemberIds] = useState<string[]>([]);
+  const [activeRoomId, setActiveRoomId] = useState("");
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<AttachmentPayload[]>([]);
   const [roomQuery, setRoomQuery] = useState("");
@@ -380,6 +225,7 @@ export function RoomsView(props: {
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
   const [remoteInvite, setRemoteInvite] = useState<RemoteRoomInvitePayload | null>(() => readRemoteRoomInviteFromLocation());
+  const [remoteInviteError, setRemoteInviteError] = useState("");
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [groupDraftTitle, setGroupDraftTitle] = useState("");
   const [groupDraftMemberIds, setGroupDraftMemberIds] = useState<string[]>([]);
@@ -390,6 +236,11 @@ export function RoomsView(props: {
     end: 0,
     activeIndex: 0,
   });
+  const deletedMemberIdSet = useMemo(() => new Set(deletedMemberIds), [deletedMemberIds]);
+
+  useEffect(() => {
+    deletedMemberIdsRef.current = deletedMemberIds;
+  }, [deletedMemberIds]);
 
   const activeRoom = useMemo(
     () => rooms.find((room) => room.id === activeRoomId) ?? rooms[0],
@@ -401,19 +252,20 @@ export function RoomsView(props: {
   }, [rooms]);
 
   useEffect(() => {
-    membersRef.current = members;
-  }, [members]);
+    membersRef.current = members.map((member) => removedMemberForRoom(member, deletedMemberIdSet));
+  }, [deletedMemberIdSet, members]);
 
   useEffect(() => {
     let cancelled = false;
     void fetchRoomsInit()
       .then((snapshot) => {
         if (cancelled || !snapshot.ok) return;
-        const serverRooms = roomsFromServerSnapshot(snapshot);
-        if (serverRooms.length) {
-          setRooms(serverRooms);
-          setMembers(snapshot.members);
-          setActiveRoomId((current) => serverRooms.some((room) => room.id === current) ? current : serverRooms[0]?.id ?? "");
+        const merged = mergeRoomsFromServerSnapshot(roomsRef.current, membersRef.current, deletedMemberIdsRef.current, snapshot);
+        if (merged.rooms.length) {
+          setRooms(merged.rooms);
+          setMembers(merged.members);
+          setDeletedMemberIds(merged.deletedMemberIds);
+          setActiveRoomId((current) => merged.rooms.some((room) => room.id === current) ? current : merged.rooms[0]?.id ?? "");
         }
         serverRoomsEventSeqRef.current = snapshot.currentEventSeq;
       })
@@ -423,7 +275,7 @@ export function RoomsView(props: {
     return () => {
       cancelled = true;
     };
-  }, [setActiveRoomId, setMembers, setRooms]);
+  }, [setActiveRoomId, setDeletedMemberIds, setMembers, setRooms]);
 
   useEffect(() => {
     let cancelled = false;
@@ -431,12 +283,29 @@ export function RoomsView(props: {
       if (serverRoomsPollingRef.current) return;
       serverRoomsPollingRef.current = true;
       try {
-        const result = await fetchRoomEvents(serverRoomsEventSeqRef.current);
-        if (!cancelled && result.ok) {
-          serverRoomsEventSeqRef.current = result.currentEventSeq;
-          if (result.events.length) {
-            const applied = applyRoomEvents(roomsRef.current, membersRef.current, result.events);
+        let afterEventSeq = serverRoomsEventSeqRef.current;
+        let currentEventSeq = afterEventSeq;
+        const events: RoomEvent[] = [];
+        for (;;) {
+          const result = await fetchRoomEvents(afterEventSeq);
+          if (!result.ok) break;
+          currentEventSeq = result.currentEventSeq;
+          events.push(...result.events);
+          const lastEvent = result.events[result.events.length - 1];
+          const lastEventSeq = lastEvent?.eventSeq;
+          if (!result.hasMore || !lastEventSeq || lastEventSeq <= afterEventSeq) break;
+          afterEventSeq = lastEventSeq;
+        }
+        if (!cancelled) {
+          serverRoomsEventSeqRef.current = currentEventSeq;
+          if (events.length) {
+            const applied = applyRoomEvents(roomsRef.current, membersRef.current, events);
+            const appliedDeletedMemberIds = Array.from(new Set([
+              ...deletedMemberIdsRef.current,
+              ...applied.members.filter((member) => member.disabled).map((member) => member.id),
+            ]));
             setMembers(applied.members);
+            setDeletedMemberIds(appliedDeletedMemberIds);
             setRooms(applied.rooms);
           }
         }
@@ -454,7 +323,7 @@ export function RoomsView(props: {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [setMembers, setRooms]);
+  }, [setDeletedMemberIds, setMembers, setRooms]);
 
   useEffect(() => {
     function syncRemoteInviteFromLocation() {
@@ -465,9 +334,17 @@ export function RoomsView(props: {
   }, []);
 
   const roomMembers = useMemo(
-    () => activeRoom ? activeRoom.memberIds.map((id) => members.find((member) => member.id === id)).filter((member): member is RoomMember => Boolean(member)) : [],
-    [activeRoom, members],
+    () => activeRoom
+      ? activeRoom.memberIds
+        .map((id) => members.find((member) => member.id === id))
+        .filter((member): member is RoomMember => Boolean(member))
+        .map((member) => removedMemberForRoom(member, deletedMemberIdSet))
+      : [],
+    [activeRoom, deletedMemberIdSet, members],
   );
+  const contactMembers = useMemo(() => {
+    return members.filter((member) => !deletedMemberIdSet.has(member.id) && !member.disabled);
+  }, [deletedMemberIdSet, members]);
   const visibleRoomMembers = useMemo(
     () => activeRoom?.kind === "group" ? [ROOM_OWNER_MEMBER, ...roomMembers] : roomMembers,
     [activeRoom?.kind, roomMembers],
@@ -485,8 +362,8 @@ export function RoomsView(props: {
   const availableMembers = useMemo(() => {
     if (activeRoom?.kind !== "group") return [];
     const existingIds = new Set(activeRoom.memberIds);
-    return members.filter((member) => !existingIds.has(member.id));
-  }, [activeRoom, members]);
+    return contactMembers.filter((member) => !existingIds.has(member.id));
+  }, [activeRoom, contactMembers]);
   const removableMembers = useMemo(() => {
     if (activeRoom?.kind !== "group" || roomMembers.length <= 1) return [];
     return roomMembers;
@@ -509,6 +386,7 @@ export function RoomsView(props: {
     const includeAll = activeRoom?.kind === "group" && (!query || allAliases.some((alias) => alias.toLowerCase().includes(query)));
     const memberOptions: MentionOption[] = roomMembers
       .filter((member) => {
+        if (member.disabled) return false;
         if (!query) return true;
         return [member.name, member.role, member.kernel, member.model].some((value) => value.toLowerCase().includes(query));
       })
@@ -516,7 +394,7 @@ export function RoomsView(props: {
         id: member.id,
         kind: "member",
         label: member.name,
-        detail: `${roomMemberSourceLabel(member)} · ${member.role} · ${statusLabel(member.status)}`,
+        detail: `${roomMemberSourceLabel(member)} · ${member.role} · ${roomMemberStatusLabel(member)}`,
         member,
       }));
     return [...(includeAll ? [allOption] : []), ...memberOptions];
@@ -579,98 +457,6 @@ export function RoomsView(props: {
     return runIds;
   }, [props.runs]);
   const messageCount = activeRoom?.messages.length ?? 0;
-  const matrixConnectionKey = useMemo(
-    () => rooms
-      .filter((room) => room.matrix?.homeserverUrl && room.matrix.roomId)
-      .map((room) => [
-        room.id,
-        room.matrix?.homeserverUrl,
-        room.matrix?.roomId,
-        room.matrix?.localMemberId,
-      ].join(":"))
-      .sort()
-      .join("|"),
-    [rooms],
-  );
-
-  useEffect(() => {
-    let closed = false;
-    async function pollMatrixRooms() {
-      const matrixRooms = roomsRef.current.filter((room) => room.matrix?.roomId);
-      for (const room of matrixRooms) {
-        const matrixRoomId = room.matrix?.roomId;
-        if (!matrixRoomId) continue;
-        const syncKey = `${room.id}:${matrixRoomId}`;
-        try {
-          const result = await syncMatrixRoomEvents({
-            roomId: matrixRoomId,
-            since: matrixSyncTokensRef.current.get(syncKey),
-          });
-          if (closed || !result.ok) continue;
-          if (result.nextBatch) {
-            matrixSyncTokensRef.current.set(syncKey, result.nextBatch);
-          }
-          for (const event of result.events ?? []) {
-            handleMatrixRoomEvent(room.id, event);
-          }
-        } catch {
-          // Matrix sync is best-effort; the next interval will retry.
-        }
-      }
-    }
-    void pollMatrixRooms();
-    const interval = window.setInterval(() => void pollMatrixRooms(), 2500);
-    return () => {
-      closed = true;
-      window.clearInterval(interval);
-    };
-  }, [matrixConnectionKey]);
-
-  useEffect(() => {
-    if (!props.onAttachRun || activeRunIds.size === 0) return;
-    for (const room of rooms) {
-      for (const message of room.messages) {
-        if (message.senderType !== "agent" || message.status !== "running" || !message.runId) continue;
-        if (!activeRunIds.has(message.runId)) continue;
-        if (localRoomRunIdsRef.current.has(message.runId) || attachedRoomRunIdsRef.current.has(message.runId)) continue;
-        const member = members.find((item) => item.id === message.senderId);
-        if (!member) continue;
-        const run = runsById.get(message.runId);
-        const expectedThreadId = roomAgentThreadId(room.id, member.id, member.kernel);
-        if (run?.sessionId && run.sessionId !== expectedThreadId) continue;
-        const runId = message.runId;
-        attachedRoomRunIdsRef.current.add(runId);
-        updateRoomMessage(room.id, message.id, (current) => (
-          current.runId === runId
-            ? { ...current, text: "", parts: [], status: "running" }
-            : current
-        ));
-        void props.onAttachRun({
-          roomId: room.id,
-          targetId: member.id,
-          targetKernel: member.kernel,
-          runId,
-          onRunId(nextRunId) {
-            updateRoomMessage(room.id, message.id, (current) => ({ ...current, runId: nextRunId || current.runId }));
-          },
-          onAgentEvent(event) {
-            updateRoomMessage(room.id, message.id, (current) => applyAgentEventToRoomMessage(current, event));
-          },
-        }).then((result) => {
-          updateRoomMessage(room.id, message.id, (current) => ({
-            ...finalizeRoomMessage(current, result),
-            duration: result.duration || current.duration,
-          }));
-          updateMemberStatus([member.id], "done");
-        }).catch((error) => {
-          if (isRecoverableRoomRunError(error)) return;
-          const messageText = error instanceof Error ? error.message : String(error);
-          updateRoomMessage(room.id, message.id, (current) => failRoomMessage(current, messageText));
-          updateMemberStatus([member.id], "idle");
-        });
-      }
-    }
-  }, [activeRunIds, members, props.onAttachRun, rooms, runsById]);
 
   useLayoutEffect(() => {
     const stream = streamRef.current;
@@ -868,223 +654,28 @@ export function RoomsView(props: {
     }));
   }
 
-  function appendSystemMessageToRoom(roomId: string, text: string) {
-    const createdAt = nowIso();
-    updateRoom(roomId, (room) => ({
-      ...room,
-      messages: [
-        ...room.messages,
-        {
-          id: createId("message"),
-          senderId: "system",
-          senderName: "系统",
-          senderType: "system",
-          text,
-          targetIds: [],
-          status: "done",
-          createdAt,
-        },
-      ],
-      updatedAt: createdAt,
-    }));
+  function upsertRoomMessages(roomId: string, incomingMessages: RoomMessage[]) {
+    if (!incomingMessages.length) return;
+    updateRoom(roomId, (room) => {
+      const byId = new Map(room.messages.map((message) => [message.id, message]));
+      for (const incoming of incomingMessages) {
+        const current = byId.get(incoming.id);
+        byId.set(incoming.id, current ? { ...current, ...incoming } : incoming);
+      }
+      return {
+        ...room,
+        messages: [...byId.values()].sort(sortRoomMessages),
+        updatedAt: nowIso(),
+      };
+    });
   }
 
   function updateMemberStatus(memberIds: string[], status: MemberStatus) {
     if (!memberIds.length) return;
     const targetIds = new Set(memberIds);
-    setMembers((current) => current.map((member) => (targetIds.has(member.id) ? { ...member, status, lastActive: "刚刚" } : member)));
-  }
-
-  function handleMatrixRoomEvent(localRoomId: string, event: MatrixRoomEvent) {
-    const eventId = event.event_id || "";
-    if (!eventId) return;
-    const eventKey = `${localRoomId}:${eventId}`;
-    if (matrixEventIdsRef.current.has(eventKey)) return;
-    matrixEventIdsRef.current.add(eventKey);
-    const room = roomsRef.current.find((item) => item.id === localRoomId);
-    if (!room?.matrix) return;
-
-    if (event.type === "org.opengrove.agent.profile") {
-      const payload = event.content as MatrixAgentProfileContent;
-      const ownerUserId = String(payload.ownerUserId || event.sender || "").trim();
-      const agentId = String(payload.agentId || "").trim();
-      if (!ownerUserId || !agentId || agentId === room.matrix.localMemberId) return;
-      const member = roomMemberFromMatrixAgentProfile({
-        ownerUserId,
-        agentId,
-        displayName: String(payload.displayName || "远程员工"),
-        kernel: payload.kernel,
-        model: payload.model,
-        role: payload.role,
-      });
-      setMembers((current) => current.some((item) => item.id === member.id) ? current : [...current, member]);
-      updateRoom(localRoomId, (currentRoom) => ({
-        ...currentRoom,
-        memberIds: currentRoom.memberIds.includes(member.id)
-          ? currentRoom.memberIds
-          : [...currentRoom.memberIds, member.id],
-        messages: currentRoom.messages.some((message) => message.matrixEventId === eventId)
-          ? currentRoom.messages
-          : [
-            ...currentRoom.messages,
-            {
-              id: stableMatrixMessageId("matrix_profile", member.id, eventId),
-              senderId: "system",
-              senderName: "系统",
-              senderType: "system",
-              text: `${member.name} 已通过 Matrix 加入共享群聊。`,
-              targetIds: [],
-              status: "done",
-              createdAt: matrixEventCreatedAt(event),
-              matrixEventId: eventId,
-            },
-          ],
-        updatedAt: matrixEventCreatedAt(event),
-      }));
-      return;
-    }
-
-    if (event.type === "org.opengrove.agent.request") {
-      const payload = event.content as MatrixAgentRequestContent;
-      void runMatrixLocalReply(localRoomId, event, payload);
-      return;
-    }
-
-    if (event.type === "org.opengrove.agent.final") {
-      const payload = event.content as MatrixAgentFinalContent;
-      finalizeMatrixRemoteReply(localRoomId, event, payload);
-    }
-  }
-
-  async function runMatrixLocalReply(
-    localRoomId: string,
-    event: MatrixRoomEvent,
-    payload: MatrixAgentRequestContent,
-  ) {
-    const room = roomsRef.current.find((item) => item.id === localRoomId);
-    const binding = room?.matrix;
-    if (!room || !binding?.localMemberId) return;
-    const member = membersRef.current.find((item) => item.id === binding.localMemberId);
-    if (!member) return;
-    if (payload.target?.agentId && payload.target.agentId !== member.id) return;
-    const prompt = String(payload.prompt || "").trim();
-    if (!prompt) return;
-    const turnKey = matrixTurnKey(event, payload);
-    if (room.messages.some((message) => (
-      message.matrixEventId === event.event_id
-      || message.matrixTurnId === turnKey
-      || (message.senderId === member.id && message.runId === turnKey)
-    ))) {
-      return;
-    }
-    const createdAt = matrixEventCreatedAt(event);
-    const userMessage: RoomMessage = {
-      id: stableMatrixMessageId("matrix_prompt", String(event.sender || "remote"), turnKey),
-      senderId: `matrix_actor_${event.sender || "remote"}`,
-      senderName: event.sender || "远程成员",
-      senderType: "user",
-      text: prompt,
-      targetIds: [member.id],
-      status: "sent",
-      createdAt,
-      attachments: payload.attachments,
-      matrixEventId: event.event_id,
-      matrixTurnId: turnKey,
-    };
-    const assistantMessage: RoomMessage = {
-      id: stableMatrixMessageId("matrix_reply", member.id, turnKey),
-      senderId: member.id,
-      senderName: member.name,
-      senderType: "agent",
-      text: "",
-      targetIds: [member.id],
-      status: "running",
-      createdAt,
-      startedAt: createdAt,
-      runId: turnKey,
-      matrixTurnId: turnKey,
-    };
-    updateRoom(localRoomId, (currentRoom) => {
-      if (currentRoom.messages.some((message) => (
-        message.id === userMessage.id
-        || message.id === assistantMessage.id
-        || message.matrixEventId === event.event_id
-        || message.matrixTurnId === turnKey
-      ))) {
-        return currentRoom;
-      }
-      return {
-        ...currentRoom,
-        messages: [...currentRoom.messages, userMessage, assistantMessage],
-        updatedAt: createdAt,
-      };
-    });
-    updateMemberStatus([member.id], "running");
-    try {
-      const result = await props.onRunPrompt({
-        roomId: localRoomId,
-        targetId: member.id,
-        targetName: member.name,
-        targetKernel: member.kernel,
-        targetModel: member.model,
-        targetRole: member.role,
-        prompt,
-        attachments: payload.attachments ?? [],
-        onRunId(runId) {
-          updateRoomMessage(localRoomId, assistantMessage.id, (message) => ({ ...message, runId }));
-        },
-        onAgentEvent(agentEvent) {
-          updateRoomMessage(localRoomId, assistantMessage.id, (message) => applyAgentEventToRoomMessage(message, agentEvent));
-        },
-      });
-      updateRoomMessage(localRoomId, assistantMessage.id, (message) => ({
-        ...finalizeRoomMessage(message, result),
-        duration: result.duration,
-      }));
-      updateMemberStatus([member.id], "done");
-      await publishMatrixAgentFinal({
-        binding,
-        turnId: turnKey,
-        agentId: member.id,
-        displayName: member.name,
-        answer: result.answer ?? "",
-        duration: result.duration,
-        events: result.events,
-      });
-    } catch (error) {
-      const messageText = error instanceof Error ? error.message : String(error);
-      updateRoomMessage(localRoomId, assistantMessage.id, (message) => failRoomMessage(message, messageText));
-      updateMemberStatus([member.id], "idle");
-      await publishMatrixAgentFinal({
-        binding,
-        turnId: turnKey,
-        agentId: member.id,
-        displayName: member.name,
-        answer: `执行失败：${messageText}`,
-      }).catch(() => undefined);
-    }
-  }
-
-  function finalizeMatrixRemoteReply(
-    localRoomId: string,
-    event: MatrixRoomEvent,
-    payload: MatrixAgentFinalContent,
-  ) {
-    const room = roomsRef.current.find((item) => item.id === localRoomId);
-    if (!room) return;
-    const agentId = String(payload.agentId || "").trim();
-    const matrixMember = membersRef.current.find((member) => (
-      member.matrixAgentId === agentId && (!event.sender || member.matrixUserId === event.sender)
-    ));
-    const answer = payload.answer || "";
-    updateRoom(localRoomId, (currentRoom) => ({
-      ...currentRoom,
-      messages: patchMatrixFinalMessages(currentRoom.messages, event, payload, matrixMember, answer),
-      updatedAt: matrixEventCreatedAt(event),
-    }));
-    if (matrixMember) {
-      updateMemberStatus([matrixMember.id], "done");
-    }
+    setMembers((current) => current.map((member) => (
+      targetIds.has(member.id) && !member.disabled ? { ...member, status, lastActive: "刚刚" } : member
+    )));
   }
 
   function insertPrompt(prompt: string) {
@@ -1146,35 +737,42 @@ export function RoomsView(props: {
   }
 
   function addEmployee(member: RoomMember) {
-    setMembers((current) => current.some((item) => item.id === member.id) ? current : [...current, member]);
+    const restoredMember: RoomMember = {
+      ...member,
+      disabled: false,
+      status: member.status === "offline" ? "idle" : member.status,
+      lastActive: "刚刚",
+    };
+    setMembers((current) => (
+      current.some((item) => item.id === restoredMember.id)
+        ? current.map((item) => (item.id === restoredMember.id ? { ...item, ...restoredMember } : item))
+        : [...current, restoredMember]
+    ));
+    setDeletedMemberIds((current) => current.filter((memberId) => memberId !== restoredMember.id));
+    void upsertServerRoomMember(restoredMember).catch(() => undefined);
   }
 
   async function createRemoteInviteLink(): Promise<RemoteRoomInviteResult | null> {
     if (!activeRoom) return null;
-    try {
-      const result = await createRemoteRoomInvite(activeRoom);
-      if (result.invite.matrixHomeserverUrl && result.invite.matrixRoomId) {
-        updateRoom(activeRoom.id, (room) => ({
-          ...room,
-          badge: "Matrix",
-          matrix: {
-            homeserverUrl: result.invite.matrixHomeserverUrl!,
-            roomId: result.invite.matrixRoomId!,
-            mode: "host",
-          },
-        }));
-      }
-      appendSystemMessageToRoom(activeRoom.id, "共享群聊邀请链接已生成。朋友打开链接后会在自己的 OpenGrove 里选择员工加入。");
-      return result;
-    } catch (error) {
-      appendSystemMessageToRoom(activeRoom.id, remoteInviteErrorMessage(error));
-      throw error;
+    const result = await createRemoteRoomInvite(activeRoom);
+    if (result.invite.matrixHomeserverUrl && result.invite.matrixRoomId) {
+      updateRoom(activeRoom.id, (room) => ({
+        ...room,
+        badge: "Matrix",
+        matrix: {
+          homeserverUrl: result.invite.matrixHomeserverUrl!,
+          roomId: result.invite.matrixRoomId!,
+          mode: "host",
+        },
+      }));
     }
+    return result;
   }
 
   function closeRemoteInviteDialog() {
     clearRemoteRoomInviteFromLocation();
     setRemoteInvite(null);
+    setRemoteInviteError("");
   }
 
   function createEmployeeForRemoteInvite() {
@@ -1183,35 +781,26 @@ export function RoomsView(props: {
 
   async function acceptRemoteInviteWithMember(member: RoomMember) {
     if (!remoteInvite) return;
+    setRemoteInviteError("");
     if (remoteInvite.provider === "matrix" || remoteInvite.matrixRoomId || remoteInvite.matrixHomeserverUrl) {
       try {
         const accepted = await acceptMatrixInvite({ invite: remoteInvite, member });
-        const matrixRoom = roomFromAcceptedMatrixInvite({
-          invite: remoteInvite,
-          accepted,
-          localMember: member,
-        });
-        setRooms((current) => {
-          const existing = current.find((room) => room.id === matrixRoom.id);
-          if (!existing) return [matrixRoom, ...current];
-          return current.map((room) => room.id === matrixRoom.id ? {
-            ...room,
-            title: matrixRoom.title,
-            badge: "Matrix",
-            matrix: matrixRoom.matrix,
-            memberIds: room.memberIds.includes(member.id) ? room.memberIds : [...room.memberIds, member.id],
-            messages: [...room.messages, ...matrixRoom.messages],
-            updatedAt: nowIso(),
-          } : room);
-        });
-        setActiveRoomId(matrixRoom.id);
+        const snapshot = await fetchRoomsInit();
+        if (snapshot.ok) {
+          const merged = mergeRoomsFromServerSnapshot(roomsRef.current, membersRef.current, deletedMemberIdsRef.current, snapshot);
+          setRooms(merged.rooms);
+          setMembers(merged.members);
+          setDeletedMemberIds(merged.deletedMemberIds);
+          serverRoomsEventSeqRef.current = snapshot.currentEventSeq;
+        }
+        setActiveRoomId(accepted.room.id);
         closeRemoteInviteDialog();
       } catch (error) {
-        appendSystemMessageToRoom(activeRoom?.id || rooms[0]?.id || "room-open-group", `接受 Matrix 邀请失败：${error instanceof Error ? error.message : String(error)}`);
+        setRemoteInviteError(`接受 Matrix 邀请失败：${error instanceof Error ? error.message : String(error)}`);
       }
       return;
     }
-    appendSystemMessageToRoom(activeRoom?.id || rooms[0]?.id || "room-open-group", "这个远程员工邀请不是 Matrix/Tuwunel 邀请，请重新生成链接。");
+    setRemoteInviteError("这个远程员工邀请不是 Matrix/Tuwunel 邀请，请重新生成链接。");
   }
 
   function toggleGroupDraftMember(memberId: string) {
@@ -1262,8 +851,10 @@ export function RoomsView(props: {
   }
 
   function createGroupFromDialog() {
-    if (!groupDraftMemberIds.length) return;
-    createRoom(groupDraftMemberIds, groupDraftTitle);
+    const contactMemberIds = new Set(contactMembers.map((member) => member.id));
+    const selectedMemberIds = groupDraftMemberIds.filter((memberId) => contactMemberIds.has(memberId));
+    if (!selectedMemberIds.length) return;
+    createRoom(selectedMemberIds, groupDraftTitle);
     setGroupDialogOpen(false);
   }
 
@@ -1559,7 +1150,7 @@ export function RoomsView(props: {
     const createdAt = nowIso();
     const explicitTargets = resolveTargets(text, roomMembers);
     const directTarget = activeRoom.kind === "direct"
-      ? roomMembers.find((member) => member.id === activeRoom.directMemberId) ?? roomMembers[0]
+      ? roomMembers.find((member) => member.id === activeRoom.directMemberId && !member.disabled) ?? roomMembers.find((member) => !member.disabled)
       : undefined;
     const targets = explicitTargets.length ? explicitTargets : directTarget ? [directTarget] : [];
     const userMessage: RoomMessage = {
@@ -1602,199 +1193,27 @@ export function RoomsView(props: {
       .then((result) => {
         if (result.ok) {
           serverRoomsEventSeqRef.current = Math.max(serverRoomsEventSeqRef.current, result.currentEventSeq);
-          for (const serverMessage of result.assistantMessages) {
-            updateRoomMessage(activeRoom.id, serverMessage.id, (message) => ({
-              ...message,
-              ...serverMessage,
-              status: serverMessage.status,
-            }));
-          }
+          upsertRoomMessages(activeRoom.id, [result.userMessage, ...result.assistantMessages]);
         }
       })
-      .catch(() => {
+      .catch((error) => {
+        const messageText = error instanceof Error ? error.message : String(error);
         targets.forEach((target, index) => {
           const assistantMessage = assistantMessages[index];
           if (!assistantMessage) return;
-          enqueueTargetReply(activeRoom.id, userMessage.id, assistantMessage.id, target, text, outgoingAttachments);
+          updateRoomMessage(activeRoom.id, assistantMessage.id, (message) => failRoomMessage(message, messageText));
+          updateMemberStatus([target.id], "idle");
         });
       });
     return true;
-  }
-
-  function enqueueTargetReply(
-    roomId: string,
-    userMessageId: string,
-    messageId: string,
-    target: RoomMember,
-    prompt: string,
-    outgoingAttachments: AttachmentPayload[],
-  ) {
-    const previous = agentQueuesRef.current.get(target.id) ?? Promise.resolve();
-    const queued = previous
-      .catch(() => undefined)
-      .then(() => runTargetReply(roomId, userMessageId, messageId, target, prompt, outgoingAttachments));
-    agentQueuesRef.current.set(target.id, queued);
-    void queued.finally(() => {
-      if (agentQueuesRef.current.get(target.id) === queued) {
-        agentQueuesRef.current.delete(target.id);
-      }
-    });
-  }
-
-  async function runTargetReply(
-    roomId: string,
-    userMessageId: string,
-    messageId: string,
-    target: RoomMember,
-    prompt: string,
-    outgoingAttachments: AttachmentPayload[],
-  ) {
-    if (target.source === "remote") {
-      await runRemoteTargetReply(roomId, messageId, target, prompt, outgoingAttachments);
-      return;
-    }
-
-    if (!shouldRunLocally(target)) {
-      await runPassiveTargetReply(roomId, messageId, target);
-      return;
-    }
-
-    let currentRunId = "";
-    try {
-      const roomForContext = roomsRef.current.find((room) => room.id === roomId);
-      const roomContext = roomForContext
-        ? buildRoomDeliveryContext(roomForContext, membersRef.current, target, userMessageId)
-        : undefined;
-      const result = await props.onRunPrompt({
-        roomId,
-        targetId: target.id,
-        targetName: target.name,
-        targetKernel: target.kernel,
-        targetModel: target.model,
-        targetRole: target.role,
-        prompt,
-        attachments: outgoingAttachments,
-        roomContext,
-        onRunId(runId) {
-          currentRunId = runId;
-          localRoomRunIdsRef.current.add(runId);
-          updateRoomMessage(roomId, messageId, (message) => ({ ...message, runId }));
-          void patchServerRoomMessage(roomId, messageId, { runId }).catch(() => undefined);
-        },
-        onAgentEvent(event) {
-          updateRoomMessage(roomId, messageId, (message) => applyAgentEventToRoomMessage(message, event));
-        },
-      });
-      let finalizedMessage: RoomMessage | undefined;
-      updateRoomMessage(roomId, messageId, (message) => ({
-        ...(finalizedMessage = finalizeRoomMessage(message, result)),
-        duration: result.duration,
-      }));
-      if (finalizedMessage) {
-        void patchServerRoomMessage(roomId, messageId, { ...finalizedMessage, duration: result.duration }).catch(() => undefined);
-      }
-      updateMemberStatus([target.id], "done");
-    } catch (error) {
-      if (isRecoverableRoomRunError(error)) return;
-      const messageText = error instanceof Error ? error.message : String(error);
-      let failedMessage: RoomMessage | undefined;
-      updateRoomMessage(roomId, messageId, (message) => (failedMessage = failRoomMessage(message, messageText)));
-      if (failedMessage) {
-        void patchServerRoomMessage(roomId, messageId, failedMessage).catch(() => undefined);
-      }
-      updateMemberStatus([target.id], "idle");
-    } finally {
-      if (currentRunId) {
-        localRoomRunIdsRef.current.delete(currentRunId);
-      }
-    }
-  }
-
-  async function runRemoteTargetReply(
-    roomId: string,
-    messageId: string,
-    target: RoomMember,
-    prompt: string,
-    outgoingAttachments: AttachmentPayload[],
-  ) {
-    const runId = createId("room_run");
-    updateRoomMessage(roomId, messageId, (message) => ({ ...message, runId }));
-    const remoteRoom = roomsRef.current.find((room) => room.id === roomId);
-    if (remoteRoom?.matrix && target.matrixUserId && target.matrixAgentId) {
-      updateRoomMessage(roomId, messageId, (message) => ({ ...message, matrixTurnId: runId }));
-      try {
-        await publishMatrixAgentRequest({
-          binding: remoteRoom.matrix,
-          target,
-          turnId: runId,
-          prompt,
-          attachments: outgoingAttachments,
-        });
-        setMembers((current) => current.map((member) => (
-          member.id === target.id
-            ? { ...member, inviteStatus: "accepted", status: "running", lastActive: "刚刚" }
-            : member
-        )));
-      } catch (error) {
-        const messageText = error instanceof Error ? error.message : String(error);
-        updateRoomMessage(roomId, messageId, (message) => failRoomMessage(message, messageText));
-        updateMemberStatus([target.id], "idle");
-      }
-      return;
-    }
-
-    try {
-      const result = await runRemoteRoomAgent({
-        roomId,
-        memberId: target.id,
-        memberName: target.name,
-        prompt,
-        attachments: outgoingAttachments,
-      });
-      if (!result.ok) {
-        throw new Error(result.error || "remote_agent_failed");
-      }
-      updateRoomMessage(roomId, messageId, (message) => ({
-        ...finalizeRoomMessage(message, {
-          answer: result.answer,
-          duration: result.duration,
-          events: result.events,
-        }),
-        duration: result.duration,
-      }));
-      setMembers((current) => current.map((member) => (
-        member.id === target.id
-          ? { ...member, inviteStatus: "accepted", status: "done", lastActive: "刚刚" }
-          : member
-      )));
-    } catch (error) {
-      const messageText = error instanceof Error ? error.message : String(error);
-      updateRoomMessage(roomId, messageId, (message) => failRoomMessage(message, messageText));
-      updateMemberStatus([target.id], "idle");
-    }
-  }
-
-  async function runPassiveTargetReply(
-    roomId: string,
-    messageId: string,
-    target: RoomMember,
-  ) {
-    const runId = createId("room_run");
-    updateRoomMessage(roomId, messageId, (message) => ({ ...message, runId }));
-    await wait(160);
-    updateRoomMessage(roomId, messageId, (message) => finalizeRoomMessage(message, {
-      answer: buildPassiveMemberAnswer(target),
-      duration: "0.1s",
-    }));
-    updateMemberStatus([target.id], "done");
   }
 
   if (!activeRoom) {
     return null;
   }
 
-  const activeDirectMember = activeRoom.directMemberId ? members.find((member) => member.id === activeRoom.directMemberId) : undefined;
-  const runningRoomMembers = roomMembers.filter((member) => member.status === "running");
+  const activeDirectMember = activeRoom.directMemberId ? roomMembers.find((member) => member.id === activeRoom.directMemberId) : undefined;
+  const runningRoomMembers = roomMembers.filter((member) => !member.disabled && member.status === "running");
 
   return (
     <section className="rooms-view" data-members-open={memberPanelOpen ? "true" : "false"} aria-label="消息">
@@ -1869,7 +1288,6 @@ export function RoomsView(props: {
         </header>
 
         <section ref={streamRef} className="room-message-stream chat-thread-scroll" aria-live="polite">
-          {storageWarning ? <div className="room-storage-warning">{storageWarning}</div> : null}
           <RoomMessageStream
             messages={activeRoom.messages}
             members={members}
@@ -1939,10 +1357,10 @@ export function RoomsView(props: {
           <section className="rooms-create-group-members">
             <div className="rooms-create-group-title">
               <strong>选择员工</strong>
-              <span>{groupDraftMemberIds.length} / {members.length}</span>
+              <span>{groupDraftMemberIds.length} / {contactMembers.length}</span>
             </div>
             <div className="rooms-create-group-list">
-              {members.length ? members.map((member) => (
+              {contactMembers.length ? contactMembers.map((member) => (
                 <label className="rooms-create-group-member" key={member.id}>
                   <input
                     type="checkbox"
@@ -1984,7 +1402,8 @@ export function RoomsView(props: {
       />
       <RemoteInviteDialog
         invite={remoteInvite}
-        members={members}
+        errorMessage={remoteInviteError}
+        members={contactMembers}
         onAccept={acceptRemoteInviteWithMember}
         onClose={closeRemoteInviteDialog}
         onCreateEmployee={createEmployeeForRemoteInvite}

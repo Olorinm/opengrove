@@ -4,7 +4,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { Bot, ChevronDown, FilePlus2, FolderInput, FolderPlus, ListChecks, ListChevronsDownUp, ListChevronsUpDown, PanelLeftClose, PanelLeftOpen, Search, SquarePen, X } from "lucide-react";
 import type {
-  AgentEventRecord,
   AttachmentPayload,
   ApprovalsResponse,
   BridgeSettingsResponse,
@@ -88,7 +87,6 @@ import {
 } from "./components/sidebar/app-navigation";
 import { RoomsView } from "./components/rooms/rooms-view";
 import { ContactsView } from "./components/rooms/contacts-view";
-import { buildRoomMemberContext, roomAgentThreadId, type RoomDeliveryContext } from "./components/rooms/room-runtime";
 import { ConversationSidebar } from "./components/sidebar/conversation-sidebar";
 import { VaultSidebarPanel } from "./components/sidebar/knowledge-sidebar-panels";
 import { buildSidebarProjectTree, sortSidebarThreads, type ConversationSortKey } from "./components/sidebar/conversation-sidebar-model";
@@ -362,9 +360,7 @@ export function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("employeeLink")) {
-      setView("contacts");
-    } else if (params.get("view") === "rooms" || params.get("roomInvite")) {
+    if (params.get("view") === "rooms" || params.get("roomInvite")) {
       setView("rooms");
     }
   }, [setView]);
@@ -1536,174 +1532,6 @@ export function App() {
     await runAskTurn(userPrompt, userContext, turnAttachments, { requestedSkill });
   }
 
-  async function runRoomPrompt(input: {
-    roomId: string;
-    targetId: string;
-    targetName: string;
-    targetKernel: string;
-    targetModel: string;
-    targetRole: string;
-    prompt: string;
-    attachments: AttachmentPayload[];
-    roomContext?: RoomDeliveryContext;
-    onAgentEvent?(event: AgentEventRecord): void;
-    onRunId?(runId: string): void;
-  }): Promise<{ answer?: string; duration?: string; events?: AgentEventRecord[] }> {
-    const startedAt = performance.now();
-    const trimmedPrompt = input.prompt.trim();
-    const turnAttachments = input.attachments;
-    const roomMemberContext = buildRoomMemberContext(input);
-    const contextPayload = buildContextPayload(roomMemberContext, turnAttachments, []);
-    const userContext = contextPayload.text.trim() || turnAttachments.length ? contextPayload : null;
-    const userPrompt = trimmedPrompt || (turnAttachments.length ? t("system.defaultAttachmentPrompt") : t("system.defaultTextPrompt"));
-    const turnThreadId = roomAgentThreadId(input.roomId, input.targetId, input.targetKernel || input.targetId);
-    const turnModel = input.targetModel || model;
-    const turnEffort = reasoningEffort;
-    const turnResponseSpeed = responseSpeed;
-    const turnAccessMode = accessMode;
-    const turnVaultFileContext = currentVaultFileContext;
-    let streamedAnswer = "";
-    const abortController = new AbortController();
-
-    if (runningTurnsRef.current.has(turnThreadId)) {
-      throw new Error("这个员工正在处理上一条消息。");
-    }
-    runningTurnsRef.current.set(turnThreadId, { controller: abortController, assistantId: `room:${input.roomId}:${input.targetId}` });
-    syncRunningTurns();
-
-    try {
-      const finalData = await runThreadTurn(
-        {
-          question: userPrompt,
-          model: turnModel,
-          kernel: input.targetKernel,
-          effort: turnEffort,
-          responseSpeed: turnResponseSpeed,
-          accessMode: turnAccessMode,
-          threadId: turnThreadId,
-          snapshot: createSnapshot(userContext, turnAttachments, turnVaultFileContext),
-          computerSnapshot: {},
-          allowMemory: false,
-          saveCandidateNote: false,
-        },
-        {
-          signal: abortController.signal,
-          onRuntimeEvent(runtimeEvent) {
-            if (runtimeEvent.type === "run.start" && runtimeEvent.runId) {
-              const runningTurn = runningTurnsRef.current.get(turnThreadId);
-              if (runningTurn?.controller === abortController) {
-                runningTurn.runId = runtimeEvent.runId;
-                runningTurnsRef.current.set(turnThreadId, runningTurn);
-              }
-              input.onRunId?.(runtimeEvent.runId);
-            }
-          },
-          onAgentEvent(runtimeEvent) {
-            const event = runtimeEvent.event;
-            if (!event) {
-              return;
-            }
-            input.onAgentEvent?.(event);
-            if (event?.type === "assistant.delta" && typeof event.text === "string") {
-              streamedAnswer += event.text;
-            }
-          },
-        },
-      );
-
-      mergeFinalDataIntoCache(queryClient, finalData);
-      queryClient.invalidateQueries({ queryKey: ["events"] });
-      const durationSeconds = Math.max(0.1, (performance.now() - startedAt) / 1000);
-      return {
-        answer: finalData.answer || streamedAnswer,
-        duration: `${durationSeconds.toFixed(1)}s`,
-        events: finalData.events,
-      };
-    } catch (error) {
-      if (!abortController.signal.aborted && isRecoverableStreamDisconnect(error)) {
-        queryClient.invalidateQueries({ queryKey: ["inventory"] });
-        queryClient.invalidateQueries({ queryKey: ["events"] });
-        const recoverable = new Error("room_stream_recoverable_disconnect");
-        recoverable.name = "RecoverableRoomStreamDisconnect";
-        throw recoverable;
-      }
-      throw error;
-    } finally {
-      const runningTurn = runningTurnsRef.current.get(turnThreadId);
-      if (runningTurn?.controller === abortController) {
-        runningTurnsRef.current.delete(turnThreadId);
-        syncRunningTurns();
-      }
-    }
-  }
-
-  async function attachRoomRun(input: {
-    roomId: string;
-    targetId: string;
-    targetKernel: string;
-    runId: string;
-    onAgentEvent?(event: AgentEventRecord): void;
-    onRunId?(runId: string): void;
-  }): Promise<{ answer?: string; duration?: string; events?: AgentEventRecord[] }> {
-    const startedAt = performance.now();
-    const turnThreadId = roomAgentThreadId(input.roomId, input.targetId, input.targetKernel || input.targetId);
-    if (!input.runId || runningTurnsRef.current.has(turnThreadId)) {
-      const recoverable = new Error("room_stream_recoverable_disconnect");
-      recoverable.name = "RecoverableRoomStreamDisconnect";
-      throw recoverable;
-    }
-
-    const abortController = new AbortController();
-    runningTurnsRef.current.set(turnThreadId, { controller: abortController, assistantId: `room:${input.roomId}:${input.targetId}`, runId: input.runId });
-    syncRunningTurns();
-    let streamedAnswer = "";
-
-    try {
-      const finalData = await attachThreadTurn(
-        { runId: input.runId, threadId: turnThreadId },
-        {
-          signal: abortController.signal,
-          onRuntimeEvent(runtimeEvent) {
-            if (runtimeEvent.type === "run.start" && runtimeEvent.runId) {
-              input.onRunId?.(runtimeEvent.runId);
-            }
-          },
-          onAgentEvent(runtimeEvent) {
-            const event = runtimeEvent.event;
-            if (!event) return;
-            input.onAgentEvent?.(event);
-            if (event?.type === "assistant.delta" && typeof event.text === "string") {
-              streamedAnswer += event.text;
-            }
-          },
-        },
-      );
-      mergeFinalDataIntoCache(queryClient, finalData);
-      queryClient.invalidateQueries({ queryKey: ["events"] });
-      const durationSeconds = Math.max(0.1, (performance.now() - startedAt) / 1000);
-      return {
-        answer: finalData.answer || streamedAnswer,
-        duration: `${durationSeconds.toFixed(1)}s`,
-        events: finalData.events,
-      };
-    } catch (error) {
-      if (!abortController.signal.aborted && isRecoverableStreamDisconnect(error)) {
-        queryClient.invalidateQueries({ queryKey: ["inventory"] });
-        queryClient.invalidateQueries({ queryKey: ["events"] });
-        const recoverable = new Error("room_stream_recoverable_disconnect");
-        recoverable.name = "RecoverableRoomStreamDisconnect";
-        throw recoverable;
-      }
-      throw error;
-    } finally {
-      const runningTurn = runningTurnsRef.current.get(turnThreadId);
-      if (runningTurn?.controller === abortController) {
-        runningTurnsRef.current.delete(turnThreadId);
-        syncRunningTurns();
-      }
-    }
-  }
-
   function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (isComposingText || event.nativeEvent.isComposing || event.key === "Process") {
       return;
@@ -2089,9 +1917,9 @@ export function App() {
           <div className="app-topbar-actions">
             {activeView === "chat" ? (
               <>
-                <div className="topbar-status-pill kernel-button" title={formatKernelLabel(healthQuery.data?.kernel) || "Codex"}>
+                <div className="topbar-status-pill kernel-button" title={formatKernelLabel(healthQuery.data?.kernel) || "Kernel"}>
                   <KernelIcon kernelId={healthQuery.data?.kernel} className="topbar-kernel-icon" size={13} />
-                  <span>{formatKernelLabel(healthQuery.data?.kernel) || "Codex"}</span>
+                  <span>{formatKernelLabel(healthQuery.data?.kernel) || "Kernel"}</span>
                 </div>
                 <button
                   className="topbar-icon-button"
@@ -2170,8 +1998,6 @@ export function App() {
             runtimeEvents={events}
             runs={runs}
             pendingApprovalCount={pendingApprovals.length}
-            onRunPrompt={runRoomPrompt}
-            onAttachRun={attachRoomRun}
             onResolveApproval={(approvalId, action, response) => approvalsMutation.mutateAsync({ approvalId, action, response })}
             onOpenSettings={() => setView("settings")}
           />

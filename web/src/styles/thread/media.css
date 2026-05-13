@@ -1,0 +1,203 @@
+.thread-code-block {
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.thread-code-lang {
+  padding: var(--sp-3) var(--sp-3) 0;
+  color: var(--c-muted);
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+}
+
+.thread-code-block pre {
+  margin: 0;
+  overflow: auto;
+  padding: var(--sp-4);
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.thread-code-block code {
+  font: inherit;
+}
+
+.thread-rendered-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: var(--image-preview-max-height);
+  margin: 0;
+  object-fit: contain;
+}
+
+.thread-image-figure {
+  --image-preview-max-width: min(360px, 100%);
+  --image-preview-max-height: min(420px, 52vh);
+  display: grid;
+  gap: var(--sp-2);
+  width: var(--image-preview-max-width);
+  max-width: 100%;
+  margin: var(--sp-2) 0 var(--sp-4);
+}
+
+.thread-image-frame {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 100%;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--r-xl);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(245, 245, 244, 0.9)),
+    #ffffff;
+  box-shadow: var(--shadow-md);
+}
+
+.thread-image-preview-button {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: auto;
+  border: 0;
+  background: transparent;
+  padding: 10px;
+  cursor: zoom-in;
+  text-align: center;
+}
+
+.thread-image-caption {
+  color: var(--c-muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-image-action-buttons {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  display: inline-flex;
+  gap: var(--sp-1);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  pointer-events: none;
+}
+
+.thread-image-frame:hover .thread-image-action-buttons,
+.thread-image-frame:focus-within .thread-image-action-buttons {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.thread-image-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--r-pill);
+  background: rgba(255, 254, 250, 0.88);
+  backdrop-filter: blur(12px);
+  padding: var(--sp-1);
+  color: var(--c-text-3);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: 1.2;
+  text-decoration: none;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.thread-image-action:hover {
+  border-color: rgba(0, 0, 0, 0.12);
+  background: var(--c-bg);
+  color: var(--c-text);
+}
+
+.thread-image-action.primary {
+  border-color: rgba(35, 36, 31, 0.14);
+  background: var(--c-text-2);
+  color: var(--c-bg);
+}
+
+.thread-image-action.primary:hover {
+  background: var(--c-text);
+  color: var(--c-bg);
+}
+
+.thread-image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.5);
+  padding: var(--sp-8);
+  animation: fade-in var(--dur-fast) var(--ease-out);
+}
+
+.thread-image-lightbox-panel {
+  display: grid;
+  gap: var(--sp-3);
+  width: min(1020px, 100%);
+  max-height: min(860px, calc(100vh - 56px));
+  border: 0;
+  border-radius: var(--r-xl);
+  background: var(--c-bg);
+  padding: var(--sp-4);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18);
+  animation: slide-up var(--dur-normal) var(--ease-out);
+}
+
+.thread-image-lightbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  color: var(--c-text-2);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-bold);
+}
+
+.thread-image-lightbox-panel img {
+  width: 100%;
+  max-height: min(760px, calc(100vh - 150px));
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+  object-fit: contain;
+}
+
+.thread-image-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--c-muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.thread-image-icon-button:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+

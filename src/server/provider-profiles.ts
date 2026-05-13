@@ -528,7 +528,10 @@ export function providerEnvForKernel(
   }
 
   if (kernelId === "hermes") {
-    env[providerBindingApiKeyEnv(profile.id)] = apiKey;
+    const apiKeyEnv = profile.apiKey
+      ? profile.apiKeyEnv || providerBindingApiKeyEnv(profile.id)
+      : providerBindingApiKeyEnv(profile.id);
+    env[apiKeyEnv] = apiKey;
     return env;
   }
 

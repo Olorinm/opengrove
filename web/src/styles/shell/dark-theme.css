@@ -1,0 +1,230 @@
+/* Warm charcoal dark theme pass. */
+:root[data-resolved-theme="dark"] .app-shell {
+  --og-section-text: var(--og-text);
+  --og-section-title: var(--og-text-muted);
+  --og-section-muted: var(--og-text-soft);
+  --og-section-icon: var(--og-text-muted);
+  --og-section-hover: rgba(236, 232, 221, 0.075);
+  --og-section-active: rgba(236, 232, 221, 0.105);
+  --og-section-border: var(--og-border);
+  background: var(--og-app-bg);
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .app-shell,
+:root[data-resolved-theme="dark"] .workspace,
+:root[data-resolved-theme="dark"] .conversation,
+:root[data-resolved-theme="dark"] .chat-view,
+:root[data-resolved-theme="dark"] .room-main-panel,
+:root[data-resolved-theme="dark"] .room-header,
+:root[data-resolved-theme="dark"] .room-message-stream,
+:root[data-resolved-theme="dark"] .room-composer,
+:root[data-resolved-theme="dark"] .contacts-view,
+:root[data-resolved-theme="dark"] .contacts-main-panel,
+:root[data-resolved-theme="dark"] .contacts-detail-panel {
+  background: var(--og-app-bg);
+}
+
+:root[data-resolved-theme="dark"] .app-sidebar-header,
+:root[data-resolved-theme="dark"] .app-rail,
+:root[data-resolved-theme="dark"] .sidebar,
+:root[data-resolved-theme="dark"] .rooms-list-panel,
+:root[data-resolved-theme="dark"] .rooms-side-panel,
+:root[data-resolved-theme="dark"] .contacts-nav-panel,
+:root[data-resolved-theme="dark"] .contacts-list-panel {
+  background: var(--og-sidebar-bg);
+}
+
+:root[data-resolved-theme="dark"] .workspace,
+:root[data-resolved-theme="dark"] .sidebar,
+:root[data-resolved-theme="dark"] .app-rail,
+:root[data-resolved-theme="dark"] .rooms-list-panel,
+:root[data-resolved-theme="dark"] .rooms-side-panel,
+:root[data-resolved-theme="dark"] .room-header,
+:root[data-resolved-theme="dark"] .contacts-main-header,
+:root[data-resolved-theme="dark"] .contacts-list-panel,
+:root[data-resolved-theme="dark"] .contacts-detail-list,
+:root[data-resolved-theme="dark"] .contacts-detail-list div,
+:root[data-resolved-theme="dark"] .contacts-group-row,
+:root[data-resolved-theme="dark"] .rooms-member-drawer-foot {
+  border-color: var(--og-border);
+}
+
+:root[data-resolved-theme="dark"] .rooms-view,
+:root[data-resolved-theme="dark"] .contacts-view {
+  --rooms-bg: var(--og-app-bg);
+  --rooms-panel: var(--og-sidebar-bg);
+  --rooms-panel-soft: var(--og-surface);
+  --rooms-border: var(--og-border);
+  --rooms-border-strong: var(--og-border-strong);
+  --rooms-text: var(--og-text-strong);
+  --rooms-muted: var(--og-text-muted);
+  --rooms-faint: var(--og-text-soft);
+  --rooms-blue-soft: rgba(236, 232, 221, 0.08);
+}
+
+:root[data-resolved-theme="dark"] .composer-region {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(31, 31, 29, 0) 0%,
+      rgba(31, 31, 29, 0.84) 34%,
+      var(--og-app-bg) 72%
+    );
+}
+
+:root[data-resolved-theme="dark"] .opengrove-composer,
+:root[data-resolved-theme="dark"] .room-composer .opengrove-composer,
+:root[data-resolved-theme="dark"] .opengrove-model-menu,
+:root[data-resolved-theme="dark"] .room-chat-bubble,
+:root[data-resolved-theme="dark"] .room-chat-system,
+:root[data-resolved-theme="dark"] .room-chat-bubble .thread-code-block,
+:root[data-resolved-theme="dark"] .room-chat-tools .thread-activity,
+:root[data-resolved-theme="dark"] .room-chat-thinking,
+:root[data-resolved-theme="dark"] .room-message-attachment,
+:root[data-resolved-theme="dark"] .rooms-mention-menu,
+:root[data-resolved-theme="dark"] .rooms-room-menu,
+:root[data-resolved-theme="dark"] .rooms-create-menu,
+:root[data-resolved-theme="dark"] .rooms-member-picker,
+:root[data-resolved-theme="dark"] .contacts-search,
+:root[data-resolved-theme="dark"] .rooms-member-search,
+:root[data-resolved-theme="dark"] .rooms-member-picker-search,
+:root[data-resolved-theme="dark"] .contacts-detail-control,
+:root[data-resolved-theme="dark"] .employee-dialog-field input,
+:root[data-resolved-theme="dark"] .employee-dialog-field select,
+:root[data-resolved-theme="dark"] .employee-dialog-field textarea,
+:root[data-resolved-theme="dark"] .employee-dialog-preview,
+:root[data-resolved-theme="dark"] .employee-dialog-kernel-option,
+:root[data-resolved-theme="dark"] .rooms-create-group-list,
+:root[data-resolved-theme="dark"] .inspector {
+  border-color: var(--og-border);
+  background: var(--og-surface);
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-composer:focus-within,
+:root[data-resolved-theme="dark"] .room-composer .opengrove-composer:focus-within,
+:root[data-resolved-theme="dark"] .rooms-search:focus-within,
+:root[data-resolved-theme="dark"] .contacts-search:focus-within,
+:root[data-resolved-theme="dark"] .sidebar-library-search:focus-within {
+  border-color: var(--og-border-strong);
+  background: #302f2c;
+  box-shadow: 0 0 0 1px rgba(236, 232, 221, 0.04);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-question,
+:root[data-resolved-theme="dark"] .room-title-row h2,
+:root[data-resolved-theme="dark"] .room-chat-author strong,
+:root[data-resolved-theme="dark"] .overview-tab,
+:root[data-resolved-theme="dark"] .overview-meta-value,
+:root[data-resolved-theme="dark"] .overview-progress-title,
+:root[data-resolved-theme="dark"] .overview-result-title,
+:root[data-resolved-theme="dark"] .overview-source-title {
+  color: var(--og-text-strong);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-question::placeholder,
+:root[data-resolved-theme="dark"] .overview-tab svg,
+:root[data-resolved-theme="dark"] .overview-section-title,
+:root[data-resolved-theme="dark"] .overview-progress-subtitle,
+:root[data-resolved-theme="dark"] .overview-empty,
+:root[data-resolved-theme="dark"] .overview-more,
+:root[data-resolved-theme="dark"] .overview-meta-label,
+:root[data-resolved-theme="dark"] .overview-meta-detail,
+:root[data-resolved-theme="dark"] .overview-progress-detail,
+:root[data-resolved-theme="dark"] .overview-result-detail,
+:root[data-resolved-theme="dark"] .overview-source-detail,
+:root[data-resolved-theme="dark"] .room-chat-note {
+  color: var(--og-text-muted);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-composer-plus,
+:root[data-resolved-theme="dark"] .opengrove-model-button,
+:root[data-resolved-theme="dark"] .opengrove-runtime-button,
+:root[data-resolved-theme="dark"] .opengrove-model-option,
+:root[data-resolved-theme="dark"] .room-header-avatar,
+:root[data-resolved-theme="dark"] .room-title-row span,
+:root[data-resolved-theme="dark"] .room-member-count-button,
+:root[data-resolved-theme="dark"] .room-running-pill,
+:root[data-resolved-theme="dark"] .contacts-primary-action,
+:root[data-resolved-theme="dark"] .contacts-message-button {
+  border-color: var(--og-border);
+  background: rgba(236, 232, 221, 0.055);
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-composer-plus:hover,
+:root[data-resolved-theme="dark"] .opengrove-model-button:hover,
+:root[data-resolved-theme="dark"] .opengrove-model-button[aria-expanded="true"],
+:root[data-resolved-theme="dark"] .opengrove-model-option:hover,
+:root[data-resolved-theme="dark"] .opengrove-model-option:focus-visible,
+:root[data-resolved-theme="dark"] .rooms-mention-option:hover,
+:root[data-resolved-theme="dark"] .rooms-mention-option:focus-visible,
+:root[data-resolved-theme="dark"] .rooms-mention-option[data-active="true"],
+:root[data-resolved-theme="dark"] .rooms-member-round-action:hover,
+:root[data-resolved-theme="dark"] .rooms-member-round-action:focus-visible,
+:root[data-resolved-theme="dark"] .rooms-member-round-action[data-active="true"],
+:root[data-resolved-theme="dark"] .rooms-member-picker-option:hover,
+:root[data-resolved-theme="dark"] .rooms-member-picker-option:focus-visible,
+:root[data-resolved-theme="dark"] .rooms-member-picker-head button:hover,
+:root[data-resolved-theme="dark"] .rooms-member-picker-head button:focus-visible,
+:root[data-resolved-theme="dark"] .contacts-primary-action:hover,
+:root[data-resolved-theme="dark"] .contacts-primary-action:focus-visible,
+:root[data-resolved-theme="dark"] .contacts-message-button:hover,
+:root[data-resolved-theme="dark"] .contacts-message-button:focus-visible,
+:root[data-resolved-theme="dark"] .contacts-person-row:hover,
+:root[data-resolved-theme="dark"] .contacts-person-row:focus-visible,
+:root[data-resolved-theme="dark"] .contacts-person-row[data-active="true"],
+:root[data-resolved-theme="dark"] .contacts-group-row:hover,
+:root[data-resolved-theme="dark"] .contacts-group-row:focus-visible,
+:root[data-resolved-theme="dark"] .employee-dialog-kernel-option:hover,
+:root[data-resolved-theme="dark"] .employee-dialog-kernel-option:focus-visible,
+:root[data-resolved-theme="dark"] .rooms-create-group-member:hover,
+:root[data-resolved-theme="dark"] .rooms-create-group-member:focus-within,
+:root[data-resolved-theme="dark"] .overview-icon-button:hover {
+  background: var(--og-surface-subtle);
+  color: var(--og-text-strong);
+}
+
+:root[data-resolved-theme="dark"] .room-chat-message.from-user .room-chat-bubble {
+  background: #31302d;
+  color: var(--og-text-strong);
+}
+
+:root[data-resolved-theme="dark"] .rooms-kernel-icon,
+:root[data-resolved-theme="dark"] .rooms-room-avatar.direct {
+  background: var(--og-surface);
+}
+
+:root[data-resolved-theme="dark"] .employee-dialog-kernel-option[data-active="true"] {
+  border-color: rgba(111, 191, 115, 0.68);
+  background: var(--og-accent-soft);
+  color: #def2df;
+  box-shadow: inset 0 0 0 1px rgba(111, 191, 115, 0.42);
+}
+
+:root[data-resolved-theme="dark"] .employee-dialog-kernel-option[data-ready="false"] {
+  background: rgba(236, 232, 221, 0.045);
+  color: var(--og-text-soft);
+}
+
+:root[data-resolved-theme="dark"] .inspector {
+  box-shadow:
+    0 22px 70px rgba(0, 0, 0, 0.32),
+    0 2px 8px rgba(0, 0, 0, 0.22);
+}
+
+:root[data-resolved-theme="dark"] .overview-toolbar {
+  border-bottom-color: var(--og-border);
+}
+
+:root[data-resolved-theme="dark"] .overview-meta-label::before {
+  background: var(--og-text-soft);
+}
+
+:root[data-resolved-theme="dark"] .rooms-member-mini-avatar::after,
+:root[data-resolved-theme="dark"] .rooms-member-row > .rooms-avatar::after,
+:root[data-resolved-theme="dark"] .rooms-member-picker-option .rooms-avatar::after,
+:root[data-resolved-theme="dark"] .contacts-person-row .rooms-avatar::after {
+  border-color: var(--og-sidebar-bg);
+}

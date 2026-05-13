@@ -1,0 +1,126 @@
+/* Quiet white conversation workspace. */
+.room-main-panel,
+.room-header,
+.room-message-stream,
+.room-composer {
+  background: #ffffff;
+}
+
+.room-main-panel {
+  border-right-color: var(--og-section-border);
+}
+
+.room-header {
+  min-height: 58px;
+  border-bottom: 0;
+  padding: 10px 22px;
+}
+
+.room-header-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: #f5f6f7;
+  color: #59605a;
+}
+
+.room-header-avatar .entity-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.room-title-row h2 {
+  color: #252824;
+  font-size: 15px;
+  font-weight: var(--fw-semibold);
+}
+
+.room-title-row span,
+.room-member-count-button,
+.room-running-pill {
+  background: #f5f6f7;
+  color: #737a73;
+}
+
+.room-member-count-button:hover,
+.room-member-count-button:focus-visible,
+.room-running-pill {
+  background: #f0f1f2;
+  color: #3f4640;
+}
+
+.room-header-meta {
+  color: #9ba09b;
+}
+
+.room-chat-stream {
+  width: min(1180px, calc(100% - 56px));
+  padding-top: 24px;
+}
+
+.room-chat-status,
+.room-chat-author {
+  color: #87909a;
+}
+
+.room-composer {
+  padding: 10px 24px 16px;
+}
+
+.room-composer .room-composer-og {
+  width: min(820px, 100%);
+}
+
+.room-composer .opengrove-composer {
+  border-color: rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.045),
+    0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.room-composer .opengrove-composer:focus-within {
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow:
+    0 12px 34px rgba(15, 23, 42, 0.055),
+    0 0 0 1px rgba(0, 0, 0, 0.03);
+}
+
+.room-composer .opengrove-primary.opengrove-send {
+  background: #a8aaa8;
+  color: #ffffff;
+}
+
+.room-composer .opengrove-primary.opengrove-send:hover {
+  background: #8f928f;
+}
+
+:root[data-resolved-theme="dark"] .room-main-panel,
+:root[data-resolved-theme="dark"] .room-header,
+:root[data-resolved-theme="dark"] .room-message-stream,
+:root[data-resolved-theme="dark"] .room-composer {
+  background: #000000;
+}
+
+:root[data-resolved-theme="dark"] .room-header-avatar,
+:root[data-resolved-theme="dark"] .room-title-row span,
+:root[data-resolved-theme="dark"] .room-member-count-button,
+:root[data-resolved-theme="dark"] .room-running-pill,
+:root[data-resolved-theme="dark"] .room-chat-system,
+:root[data-resolved-theme="dark"] .room-chat-bubble,
+:root[data-resolved-theme="dark"] .room-chat-message.from-user .room-chat-bubble {
+  background: #171717;
+  color: #e7e7e7;
+}
+
+:root[data-resolved-theme="dark"] .room-title-row h2,
+:root[data-resolved-theme="dark"] .room-chat-author strong {
+  color: #f4f4f4;
+}
+
+:root[data-resolved-theme="dark"] .room-composer .opengrove-composer {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #111111;
+  box-shadow: none;
+}
+

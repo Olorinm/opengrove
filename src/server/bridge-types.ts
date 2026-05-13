@@ -267,6 +267,7 @@ export interface BridgeMatrixRoomBinding {
   homeserverUrl: string;
   title: string;
   createdAt: string;
+  syncToken?: string;
 }
 
 export interface BridgeKernelPathOverride {

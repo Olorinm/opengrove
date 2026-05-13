@@ -1,0 +1,131 @@
+.settings-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  background: var(--c-bg);
+  color: var(--text);
+}
+
+.settings-screen.embedded {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  grid-column: 1;
+  grid-row: 1 / 3;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.settings-screen-sidebar {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 18px;
+  border-right: 1px solid var(--border);
+  background: #f5f6f4;
+  padding: 24px 12px;
+}
+
+.settings-screen.embedded .settings-screen-sidebar {
+  grid-template-rows: minmax(0, 1fr);
+  padding: 18px 12px;
+}
+
+.settings-back-button,
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #5d625b;
+  cursor: pointer;
+  font: inherit;
+}
+
+.settings-back-button {
+  gap: 9px;
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.settings-back-button:hover,
+.settings-back-button:focus-visible {
+  color: #20231e;
+  outline: 0;
+}
+
+.settings-nav {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.settings-nav-item {
+  gap: 10px;
+  min-height: 36px;
+  border-radius: var(--r-md);
+  padding: 0 10px;
+  color: #343832;
+  font-size: 14px;
+  font-weight: var(--fw-medium);
+  text-align: left;
+}
+
+.settings-nav-item svg {
+  color: #4f554e;
+}
+
+.settings-nav-item.active,
+.settings-nav-item:hover,
+.settings-nav-item:focus-visible {
+  background: #e9ece8;
+  outline: 0;
+}
+
+.settings-screen-main {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.settings-screen-content {
+  overflow: auto;
+  width: min(980px, calc(100% - 96px));
+  justify-self: center;
+  padding: 58px 0 72px;
+}
+
+.settings-screen-header {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 34px;
+}
+
+.settings-screen-kicker {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.settings-screen-header h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: 27px;
+  line-height: 1.15;
+}
+
+.settings-screen-header p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+

@@ -1,0 +1,82 @@
+/* Conversation sidebar, closer to Codex's quiet project list. */
+.project-section {
+  gap: 10px;
+}
+
+.thread-heading-row {
+  min-height: 32px;
+  padding: 0 6px 0 8px;
+  color: #969a94;
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+}
+
+.thread-heading-actions {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.thread-heading-row:hover .thread-heading-actions,
+.thread-heading-row:focus-within .thread-heading-actions,
+.thread-heading-actions.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.project-tree {
+  gap: 12px;
+}
+
+.project-group {
+  gap: 3px;
+}
+
+.project-item {
+  min-height: 30px;
+  border-radius: 10px;
+  padding: 5px 8px;
+  color: #696d67;
+  font-size: 13px;
+  font-weight: var(--fw-medium);
+}
+
+.project-group[data-active="true"] .project-item {
+  background: transparent;
+  color: #696d67;
+  font-weight: var(--fw-medium);
+}
+
+.project-group[data-active="true"] .project-item:hover,
+.project-group[data-active="true"] .project-item:focus-visible,
+.project-item:hover,
+.project-item:focus-visible {
+  background: var(--codex-sidebar-hover);
+  color: #333733;
+}
+
+.project-row .project-item {
+  padding-right: 52px;
+}
+
+.project-item-main {
+  gap: 8px;
+  align-items: center;
+}
+
+.project-item-main svg {
+  width: 19px;
+  height: 19px;
+  color: #747973;
+  stroke-width: 1.8;
+}
+
+.project-item-main .pixel-icon {
+  width: 20px;
+  height: 20px;
+  margin-left: -1px;
+  margin-right: 0;
+  color: #676c66;
+  transform: translateY(0);
+}
+

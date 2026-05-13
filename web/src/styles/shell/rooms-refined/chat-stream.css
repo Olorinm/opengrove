@@ -1,0 +1,258 @@
+.room-chat-stream {
+  display: grid;
+  gap: 18px;
+  width: min(1180px, calc(100% - 56px));
+  margin: 0 auto;
+  padding: 28px 0 36px;
+}
+
+.room-chat-system {
+  justify-self: center;
+  max-width: min(620px, 92%);
+  border-radius: 8px;
+  background: #f5f6f7;
+  color: #8a9090;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 6px 10px;
+  text-align: center;
+}
+
+.room-storage-warning {
+  justify-self: center;
+  max-width: min(620px, 92%);
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 7px 10px;
+}
+
+.room-chat-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.room-chat-message.from-user {
+  justify-content: flex-end;
+}
+
+.room-chat-avatar {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  font-size: 12px;
+}
+
+.room-chat-avatar::after {
+  width: 8px;
+  height: 8px;
+}
+
+.room-chat-content {
+  display: grid;
+  gap: 6px;
+  max-width: min(940px, calc(100% - 44px));
+  min-width: 0;
+}
+
+.room-chat-message.from-user .room-chat-content {
+  justify-items: end;
+  max-width: min(860px, 82%);
+}
+
+.room-chat-author {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--rooms-muted);
+  font-size: 12px;
+}
+
+.room-chat-author strong {
+  color: #2b3036;
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+}
+
+.room-chat-bubble {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 8px;
+  background: #f6f7f8;
+  color: #25282c;
+  font-size: 14px;
+  line-height: 1.68;
+  padding: 9px 12px;
+  box-shadow: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.room-chat-agent-stack {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.room-chat-message.from-user .room-chat-bubble {
+  background: #f3f5f7;
+  color: #25282c;
+}
+
+.room-chat-bubble .thread-text-block {
+  gap: 8px;
+  width: 100%;
+  max-width: none;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: normal;
+}
+
+.room-chat-bubble .thread-md-p,
+.room-chat-bubble .thread-md-list,
+.room-chat-bubble .thread-md-heading {
+  margin: 0;
+}
+
+.room-chat-bubble .thread-code-block {
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.room-chat-tools {
+  width: min(100%, max(var(--room-agent-bubble-width, 0px), 420px));
+  max-width: 100%;
+}
+
+.room-chat-tools .thread-activity {
+  border: 1px solid var(--rooms-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--rooms-muted);
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+}
+
+.room-chat-tools .thread-activity[open] {
+  border-bottom: 1px solid var(--rooms-border);
+  padding-bottom: 10px;
+}
+
+.room-chat-tools .thread-activity summary {
+  display: flex;
+  width: 100%;
+  font-size: 12px;
+}
+
+.room-chat-tools .thread-activity-summary {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-chat-tools .thread-activity-list {
+  padding-left: 0;
+}
+
+.room-chat-tools .thread-activity-row {
+  max-width: 100%;
+  font-size: 12.5px;
+}
+
+.room-chat-tools .thread-choice-form {
+  max-width: 100%;
+}
+
+.room-chat-note,
+.room-chat-thinking {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 7px 10px;
+}
+
+.room-chat-note.tone-error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.room-chat-note.tone-success {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.room-chat-thinking {
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--rooms-muted);
+}
+
+.room-chat-status {
+  color: var(--rooms-muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.room-chat-status[data-status="running"] {
+  color: var(--rooms-blue);
+}
+
+.room-chat-status[data-status="failed"] {
+  color: #dc2626;
+}
+
+.room-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.room-chat-message.from-user .room-message-attachments {
+  justify-content: flex-end;
+}
+
+.room-message-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(280px, 100%);
+  border: 1px solid var(--rooms-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--rooms-muted);
+  font-size: 12px;
+  padding: 7px 9px;
+}
+
+.room-message-attachment span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-message-attachment.image {
+  display: grid;
+  place-items: center;
+  width: 120px;
+  height: 88px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.room-message-attachment.image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+

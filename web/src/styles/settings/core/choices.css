@@ -1,0 +1,281 @@
+.settings-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.settings-choice-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  align-items: stretch;
+  box-sizing: border-box;
+  gap: 10px;
+  min-height: 88px;
+  border: 1px solid rgba(34, 36, 32, 0.12);
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  color: var(--text);
+  overflow: visible;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+}
+
+.settings-choice-card-main {
+  display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 88px;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 14px;
+  text-align: left;
+  font: inherit;
+}
+
+.settings-choice-card-main.as-static {
+  cursor: default;
+}
+
+.settings-choice-card-main-content {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-choice-card-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.settings-choice-card-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-choice-card strong {
+  color: #20231e;
+  font-size: 14px;
+}
+
+.settings-choice-card span {
+  color: #666c64;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-kernel-choice-grid {
+  gap: 10px;
+}
+
+.settings-choice-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.settings-choice-card-head svg {
+  flex: 0 0 auto;
+  color: #3e5f36;
+}
+
+.settings-choice-card-action {
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 8px;
+}
+
+.settings-kernel-expand-button {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: #71776e;
+  cursor: pointer;
+  padding: 0;
+}
+
+.settings-kernel-expand-button svg {
+  transform: rotate(-90deg);
+  transition: transform 140ms ease, color 140ms ease;
+}
+
+.settings-kernel-expand-button.expanded svg {
+  transform: rotate(0deg);
+}
+
+.settings-kernel-expand-button:hover,
+.settings-kernel-expand-button:focus-visible {
+  background: transparent;
+  color: #3e5f36;
+  outline: 0;
+}
+
+.settings-kernel-expanded-panel {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid rgba(34, 36, 32, 0.08);
+  padding: 12px 14px 14px;
+}
+
+.settings-kernel-detail-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.settings-kernel-detail-row > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+}
+
+.settings-kernel-detail-row input {
+  min-width: 0;
+  height: 34px;
+  border: 1px solid rgba(34, 36, 32, 0.1);
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.settings-kernel-detail-row input:focus {
+  border-color: rgba(52, 84, 44, 0.42);
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(62, 95, 54, 0.08);
+}
+
+.settings-kernel-detail-row .settings-inline-select > button {
+  min-height: 34px;
+  border: 1px solid rgba(34, 36, 32, 0.1);
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+
+.settings-choice-card.active,
+.settings-choice-card:hover,
+.settings-choice-card:focus-visible {
+  border-color: rgba(52, 84, 44, 0.48);
+  background: #f0f2ee;
+  outline: 0;
+}
+
+.settings-choice-card:disabled {
+  cursor: not-allowed;
+  border-color: rgba(34, 36, 32, 0.06);
+  background: #fdfdfc;
+}
+
+.settings-choice-card-main:disabled {
+  cursor: not-allowed;
+}
+
+.settings-choice-card:disabled strong {
+  color: #b5bab3;
+}
+
+.settings-choice-card:disabled span {
+  color: #c0c5be;
+}
+
+.settings-choice-card:disabled .settings-choice-card-head svg {
+  color: #bdc3bc;
+}
+
+.settings-choice-card.unavailable .settings-choice-card-icon,
+.settings-choice-card:disabled .settings-choice-card-icon {
+  opacity: 0.45;
+}
+
+.settings-choice-card.unavailable,
+.settings-choice-card.unavailable:hover,
+.settings-choice-card.unavailable:focus-visible {
+  cursor: default;
+  border-color: rgba(34, 36, 32, 0.07);
+  background: #fdfdfc;
+  outline: 0;
+  padding: 0;
+}
+
+.settings-choice-card.unavailable strong {
+  color: #b5bab3;
+}
+
+.settings-choice-card.unavailable span {
+  color: #c0c5be;
+}
+
+.settings-choice-card.unavailable .settings-choice-card-head svg {
+  color: #bdc3bc;
+}
+
+.settings-kernel-install-button {
+  justify-self: start;
+  min-height: 28px;
+  border: 1px solid rgba(32, 35, 30, 0.12);
+  border-radius: var(--r-pill);
+  background: #f3f4f1;
+  color: #5d655a;
+  cursor: pointer;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--fw-bold);
+}
+
+.settings-kernel-install-button:hover,
+.settings-kernel-install-button:focus-visible {
+  border-color: rgba(52, 84, 44, 0.28);
+  background: #ecefe8;
+  color: #34452f;
+  outline: 0;
+}
+
+.settings-kernel-install-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.settings-inline-link {
+  flex: 0 0 auto;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  color: var(--c-text-2);
+  cursor: pointer;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--fw-bold);
+}
+
+.settings-inline-link:hover,
+.settings-inline-link:focus-visible {
+  background: var(--c-surface-hover);
+  outline: 0;
+}
+
+.settings-inline-link:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+

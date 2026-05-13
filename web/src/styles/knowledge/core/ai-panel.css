@@ -1,0 +1,315 @@
+.context-view-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.knowledge-product-view {
+  background: var(--c-bg);
+}
+
+.library-ai-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  position: relative;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.library-ai-layout[data-ai-open="true"] {
+  grid-template-columns: minmax(0, 1fr) 0 var(--opengrove-library-ai-width, 420px);
+}
+
+.library-document-pane {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.library-ai-edge-button {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.78);
+  padding: 0 10px;
+  color: var(--c-text-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--fw-normal);
+  line-height: 1;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(16px);
+  cursor: pointer;
+}
+
+.library-ai-edge-button:hover,
+.library-ai-edge-button[data-open="true"] {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.library-ai-layout[data-ai-open="true"] .library-ai-edge-button {
+  display: none;
+}
+
+.library-ai-panel {
+  grid-column: 3;
+  grid-row: 1;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--c-bg);
+}
+
+:root[data-resolved-theme="dark"] .library-ai-panel {
+  border-left-color: rgba(255, 255, 255, 0.18);
+  box-shadow: -1px 0 0 rgba(255, 255, 255, 0.06);
+}
+
+.library-ai-resize-handle {
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
+  z-index: 16;
+  width: 0;
+  min-width: 0;
+  cursor: col-resize;
+}
+
+.library-ai-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+}
+
+.library-ai-resize-handle:hover::before,
+body[data-sidebar-resizing="true"] .library-ai-resize-handle::before {
+  background: rgba(0, 0, 0, 0.035);
+}
+
+:root[data-resolved-theme="dark"] .library-ai-resize-handle:hover::before,
+:root[data-resolved-theme="dark"] body[data-sidebar-resizing="true"] .library-ai-resize-handle::before {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.library-ai-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 12px 8px 16px;
+}
+
+.library-ai-conversation-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  position: relative;
+}
+
+.library-ai-thread-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 210px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--c-text-2);
+  padding: 0 8px 0 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--fw-normal);
+  line-height: 1;
+  outline: none;
+  cursor: pointer;
+}
+
+.library-ai-thread-button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-ai-thread-button:hover,
+.library-ai-thread-button:focus-visible,
+.library-ai-thread-button[aria-expanded="true"] {
+  background: var(--c-surface-hover);
+}
+
+.library-ai-thread-menu {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  z-index: 30;
+  display: grid;
+  width: min(260px, calc(100vw - 40px));
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--r-lg);
+  background: rgba(255, 255, 255, 0.96);
+  padding: 6px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.library-ai-thread-menu-item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 30px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--c-text-2);
+  padding: 0 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--fw-normal);
+  text-align: left;
+  cursor: pointer;
+}
+
+.library-ai-thread-menu-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-ai-thread-menu-item:hover,
+.library-ai-thread-menu-item[data-active="true"] {
+  background: var(--c-surface-hover);
+}
+
+.library-ai-icon-button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--c-faint);
+  padding: 0;
+  cursor: pointer;
+}
+
+.library-ai-icon-button:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text-2);
+}
+
+.library-ai-icon-button:disabled,
+.library-ai-thread-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.library-ai-thread {
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 14px 56px;
+}
+
+.library-ai-panel .thread-shell,
+.library-ai-panel .opengrove-composer {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+}
+
+.library-ai-panel .composer-region {
+  position: sticky;
+  bottom: 0;
+  min-width: 0;
+  overflow: visible;
+  padding: 12px 12px 12px;
+}
+
+.library-ai-panel .opengrove-composer {
+  border-radius: 18px;
+}
+
+.library-ai-panel .opengrove-composer-footer {
+  min-width: 0;
+  gap: 6px;
+}
+
+.library-ai-panel .opengrove-composer-footer-left,
+.library-ai-panel .opengrove-composer-footer-right {
+  gap: 5px;
+}
+
+.library-ai-panel .opengrove-composer-controls {
+  min-width: 0;
+}
+
+.library-ai-panel .opengrove-model-button {
+  min-width: 0;
+  max-width: 120px;
+  padding-inline: 6px;
+}
+
+.library-ai-panel .opengrove-model-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-ai-panel .opengrove-send {
+  flex: 0 0 auto;
+}
+
+.library-ai-panel .thread-welcome {
+  padding-top: 32px;
+}
+
+.library-ai-panel .thread-welcome strong {
+  font-size: 18px;
+}
+
+.library-ai-panel .thread-stack {
+  gap: 24px;
+}
+
+.library-ai-panel .thread-message-header {
+  display: none;
+}
+
+.library-ai-panel .thread-message.role-user {
+  justify-content: end;
+}
+
+.library-ai-panel .thread-message.role-user .thread-message-content {
+  max-width: 86%;
+}
+
+.library-ai-panel .thread-text-block {
+  font-size: 13px;
+  line-height: 1.72;
+}
+

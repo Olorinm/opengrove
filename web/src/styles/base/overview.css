@@ -1,0 +1,200 @@
+.inspector {
+  gap: 0;
+  min-height: 0;
+  border-left: 1px solid rgba(0, 0, 0, 0.05);
+  background: var(--c-bg);
+  overflow: auto;
+  padding: var(--sp-5) var(--sp-5) var(--sp-6);
+}
+
+.overview-panel {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-6);
+  min-width: 0;
+  color: var(--c-text-2);
+}
+
+.overview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 30px;
+  border-bottom: 1px solid var(--c-border);
+  padding-bottom: var(--sp-3);
+}
+
+.overview-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  color: var(--c-text);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+
+.overview-tab svg {
+  flex: 0 0 auto;
+  color: var(--c-text-2);
+}
+
+.overview-toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 0 0 auto;
+}
+
+.overview-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--c-muted);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.overview-icon-button:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.overview-section {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.overview-section-title {
+  color: var(--c-faint);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+}
+
+.overview-progress-subtitle,
+.overview-empty,
+.overview-more {
+  color: var(--c-faint);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-normal);
+}
+
+.overview-progress-list,
+.overview-result-list,
+.overview-source-list {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.overview-progress-row,
+.overview-result-row,
+.overview-source-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: var(--sp-2);
+  align-items: start;
+  min-width: 0;
+}
+
+.overview-progress-icon,
+.overview-result-icon,
+.overview-source-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--c-faint);
+}
+
+.overview-progress-row[data-status="done"] .overview-progress-icon {
+  color: #8c948b;
+}
+
+.overview-progress-row[data-status="running"] .overview-progress-icon {
+  color: #5c7fbb;
+}
+
+.overview-progress-row[data-status="blocked"] .overview-progress-icon {
+  color: #c94f24;
+}
+
+.overview-progress-copy,
+.overview-result-copy,
+.overview-source-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.overview-progress-title,
+.overview-result-title,
+.overview-source-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--c-text-2);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-progress-row[data-status="done"] .overview-progress-title {
+  color: #596056;
+  text-decoration: line-through;
+  text-decoration-color: rgba(89, 96, 86, 0.45);
+  text-decoration-thickness: 1px;
+}
+
+.overview-progress-detail,
+.overview-result-detail,
+.overview-source-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--c-faint);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-result-icon[data-kind="image"] {
+  color: #6f8a69;
+}
+
+.overview-result-icon[data-kind="markdown"],
+.overview-result-icon[data-kind="text"] {
+  color: #7e858b;
+}
+
+.overview-source-icon[data-kind="browser"],
+.overview-source-icon[data-kind="search"] {
+  color: #6f7780;
+}
+
+.overview-source-icon[data-kind="computer"] {
+  color: #817a70;
+}
+
+.overview-source-icon[data-kind="skill"] {
+  color: #8f6c42;
+}
+
+.panel-item-warning {
+  border-color: rgba(241, 90, 36, 0.22);
+  background: rgba(255, 250, 247, 0.98);
+  color: var(--c-warning);
+}
+

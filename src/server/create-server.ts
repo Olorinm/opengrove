@@ -30,8 +30,8 @@ import { serveStaticRoute } from "./routes/static.js";
 import { handleKnowledgeRoute } from "./routes/knowledge.js";
 import { handleMatrixRoomRoute } from "./routes/matrix-rooms.js";
 import { handleRemoteInviteRoute } from "./routes/remote-invites.js";
-import { handleRemoteAgentRoute } from "./routes/remote-agents.js";
 import { handleRoomsRoute } from "./routes/rooms.js";
+import { startRoomMatrixSync } from "./room-matrix-sync.js";
 import { handleSettingsRoute } from "./routes/settings.js";
 import { handleWorkspaceRoute } from "./routes/workspace.js";
 import {
@@ -74,6 +74,7 @@ export function startOpenGroveServer(options: LocalBridgeServerOptions = {}) {
   const port = options.port ?? Number(readAppEnv("BRIDGE_PORT") ?? 37371);
   const state = createBridgeState(options);
   const security = createBridgeSecurity(options);
+  const stopRoomMatrixSync = startRoomMatrixSync(state);
 
   const server = createServer(async (request, response) => {
     applyCors(response, request, security);
@@ -400,10 +401,6 @@ export function startOpenGroveServer(options: LocalBridgeServerOptions = {}) {
         return;
       }
 
-      if (await handleRemoteAgentRoute({ request, response, url: routeUrl, sendJson, readJsonBody })) {
-        return;
-      }
-
       if (request.method === "GET" && routeUrl.pathname === "/routines") {
         const status = routeUrl.searchParams.get("status");
         const routines =
@@ -494,6 +491,7 @@ export function startOpenGroveServer(options: LocalBridgeServerOptions = {}) {
       });
     }
   });
+  server.on("close", stopRoomMatrixSync);
 
   server.listen(port, host, () => {
     const address = server.address();

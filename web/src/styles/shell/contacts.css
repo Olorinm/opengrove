@@ -1,0 +1,605 @@
+/* Contacts */
+.contacts-view {
+  --rooms-bg: #f5f7fb;
+  --rooms-panel: #ffffff;
+  --rooms-panel-soft: #f8fafc;
+  --rooms-border: rgba(29, 41, 57, 0.1);
+  --rooms-border-strong: rgba(29, 41, 57, 0.16);
+  --rooms-text: #202632;
+  --rooms-muted: #667085;
+  --rooms-faint: #98a2b3;
+  --rooms-blue: #2563eb;
+  --rooms-blue-soft: #eaf1ff;
+  grid-column: 1;
+  grid-row: 1 / -1;
+  display: grid;
+  grid-template-columns: var(--opengrove-sidebar-width, 284px) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--rooms-bg);
+  color: var(--rooms-text);
+}
+
+.contacts-nav-panel,
+.contacts-main-panel,
+.contacts-list-panel,
+.contacts-detail-panel {
+  min-width: 0;
+  min-height: 0;
+  background: var(--rooms-panel);
+}
+
+.contacts-nav-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 14px;
+  border-right: 1px solid var(--rooms-border);
+  background: var(--og-sidebar-bg);
+  padding: 18px 10px;
+}
+
+.contacts-nav-header,
+.contacts-main-header,
+.contacts-primary-action,
+.contacts-message-button,
+.contacts-search,
+.contacts-person-row,
+.contacts-group-row {
+  display: flex;
+  align-items: center;
+}
+
+.contacts-nav-header,
+.contacts-main-header {
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.contacts-nav-header h1,
+.contacts-main-header h2,
+.contacts-detail-hero h3 {
+  margin: 0;
+  color: var(--rooms-text);
+  font-weight: var(--fw-semibold);
+}
+
+.contacts-nav-header h1 {
+  font-size: 20px;
+}
+
+.contacts-org-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 58px;
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.contacts-org-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--rooms-blue);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: var(--fw-semibold);
+}
+
+.contacts-org-card strong,
+.contacts-org-card small,
+.contacts-person-row strong,
+.contacts-person-row small,
+.contacts-group-row strong,
+.contacts-group-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contacts-org-card strong,
+.contacts-person-row strong,
+.contacts-group-row strong {
+  color: var(--rooms-text);
+  font-size: 14px;
+}
+
+.contacts-org-card small,
+.contacts-person-row small,
+.contacts-group-row small {
+  color: var(--rooms-muted);
+  font-size: 12px;
+}
+
+.contacts-section-list {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.contacts-section-list button {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rooms-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  padding: 0 12px;
+  text-align: left;
+}
+
+.contacts-section-list button:hover,
+.contacts-section-list button:focus-visible,
+.contacts-section-list button[data-active="true"] {
+  background: var(--rooms-blue-soft);
+  color: var(--rooms-blue);
+  outline: none;
+}
+
+.contacts-main-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.contacts-main-header {
+  min-height: 68px;
+  border-bottom: 1px solid var(--rooms-border);
+  padding: 14px 22px;
+}
+
+.contacts-main-header h2 {
+  font-size: 18px;
+}
+
+.contacts-main-header p {
+  margin: 3px 0 0;
+  color: var(--rooms-muted);
+  font-size: 12px;
+}
+
+.contacts-primary-action,
+.contacts-message-button {
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(37, 99, 235, 0.34);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--rooms-blue);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.contacts-primary-action:hover,
+.contacts-primary-action:focus-visible,
+.contacts-message-button:hover,
+.contacts-message-button:focus-visible {
+  background: var(--rooms-blue-soft);
+  outline: none;
+}
+
+.contacts-directory-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(320px, 520px);
+  gap: 0;
+  min-height: 0;
+}
+
+.contacts-list-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  border-right: 1px solid var(--rooms-border);
+  padding: 14px;
+}
+
+.contacts-search {
+  gap: 8px;
+  height: 36px;
+  border: 1px solid var(--rooms-border);
+  border-radius: 8px;
+  background: var(--rooms-panel-soft);
+  color: var(--rooms-muted);
+  padding: 0 10px;
+}
+
+.contacts-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--rooms-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.contacts-list,
+.contacts-group-list {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.contacts-person-row {
+  gap: 10px;
+  min-height: 54px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rooms-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 7px 8px;
+  text-align: left;
+}
+
+.contacts-person-row:hover,
+.contacts-person-row:focus-visible,
+.contacts-person-row[data-active="true"] {
+  background: var(--rooms-blue-soft);
+  outline: none;
+}
+
+.contacts-person-row .rooms-avatar {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  font-size: 12px;
+}
+
+.contacts-person-row > span:last-child,
+.contacts-group-row > div {
+  min-width: 0;
+}
+
+.contacts-detail-panel {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 24px;
+}
+
+.contacts-detail-hero {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.contacts-detail-hero .rooms-avatar {
+  width: 54px;
+  height: 54px;
+  font-size: 17px;
+}
+
+.contacts-avatar-editor {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+}
+
+.contacts-avatar-editor input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.contacts-avatar-editor > button {
+  position: absolute;
+  right: -3px;
+  bottom: 2px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--rooms-border-strong);
+  border-radius: 50%;
+  background: var(--rooms-panel);
+  color: var(--rooms-muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+}
+
+.contacts-avatar-editor > button:hover,
+.contacts-avatar-editor > button:focus-visible {
+  color: var(--rooms-text);
+  outline: none;
+}
+
+.contacts-detail-hero h3 {
+  font-size: 18px;
+}
+
+.contacts-detail-hero p {
+  margin: 4px 0 0;
+  color: var(--rooms-muted);
+  font-size: 13px;
+}
+
+.contacts-detail-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  border-top: 1px solid var(--rooms-border);
+}
+
+.contacts-detail-list div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 44px;
+  border-bottom: 1px solid var(--rooms-border);
+}
+
+.contacts-detail-list dt {
+  color: var(--rooms-muted);
+  font-size: 12px;
+}
+
+.contacts-detail-list dd {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin: 0;
+  color: var(--rooms-text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.contacts-detail-control {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--rooms-border-strong);
+  border-radius: 8px;
+  background: var(--rooms-panel);
+  color: var(--rooms-text);
+  font: inherit;
+  font-size: 13px;
+  outline: 0;
+  padding: 7px 9px;
+}
+
+.contacts-detail-control:focus {
+  border-color: var(--rooms-border-strong);
+  box-shadow: none;
+}
+
+.contacts-detail-textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.contacts-inline-select {
+  display: block;
+  width: 100%;
+}
+
+.contacts-inline-select > button {
+  min-height: 32px;
+  border: 1px solid var(--rooms-border-strong);
+  background: var(--rooms-panel);
+}
+
+.contacts-inline-select > button:focus-visible {
+  outline: none;
+}
+
+.contacts-inline-menu {
+  right: auto;
+  left: 0;
+  width: 100%;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.contacts-message-button {
+  justify-self: start;
+}
+
+.contacts-detail-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.contacts-message-button.primary {
+  background: var(--rooms-blue);
+  color: #ffffff;
+}
+
+.contacts-message-button.primary:hover,
+.contacts-message-button.primary:focus-visible {
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
+.contacts-group-list {
+  padding: 14px 22px;
+}
+
+.contacts-group-row {
+  gap: 10px;
+  min-height: 58px;
+  border-bottom: 1px solid var(--rooms-border);
+}
+
+.contacts-group-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--rooms-blue-soft);
+  color: var(--rooms-blue);
+}
+
+.room-composer .opengrove-question-line {
+  min-height: 38px;
+}
+
+.room-composer .opengrove-question {
+  min-height: 30px;
+  max-height: 110px;
+  line-height: 1.55;
+}
+
+@media (max-width: 1180px) {
+  .rooms-view,
+  .rooms-view[data-members-open="true"] {
+    grid-template-columns: var(--opengrove-sidebar-width, 284px) minmax(0, 1fr);
+  }
+
+  .rooms-side-panel[data-open="true"] {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    width: min(360px, calc(100vw - 52px));
+    box-shadow: -18px 0 36px rgba(15, 23, 42, 0.12);
+  }
+}
+
+@media (max-width: 900px) {
+  .rooms-view,
+  .rooms-view[data-members-open="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rooms-list-panel {
+    display: none;
+  }
+
+  .room-message-stream .thread-shell,
+  .room-composer .room-composer-og {
+    width: calc(100% - 28px);
+  }
+
+  .room-composer {
+    padding-bottom: 84px;
+  }
+}
+
+:root[data-resolved-theme="dark"] .rooms-view,
+:root[data-resolved-theme="dark"] .room-main-panel,
+:root[data-resolved-theme="dark"] .room-header,
+:root[data-resolved-theme="dark"] .room-message-stream,
+:root[data-resolved-theme="dark"] .room-composer {
+  background: #181a1d;
+}
+
+:root[data-resolved-theme="dark"] .rooms-list-panel,
+:root[data-resolved-theme="dark"] .rooms-side-panel {
+  background: #141619;
+}
+
+:root[data-resolved-theme="dark"] .rooms-mention-menu {
+  background: #1f2227;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.35);
+}
+
+:root[data-resolved-theme="dark"] .rooms-mention-option:hover,
+:root[data-resolved-theme="dark"] .rooms-mention-option:focus-visible,
+:root[data-resolved-theme="dark"] .rooms-mention-option[data-active="true"] {
+  background: #2b2f36;
+}
+
+:root[data-resolved-theme="dark"] .rooms-kernel-icon,
+:root[data-resolved-theme="dark"] .rooms-room-avatar.direct,
+:root[data-resolved-theme="dark"] .rooms-room-menu {
+  background: #1f2227;
+}
+
+:root[data-resolved-theme="dark"] .rooms-group-profile-card,
+:root[data-resolved-theme="dark"] .rooms-member-summary-card,
+:root[data-resolved-theme="dark"] .rooms-member-drawer-foot {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-resolved-theme="dark"] .rooms-member-search,
+:root[data-resolved-theme="dark"] .rooms-group-profile-icon,
+:root[data-resolved-theme="dark"] .rooms-member-picker {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: #141619;
+}
+
+:root[data-resolved-theme="dark"] .rooms-member-picker-search {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-resolved-theme="dark"] .rooms-member-round-action {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+:root[data-resolved-theme="dark"] .rooms-member-round-action:hover,
+:root[data-resolved-theme="dark"] .rooms-member-round-action:focus-visible,
+:root[data-resolved-theme="dark"] .rooms-member-round-action[data-active="true"],
+:root[data-resolved-theme="dark"] .rooms-member-picker-option:hover,
+:root[data-resolved-theme="dark"] .rooms-member-picker-option:focus-visible,
+:root[data-resolved-theme="dark"] .rooms-member-picker-head button:hover,
+:root[data-resolved-theme="dark"] .rooms-member-picker-head button:focus-visible {
+  background: #232936;
+}
+
+:root[data-resolved-theme="dark"] .room-chat-system,
+:root[data-resolved-theme="dark"] .room-chat-bubble {
+  background: #24272d;
+}
+
+:root[data-resolved-theme="dark"] .room-chat-bubble .thread-code-block,
+:root[data-resolved-theme="dark"] .room-chat-tools .thread-activity,
+:root[data-resolved-theme="dark"] .room-chat-thinking {
+  background: #1f2227;
+}
+
+:root[data-resolved-theme="dark"] .room-chat-note {
+  background: rgba(217, 119, 6, 0.13);
+  color: #fbbf24;
+}
+
+:root[data-resolved-theme="dark"] .room-chat-note.tone-error {
+  background: rgba(220, 38, 38, 0.16);
+  color: #fca5a5;
+}
+
+:root[data-resolved-theme="dark"] .room-chat-note.tone-success {
+  background: rgba(16, 185, 129, 0.14);
+  color: #6ee7b7;
+}
+
+:root[data-resolved-theme="dark"] .room-chat-message.from-user .room-chat-bubble {
+  background: rgba(37, 99, 235, 0.24);
+}
+
+:root[data-resolved-theme="dark"] .room-message-attachment {
+  background: #1f2227;
+}
+

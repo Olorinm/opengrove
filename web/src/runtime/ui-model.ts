@@ -554,16 +554,17 @@ export function buildApprovalResolutionMessage(result: Record<string, unknown>, 
 }
 
 export function formatKernelLabel(value: string | undefined): string {
-  if (value === "claude-code") {
-    return "Claude Code kernel";
-  }
-  if (value === "codex") {
-    return "Codex kernel";
-  }
-  if (value === "pi") {
-    return "Pi kernel";
-  }
-  return "";
+  return {
+    codex: "Codex kernel",
+    "claude-code": "Claude Code kernel",
+    hermes: "Hermes kernel",
+    pi: "Pi kernel",
+    openclaw: "OpenClaw kernel",
+    "gemini-cli": "Gemini CLI kernel",
+    "deepseek-tui": "DeepSeek TUI kernel",
+    "qwen-code": "Qwen Code kernel",
+    opencode: "OpenCode kernel",
+  }[value || ""] ?? "";
 }
 
 export function readStoredAccessMode(): RuntimeAccessMode {

@@ -1,0 +1,284 @@
+.employee-dialog,
+.rooms-create-group-dialog {
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 32px));
+  gap: 12px;
+  padding: 18px 20px 20px;
+}
+
+.employee-dialog .modal-title,
+.rooms-create-group-dialog .modal-title {
+  font-size: 16px;
+  font-weight: var(--fw-semibold);
+}
+
+.employee-dialog-preview {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 48px;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 8px;
+}
+
+.employee-dialog-preview .rooms-avatar {
+  width: 34px;
+  height: 34px;
+  font-size: 12px;
+}
+
+.employee-dialog-preview div,
+.employee-dialog-field,
+.employee-dialog-runtime,
+.rooms-create-group-members {
+  min-width: 0;
+}
+
+.employee-dialog-preview strong,
+.employee-dialog-preview small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-dialog-preview strong {
+  color: var(--rooms-text);
+  font-size: 14px;
+}
+
+.employee-dialog-preview small {
+  color: var(--rooms-muted);
+  font-size: 12px;
+}
+
+.employee-dialog-field {
+  display: grid;
+  gap: 5px;
+  color: var(--rooms-text);
+  font-size: 12px;
+}
+
+.employee-dialog-runtime {
+  display: grid;
+  gap: 6px;
+}
+
+.employee-dialog-runtime-title {
+  color: var(--rooms-text);
+  font-size: 12px;
+}
+
+.employee-dialog-kernel-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-content: start;
+  gap: 6px;
+  max-height: 96px;
+  overflow-y: auto;
+  padding: 1px 2px 1px 1px;
+}
+
+.employee-dialog-kernel-option {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--rooms-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--rooms-text);
+  cursor: pointer;
+  font: inherit;
+  padding: 5px 6px;
+  text-align: left;
+}
+
+.employee-dialog-kernel-option:hover,
+.employee-dialog-kernel-option:focus-visible {
+  border-color: rgba(37, 99, 235, 0.36);
+  background: var(--rooms-blue-soft);
+  outline: none;
+}
+
+.employee-dialog-kernel-option[data-active="true"] {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #173b86;
+  box-shadow: inset 0 0 0 1px #2563eb, 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.employee-dialog-kernel-option[data-ready="false"] {
+  background: #f8fafc;
+  color: #667085;
+}
+
+.employee-dialog-kernel-option[data-ready="false"][data-active="true"] {
+  border-color: #94a3b8;
+  background: #e2e8f0;
+  color: #334155;
+  box-shadow: inset 0 0 0 1px #94a3b8, 0 0 0 3px rgba(100, 116, 139, 0.12);
+}
+
+.employee-dialog-kernel-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  background: var(--rooms-panel-soft);
+}
+
+.employee-dialog-kernel-option span:last-child {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.employee-dialog-kernel-option strong,
+.employee-dialog-kernel-option small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-dialog-kernel-option strong {
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+}
+
+.employee-dialog-kernel-option small {
+  color: var(--rooms-muted);
+  font-size: 10.5px;
+}
+
+.employee-dialog-warning {
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 8px 10px;
+}
+
+.employee-dialog-field input,
+.employee-dialog-field select,
+.employee-dialog-field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--rooms-border-strong);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--rooms-text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.employee-dialog-field input,
+.employee-dialog-field select {
+  height: 36px;
+  padding: 0 10px;
+}
+
+.employee-dialog-field .settings-inline-select {
+  width: 100%;
+}
+
+.employee-dialog-field textarea {
+  resize: vertical;
+  min-height: 74px;
+  padding: 9px 10px;
+}
+
+.employee-dialog-field:focus-within input,
+.employee-dialog-field:focus-within select,
+.employee-dialog-field:focus-within textarea {
+  border-color: rgba(37, 99, 235, 0.42);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.rooms-create-group-members {
+  display: grid;
+  gap: 8px;
+}
+
+.rooms-create-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--rooms-text);
+  font-size: 13px;
+}
+
+.rooms-create-group-title span {
+  color: var(--rooms-muted);
+  font-size: 12px;
+}
+
+.rooms-create-group-list {
+  display: grid;
+  gap: 2px;
+  max-height: 230px;
+  overflow: auto;
+  border: 1px solid var(--rooms-border);
+  border-radius: 10px;
+  padding: 6px;
+}
+
+.rooms-create-group-member {
+  display: grid;
+  grid-template-columns: 18px 34px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  min-height: 48px;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 6px;
+}
+
+.rooms-create-group-member:hover,
+.rooms-create-group-member:focus-within {
+  background: var(--rooms-blue-soft);
+}
+
+.rooms-create-group-member .rooms-avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 11px;
+}
+
+.rooms-create-group-member span:last-child {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.rooms-create-group-member strong,
+.rooms-create-group-member small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rooms-create-group-member strong {
+  color: var(--rooms-text);
+  font-size: 13px;
+}
+
+.rooms-create-group-member small {
+  color: var(--rooms-muted);
+  font-size: 12px;
+}
+
+.rooms-member-drawer-foot .rooms-soft-button {
+  justify-content: center;
+  width: 100%;
+}
+

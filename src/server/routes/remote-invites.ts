@@ -46,6 +46,21 @@ export async function handleRemoteInviteRoute(options: {
     }
     try {
       const result = await createMatrixInviteForRoom(state, state.settings.matrix, localRoomId, roomTitle);
+      const matrix = {
+        homeserverUrl: result.binding.homeserverUrl,
+        roomId: result.binding.matrixRoomId,
+        mode: "host" as const,
+      };
+      if (state.app.rooms.getRoom(localRoomId)) {
+        state.app.rooms.patchRoom(localRoomId, { badge: "Matrix", matrix });
+      } else {
+        state.app.rooms.createRoom({ id: localRoomId, title: roomTitle, badge: "Matrix", matrix });
+      }
+      state.app.rooms.postSystemMessage({
+        roomId: localRoomId,
+        text: "共享群聊邀请链接已生成。朋友打开链接后会在自己的 OpenGrove 里选择员工加入。",
+      });
+      state.store.saveFrom(state.app);
       sendJson(response, 200, {
         ok: true,
         provider: "matrix",

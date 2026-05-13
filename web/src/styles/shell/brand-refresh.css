@@ -1,0 +1,996 @@
+/* OpenGrove visual refresh */
+.app-shell {
+  background: var(--og-app-bg);
+}
+
+.app-rail {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  box-sizing: border-box;
+  justify-items: stretch;
+  align-content: start;
+  border-right: 1px solid var(--og-border);
+  background: var(--og-app-bg);
+  padding: 14px 7px;
+}
+
+.app-rail-brand-row {
+  grid-row: 1;
+  display: grid;
+  align-items: center;
+  grid-template-columns: 38px;
+  justify-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+.app-rail-brand {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  margin-bottom: 18px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  justify-self: center;
+}
+
+.app-rail-brand svg {
+  width: 23px;
+  height: 23px;
+}
+
+.app-rail-brand:focus,
+.app-rail-brand:focus-visible {
+  outline: 0;
+  box-shadow: none;
+}
+
+.app-rail-wordmark,
+.app-rail-collapse,
+.app-rail-button span,
+.app-user-button strong {
+  display: none;
+}
+
+.app-rail-wordmark {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--og-text-strong);
+  font-size: 14px;
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-rail-wordmark span {
+  color: var(--og-green);
+}
+
+.app-rail-collapse {
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--og-text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.app-rail-collapse:hover,
+.app-rail-collapse:focus-visible {
+  background: rgba(0, 0, 0, 0.045);
+  color: var(--og-text);
+  outline: 0;
+}
+
+:root[data-resolved-theme="dark"] .app-rail-brand {
+  border-color: rgba(255, 255, 255, 0.82);
+  background: #fbfbfa;
+  box-shadow: none;
+}
+
+.app-rail-nav {
+  grid-row: 2;
+}
+
+.app-rail-bottom {
+  grid-row: 4;
+  position: relative;
+}
+
+.app-rail-nav,
+.app-rail-bottom {
+  gap: 8px;
+}
+
+.app-rail-button {
+  width: 38px;
+  height: 38px;
+  border-radius: 16px;
+  color: #6d7278;
+}
+
+.app-rail-button svg,
+.sidebar-mini-action svg,
+.settings-nav-item svg,
+.topbar-icon-button svg,
+.library-ai-icon-button svg {
+  stroke-width: 1.8;
+}
+
+.pixel-icon {
+  width: 22px;
+  height: 22px;
+  overflow: visible;
+  color: currentColor;
+  flex: 0 0 auto;
+  shape-rendering: crispEdges;
+  vertical-align: -0.1em;
+}
+
+.pixel-icon__main {
+  fill: currentColor;
+}
+
+.pixel-icon__accent {
+  fill: var(--pixel-icon-accent, var(--og-green));
+}
+
+.app-rail-button:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--og-text);
+  --pixel-icon-accent: var(--og-green);
+}
+
+.app-rail-button[data-active="true"] {
+  background: var(--og-surface);
+  color: var(--og-text);
+  box-shadow: var(--shadow-sm);
+  --pixel-icon-accent: var(--og-green);
+}
+
+.app-rail-button[data-active="true"]::before {
+  display: none;
+}
+
+.app-user-button {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  justify-items: stretch;
+  width: 38px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--og-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  overflow: hidden;
+  padding: 0;
+  box-shadow: none;
+}
+
+.app-user-button:hover,
+.app-user-button:focus-visible,
+.app-user-button[data-active="true"] {
+  outline: 0;
+  background: rgba(0, 0, 0, 0.045);
+}
+
+.app-user-button span,
+.app-user-button img,
+.app-user-menu-avatar,
+.app-user-menu-avatar img {
+  width: 100%;
+  height: 100%;
+}
+
+.app-user-button span,
+.app-user-menu-avatar {
+  display: grid;
+  place-items: center;
+  align-self: center;
+  justify-self: center;
+  border-radius: 50%;
+  background: #7c3aed;
+  color: #ffffff;
+}
+
+.app-user-button > span {
+  width: 28px;
+  height: 28px;
+}
+
+.app-user-button img,
+.app-user-menu-avatar img,
+.profile-dialog-avatar img {
+  object-fit: cover;
+}
+
+.app-user-menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: -7px;
+  z-index: 120;
+  display: grid;
+  gap: 5px;
+  width: 218px;
+  border: 1px solid var(--og-border);
+  border-radius: 15px;
+  background: var(--og-surface);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.14);
+  padding: 8px;
+}
+
+.app-user-menu-profile,
+.app-user-menu-item {
+  display: grid;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--og-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.app-user-menu-profile {
+  grid-template-columns: 32px minmax(0, 1fr) 16px;
+  gap: 9px;
+  min-height: 46px;
+  padding: 6px 7px;
+}
+
+.app-user-menu-item {
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+.app-user-menu-item svg {
+  width: 15px;
+  height: 15px;
+}
+
+.app-user-menu-profile:hover,
+.app-user-menu-profile:focus-visible,
+.app-user-menu-item:hover,
+.app-user-menu-item:focus-visible {
+  background: var(--c-surface-hover);
+  outline: 0;
+}
+
+.app-user-menu-avatar {
+  border-radius: 50%;
+  background: #7c3aed;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  overflow: hidden;
+}
+
+.app-user-menu-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.app-user-menu-copy strong,
+.app-user-menu-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-user-menu-copy strong {
+  color: var(--og-text);
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+}
+
+.app-user-menu-copy small {
+  color: var(--og-text-muted);
+  font-size: 11px;
+}
+
+.app-user-menu-divider {
+  height: 1px;
+  margin: 3px 7px;
+  background: var(--og-border);
+}
+
+.profile-dialog {
+  box-sizing: border-box;
+  width: min(380px, calc(100vw - 32px));
+  gap: 12px;
+  padding: 18px 20px 20px;
+}
+
+.profile-dialog .modal-title {
+  font-size: 16px;
+  font-weight: var(--fw-semibold);
+}
+
+.profile-dialog-avatar {
+  position: relative;
+  justify-self: center;
+  display: grid;
+  place-items: center;
+  width: 82px;
+  height: 82px;
+  margin: 8px 0 6px;
+}
+
+.profile-dialog-avatar > span {
+  display: grid;
+  place-items: center;
+  width: 82px;
+  height: 82px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #7c3aed;
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: var(--fw-semibold);
+}
+
+.profile-dialog-avatar img {
+  width: 100%;
+  height: 100%;
+}
+
+.profile-dialog-avatar input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.profile-dialog-avatar button {
+  position: absolute;
+  right: -2px;
+  bottom: 6px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--og-border);
+  border-radius: 50%;
+  background: var(--og-surface);
+  color: var(--og-text-muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+.profile-dialog-avatar button:hover,
+.profile-dialog-avatar button:focus-visible {
+  color: var(--og-text);
+  outline: 0;
+}
+
+.profile-dialog-avatar button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.profile-dialog-field {
+  box-sizing: border-box;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--og-text);
+  font-size: 12px;
+}
+
+.profile-dialog-field input {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 42px;
+  border: 1px solid var(--og-border);
+  border-radius: 8px;
+  background: var(--og-surface);
+  color: var(--og-text);
+  font: inherit;
+  font-size: 13px;
+  padding: 0 10px;
+  outline: 0;
+}
+
+.profile-dialog-field:focus-within input {
+  border-color: rgba(124, 58, 237, 0.38);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
+}
+
+.profile-dialog-note {
+  margin: 0 0 2px;
+  color: var(--og-text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.profile-dialog .modal-actions {
+  gap: 8px;
+}
+
+.profile-dialog .ghost-button,
+.profile-dialog .primary-button {
+  min-height: 32px;
+  border-radius: 8px;
+  font-size: 13px;
+  padding: 0 12px;
+}
+
+.sidebar {
+  border-right: 0;
+  background: var(--og-sidebar-bg);
+  padding: 66px 12px 16px;
+}
+
+.sidebar-space-title,
+.project-item-title,
+.project-thread-list .thread-item span:first-child {
+  color: var(--og-text);
+}
+
+.sidebar-space-kicker,
+.thread-heading-row,
+.nav-section-title,
+.nav-section-summary {
+  color: var(--og-text-soft);
+  font-weight: var(--fw-semibold);
+}
+
+.sidebar-mini-action,
+.project-row-action,
+.nav-inline-action {
+  color: var(--og-text-muted);
+}
+
+.sidebar-mini-action:hover,
+.sidebar-mini-action:focus-visible,
+.sidebar-mini-action.active,
+.project-item:hover,
+.thread-item:hover,
+.nav-item:hover,
+.nav-section-summary:hover,
+.project-row-action:hover,
+.project-row-action:focus-visible,
+.nav-inline-action:hover,
+.nav-inline-action:focus-visible,
+.nav-inline-action.active {
+  background: rgba(0, 0, 0, 0.045);
+  color: var(--og-text);
+}
+
+.project-group[data-active="true"] .project-item,
+.thread-item.active,
+.nav-item.active {
+  background: rgba(0, 0, 0, 0.055);
+  color: var(--og-text);
+}
+
+.workspace {
+  box-sizing: border-box;
+  margin: 56px 14px 14px 0;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: var(--r-2xl);
+  background: var(--og-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.topbar {
+  min-height: 52px;
+  padding: 10px 18px;
+}
+
+.conversation,
+.tab-view,
+.chat-layout,
+.view-panel {
+  background: transparent;
+}
+
+.chat-thread-scroll {
+  padding-top: 14px;
+}
+
+.chat-view[data-empty="true"] .conversation {
+  background: transparent;
+}
+
+.thread-welcome strong {
+  color: var(--og-text);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0;
+}
+
+.thread-welcome p,
+.thread-welcome-kicker {
+  color: var(--og-text-muted);
+}
+
+.composer-region {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.88) 28%,
+    var(--og-surface) 68%
+  );
+}
+
+.opengrove-composer {
+  border-color: var(--og-border);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow:
+    0 14px 38px rgba(15, 23, 42, 0.07),
+    0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.topbar-status-pill,
+.topbar-icon-button,
+.library-ai-thread-button,
+.library-ai-icon-button {
+  border-color: var(--og-border);
+  background: var(--og-surface);
+  color: var(--og-text-muted);
+}
+
+.topbar-icon-button:hover,
+.topbar-icon-button:focus-visible,
+.topbar-icon-button[data-open="true"],
+.library-ai-icon-button:hover,
+.library-ai-thread-button:hover,
+.library-ai-thread-button:focus-visible {
+  background: var(--og-surface-subtle);
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .composer-region {
+  background: linear-gradient(
+    180deg,
+    rgba(11, 17, 23, 0) 0%,
+    rgba(11, 17, 23, 0.82) 34%,
+    var(--og-app-bg) 72%
+  );
+}
+
+:root[data-resolved-theme="dark"] .opengrove-composer {
+  border-color: var(--og-border);
+  background: var(--og-surface);
+  box-shadow:
+    0 16px 42px rgba(0, 0, 0, 0.32),
+    0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-question {
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-question::placeholder {
+  color: var(--og-text-soft);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-model-menu {
+  border-color: var(--og-border);
+  background: var(--og-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-model-menu-title {
+  color: var(--og-text-muted);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-model-menu-title:not(:first-child) {
+  border-top-color: var(--og-border);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-model-option,
+:root[data-resolved-theme="dark"] .opengrove-model-button,
+:root[data-resolved-theme="dark"] .opengrove-runtime-button,
+:root[data-resolved-theme="dark"] .opengrove-composer-plus {
+  color: var(--og-text-muted);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-model-option:hover,
+:root[data-resolved-theme="dark"] .opengrove-model-option:focus-visible,
+:root[data-resolved-theme="dark"] .opengrove-model-button:hover,
+:root[data-resolved-theme="dark"] .opengrove-model-button[aria-expanded="true"],
+:root[data-resolved-theme="dark"] .opengrove-composer-plus:hover {
+  background: var(--og-surface-subtle);
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-model-option[aria-selected="true"] .opengrove-model-option-check::before,
+:root[data-resolved-theme="dark"] .opengrove-model-speed {
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-model-effort,
+:root[data-resolved-theme="dark"] .opengrove-model-option-description {
+  color: var(--og-text-soft);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-primary.opengrove-send {
+  background: var(--og-text);
+  color: var(--og-app-bg);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-primary.opengrove-send:hover {
+  background: var(--og-text-muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"]:not([data-resolved-theme]) .composer-region,
+  :root:not([data-theme]):not([data-resolved-theme]) .composer-region {
+    background: linear-gradient(
+      180deg,
+      rgba(11, 17, 23, 0) 0%,
+      rgba(11, 17, 23, 0.82) 34%,
+      var(--og-app-bg) 72%
+    );
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-composer,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-composer {
+    border-color: var(--og-border);
+    background: var(--og-surface);
+    box-shadow:
+      0 16px 42px rgba(0, 0, 0, 0.32),
+      0 1px 2px rgba(0, 0, 0, 0.22);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-question,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-question {
+    color: var(--og-text);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-question::placeholder,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-question::placeholder {
+    color: var(--og-text-soft);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-menu,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-menu {
+    border-color: var(--og-border);
+    background: var(--og-surface);
+    box-shadow: var(--shadow-lg);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-menu-title,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-menu-title {
+    color: var(--og-text-muted);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-menu-title:not(:first-child),
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-menu-title:not(:first-child) {
+    border-top-color: var(--og-border);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-option,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-button,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-runtime-button,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-composer-plus,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-option,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-button,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-runtime-button,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-composer-plus {
+    color: var(--og-text-muted);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-option:hover,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-option:focus-visible,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-button:hover,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-button[aria-expanded="true"],
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-composer-plus:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-option:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-option:focus-visible,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-button:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-button[aria-expanded="true"],
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-composer-plus:hover {
+    background: var(--og-surface-subtle);
+    color: var(--og-text);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-option[aria-selected="true"] .opengrove-model-option-check::before,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-speed,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-option[aria-selected="true"] .opengrove-model-option-check::before,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-speed {
+    color: var(--og-text);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-effort,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-option-description,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-effort,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-option-description {
+    color: var(--og-text-soft);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-primary.opengrove-send,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-primary.opengrove-send {
+    background: var(--og-text);
+    color: var(--og-app-bg);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-primary.opengrove-send:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-primary.opengrove-send:hover {
+    background: var(--og-text-muted);
+  }
+}
+
+:root[data-resolved-theme="dark"] .app-shell,
+:root[data-resolved-theme="dark"] .app-sidebar-header,
+:root[data-resolved-theme="dark"] .app-rail,
+:root[data-resolved-theme="dark"] .sidebar,
+:root[data-resolved-theme="dark"] .workspace,
+:root[data-resolved-theme="dark"] .conversation,
+:root[data-resolved-theme="dark"] .chat-view {
+  background: #000000;
+}
+
+:root[data-resolved-theme="dark"] .workspace,
+:root[data-resolved-theme="dark"] .app-shell[data-view="settings"] .workspace {
+  border-left-color: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-resolved-theme="dark"] .sidebar-brand-mark,
+:root[data-resolved-theme="dark"] .sidebar-collapse-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+:root[data-resolved-theme="dark"] .sidebar-brand-mark svg,
+:root[data-resolved-theme="dark"] .sidebar-collapse-logo svg {
+  width: 22px;
+  height: 22px;
+}
+
+:root[data-resolved-theme="dark"] .app-rail-button,
+:root[data-resolved-theme="dark"] .sidebar-collapse-button,
+:root[data-resolved-theme="dark"] .sidebar-mini-action,
+:root[data-resolved-theme="dark"] .project-row-action {
+  color: #a9adb3;
+}
+
+:root[data-resolved-theme="dark"] .app-rail-button:hover,
+:root[data-resolved-theme="dark"] .app-rail-button:focus-visible,
+:root[data-resolved-theme="dark"] .app-rail-button[data-active="true"],
+:root[data-resolved-theme="dark"] .sidebar-collapse-button:hover,
+:root[data-resolved-theme="dark"] .sidebar-collapse-button:focus-visible {
+  background: #2f2f2f;
+  color: #ffffff;
+}
+
+:root[data-resolved-theme="dark"] .composer-region {
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.76) 30%,
+    #000000 72%
+  );
+}
+
+:root[data-resolved-theme="dark"] .opengrove-composer {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #303030;
+  box-shadow: none;
+}
+
+:root[data-resolved-theme="dark"] .opengrove-question {
+  color: #f4f4f4;
+}
+
+:root[data-resolved-theme="dark"] .opengrove-question::placeholder {
+  color: #b4b4b4;
+}
+
+:root[data-resolved-theme="dark"] .opengrove-model-menu {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #1f1f1f;
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.36);
+}
+
+:root[data-resolved-theme="dark"] .opengrove-composer-plus,
+:root[data-resolved-theme="dark"] .opengrove-model-button,
+:root[data-resolved-theme="dark"] .opengrove-runtime-button,
+:root[data-resolved-theme="dark"] .opengrove-model-option {
+  color: #d7d7d7;
+}
+
+:root[data-resolved-theme="dark"] .opengrove-model-effort,
+:root[data-resolved-theme="dark"] .opengrove-model-option-description {
+  color: #b4b4b4;
+}
+
+:root[data-resolved-theme="dark"] .opengrove-composer-plus:hover,
+:root[data-resolved-theme="dark"] .opengrove-model-button:hover,
+:root[data-resolved-theme="dark"] .opengrove-model-button[aria-expanded="true"],
+:root[data-resolved-theme="dark"] .opengrove-model-option:hover,
+:root[data-resolved-theme="dark"] .opengrove-model-option:focus-visible {
+  background: #3a3a3a;
+  color: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"]:not([data-resolved-theme]) .app-shell,
+  :root[data-theme="system"]:not([data-resolved-theme]) .app-sidebar-header,
+  :root[data-theme="system"]:not([data-resolved-theme]) .app-rail,
+  :root[data-theme="system"]:not([data-resolved-theme]) .sidebar,
+  :root[data-theme="system"]:not([data-resolved-theme]) .workspace,
+  :root[data-theme="system"]:not([data-resolved-theme]) .conversation,
+  :root[data-theme="system"]:not([data-resolved-theme]) .chat-view,
+  :root:not([data-theme]):not([data-resolved-theme]) .app-shell,
+  :root:not([data-theme]):not([data-resolved-theme]) .app-sidebar-header,
+  :root:not([data-theme]):not([data-resolved-theme]) .app-rail,
+  :root:not([data-theme]):not([data-resolved-theme]) .sidebar,
+  :root:not([data-theme]):not([data-resolved-theme]) .workspace,
+  :root:not([data-theme]):not([data-resolved-theme]) .conversation,
+  :root:not([data-theme]):not([data-resolved-theme]) .chat-view {
+    background: #000000;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .workspace,
+  :root[data-theme="system"]:not([data-resolved-theme]) .app-shell[data-view="settings"] .workspace,
+  :root:not([data-theme]):not([data-resolved-theme]) .workspace,
+  :root:not([data-theme]):not([data-resolved-theme]) .app-shell[data-view="settings"] .workspace {
+    border-left-color: rgba(255, 255, 255, 0.12);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .sidebar-brand-mark,
+  :root[data-theme="system"]:not([data-resolved-theme]) .sidebar-collapse-logo,
+  :root:not([data-theme]):not([data-resolved-theme]) .sidebar-brand-mark,
+  :root:not([data-theme]):not([data-resolved-theme]) .sidebar-collapse-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: none;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .sidebar-brand-mark svg,
+  :root[data-theme="system"]:not([data-resolved-theme]) .sidebar-collapse-logo svg,
+  :root:not([data-theme]):not([data-resolved-theme]) .sidebar-brand-mark svg,
+  :root:not([data-theme]):not([data-resolved-theme]) .sidebar-collapse-logo svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .app-rail-button,
+  :root[data-theme="system"]:not([data-resolved-theme]) .sidebar-collapse-button,
+  :root[data-theme="system"]:not([data-resolved-theme]) .sidebar-mini-action,
+  :root[data-theme="system"]:not([data-resolved-theme]) .project-row-action,
+  :root:not([data-theme]):not([data-resolved-theme]) .app-rail-button,
+  :root:not([data-theme]):not([data-resolved-theme]) .sidebar-collapse-button,
+  :root:not([data-theme]):not([data-resolved-theme]) .sidebar-mini-action,
+  :root:not([data-theme]):not([data-resolved-theme]) .project-row-action {
+    color: #a9adb3;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .app-rail-button:hover,
+  :root[data-theme="system"]:not([data-resolved-theme]) .app-rail-button:focus-visible,
+  :root[data-theme="system"]:not([data-resolved-theme]) .app-rail-button[data-active="true"],
+  :root[data-theme="system"]:not([data-resolved-theme]) .sidebar-collapse-button:hover,
+  :root[data-theme="system"]:not([data-resolved-theme]) .sidebar-collapse-button:focus-visible,
+  :root:not([data-theme]):not([data-resolved-theme]) .app-rail-button:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .app-rail-button:focus-visible,
+  :root:not([data-theme]):not([data-resolved-theme]) .app-rail-button[data-active="true"],
+  :root:not([data-theme]):not([data-resolved-theme]) .sidebar-collapse-button:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .sidebar-collapse-button:focus-visible {
+    background: #2f2f2f;
+    color: #ffffff;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .composer-region,
+  :root:not([data-theme]):not([data-resolved-theme]) .composer-region {
+    background: linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0.76) 30%,
+      #000000 72%
+    );
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-composer,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-composer {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: #303030;
+    box-shadow: none;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-question,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-question {
+    color: #f4f4f4;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-question::placeholder,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-question::placeholder {
+    color: #b4b4b4;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-menu,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-menu {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: #1f1f1f;
+    box-shadow: 0 18px 54px rgba(0, 0, 0, 0.36);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-composer-plus,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-button,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-runtime-button,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-option,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-composer-plus,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-button,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-runtime-button,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-option {
+    color: #d7d7d7;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-effort,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-option-description,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-effort,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-option-description {
+    color: #b4b4b4;
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-composer-plus:hover,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-button:hover,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-button[aria-expanded="true"],
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-option:hover,
+  :root[data-theme="system"]:not([data-resolved-theme]) .opengrove-model-option:focus-visible,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-composer-plus:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-button:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-button[aria-expanded="true"],
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-option:hover,
+  :root:not([data-theme]):not([data-resolved-theme]) .opengrove-model-option:focus-visible {
+    background: #3a3a3a;
+    color: #ffffff;
+  }
+
+}
+
+.mobile-nav {
+  border-color: var(--og-border);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.mobile-nav-item.active {
+  background: var(--og-surface-subtle);
+  color: var(--og-text);
+  --pixel-icon-accent: var(--og-green);
+}
+
+.mobile-nav-item:hover,
+.mobile-nav-item:focus-visible {
+  --pixel-icon-accent: color-mix(in srgb, var(--og-green) 72%, transparent);
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+}
+

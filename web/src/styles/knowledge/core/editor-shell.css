@@ -1,0 +1,300 @@
+.knowledge-document-area {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  align-items: start;
+  min-height: calc(100vh - 118px);
+}
+
+.knowledge-page-editor {
+  display: grid;
+  gap: 0;
+  align-content: start;
+  box-sizing: border-box;
+  width: min(820px, calc(100vw - 360px));
+  max-width: 100%;
+  min-height: calc(100vh - 118px);
+  margin: 0 auto;
+  overflow-x: hidden;
+  background: transparent;
+  padding: 58px 38px 44px;
+}
+
+.md-note-editor {
+  gap: 0;
+}
+
+.md-note-editor > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.knowledge-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.md-editor-toolbar {
+  position: static;
+  z-index: auto;
+  margin: -44px -4px 28px;
+  border-bottom: 0;
+  background: transparent;
+  padding: 7px 0;
+  backdrop-filter: none;
+}
+
+.md-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  overflow: hidden;
+  color: #787b74;
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.md-breadcrumb span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.md-breadcrumb span + span::before {
+  content: "/";
+  margin-right: 6px;
+  color: #b2b4ad;
+}
+
+.md-breadcrumb span[data-current="true"] {
+  color: #343731;
+  font-weight: var(--fw-semibold);
+}
+
+.md-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: #6f736c;
+  cursor: pointer;
+}
+
+.md-icon-button:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.md-save-state,
+.knowledge-dirty-text {
+  color: var(--c-faint);
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+}
+
+.md-save-state[data-state="queued"],
+.md-save-state[data-state="saving"] {
+  color: #8b7860;
+}
+
+.md-save-state[data-state="error"] {
+  color: #b42318;
+}
+
+.knowledge-editor-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.knowledge-title-editor,
+.knowledge-body-editor,
+.knowledge-page-property input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+  outline: 0;
+}
+
+.knowledge-title-display {
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 28px;
+  padding: 0;
+  color: var(--c-text);
+  cursor: text;
+  font-size: 30px;
+  font-weight: var(--fw-bold);
+  line-height: 1.25;
+  overflow: visible;
+  word-break: break-word;
+}
+
+.knowledge-title-display:focus-visible {
+  border-radius: var(--r-sm);
+  outline: 2px solid rgba(52, 54, 48, 0.16);
+  outline-offset: 4px;
+}
+
+.knowledge-title-editor {
+  display: block;
+  height: 64px;
+  min-height: 64px;
+  margin-bottom: 18px;
+  padding: 8px 0 12px;
+  resize: none;
+  overflow: hidden;
+  font-size: 26px;
+  font-weight: var(--fw-bold);
+  line-height: 1.42;
+  word-break: break-word;
+}
+
+.knowledge-title-editor::placeholder,
+.knowledge-body-editor::placeholder,
+.knowledge-page-property input::placeholder {
+  color: #b5b4ad;
+}
+
+.knowledge-body-editor {
+  min-height: 220px;
+  resize: none;
+  color: #3f423b;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.knowledge-markdown-source,
+.knowledge-markdown-codemirror {
+  min-height: calc(100vh - 230px);
+  border-radius: 0;
+  background: transparent;
+  color: #242721;
+}
+
+.knowledge-markdown-source {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.knowledge-markdown-codemirror {
+  width: 100%;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.knowledge-markdown-codemirror .cm-editor {
+  min-height: calc(100vh - 230px);
+}
+
+.knowledge-markdown-codemirror .cm-content {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.knowledge-markdown-codemirror .cm-line {
+  max-width: 100%;
+}
+
+.knowledge-markdown-codemirror .cm-md-active-line {
+  background: rgba(239, 237, 231, 0.32);
+}
+
+.knowledge-markdown-codemirror .cm-editor:not(.cm-focused) .cm-md-active-line {
+  background: transparent;
+}
+
+.knowledge-markdown-codemirror .cm-md-frontmatter-line {
+  color: #8c8f86;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+  line-height: 1.6;
+}
+
+.knowledge-markdown-codemirror .cm-md-frontmatter-line .tok-heading,
+.knowledge-markdown-codemirror .cm-md-frontmatter-line .cm-md-heading {
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
+.knowledge-markdown-codemirror .tok-heading {
+  color: var(--c-text);
+  font-weight: var(--fw-bold);
+}
+
+.knowledge-markdown-codemirror .tok-emphasis {
+  font-style: italic;
+}
+
+.knowledge-markdown-codemirror .tok-strong {
+  font-weight: var(--fw-bold);
+}
+
+.knowledge-markdown-codemirror .tok-link,
+.knowledge-markdown-codemirror .tok-url {
+  color: #6e57d8;
+  text-decoration: none;
+}
+
+.knowledge-markdown-codemirror .tok-monospace {
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: #252821;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.92em;
+  padding: 0 0.2em;
+}
+
+.knowledge-markdown-codemirror .cm-md-heading {
+  display: inline;
+  color: var(--c-text);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0;
+}
+
+.knowledge-markdown-codemirror .cm-md-heading-1 {
+  font-size: 1.72em;
+  line-height: 1.45;
+}
+
+.knowledge-markdown-codemirror .cm-md-heading-2 {
+  font-size: 1.38em;
+  line-height: 1.5;
+}
+
+.knowledge-markdown-codemirror .cm-md-heading-3 {
+  font-size: 1.14em;
+  line-height: 1.6;
+}
+
+.knowledge-markdown-codemirror .cm-md-syntax {
+  color: #74786f;
+  opacity: 1;
+  transition: color 120ms ease, opacity 120ms ease;
+}
+
+.knowledge-markdown-codemirror .cm-md-syntax-active {
+  color: #4f544b;
+  opacity: 1;
+}
+

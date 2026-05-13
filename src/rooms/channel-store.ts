@@ -4,6 +4,14 @@ export type RoomMemberStatus = "idle" | "running" | "done" | "waiting" | "offlin
 export type RoomMessageStatus = "sent" | "running" | "done" | "failed" | "interrupted";
 export type RoomKind = "group" | "direct";
 export type RoomMemberSource = "local" | "remote" | "human";
+export type RoomInviteStatus = "none" | "pending" | "accepted" | "revoked" | "expired";
+
+export interface RoomChannelMatrixBinding {
+  homeserverUrl: string;
+  roomId: string;
+  localMemberId?: string;
+  mode: "host" | "guest";
+}
 
 export interface RoomChannelMember {
   id: string;
@@ -14,8 +22,13 @@ export interface RoomChannelMember {
   status: RoomMemberStatus;
   color: string;
   lastActive: string;
+  avatarDataUrl?: string;
   source?: RoomMemberSource;
   sourceLabel?: string;
+  inviteStatus?: RoomInviteStatus;
+  homeNodeLabel?: string;
+  matrixUserId?: string;
+  matrixAgentId?: string;
   disabled?: boolean;
 }
 
@@ -30,6 +43,7 @@ export interface RoomChannelRoom {
   archived?: boolean;
   updatedAt: string;
   unread: number;
+  matrix?: RoomChannelMatrixBinding;
 }
 
 export interface RoomChannelMessage {
@@ -50,12 +64,15 @@ export interface RoomChannelMessage {
   parts?: JsonObject[];
   startedAt?: string;
   finishedAt?: string;
+  matrixEventId?: string;
+  matrixTurnId?: string;
 }
 
 export type RoomChannelEventType =
   | "room.created"
   | "room.updated"
   | "room.member.added"
+  | "room.member.updated"
   | "room.member.removed"
   | "room.message.created"
   | "room.message.updated";
@@ -77,6 +94,7 @@ export interface RoomChannelSnapshot {
   members: RoomChannelMember[];
   messages: RoomChannelMessage[];
   events: RoomChannelEvent[];
+  deletedMemberIds?: string[];
 }
 
 export interface RoomChannelInit {
@@ -84,6 +102,7 @@ export interface RoomChannelInit {
   members: RoomChannelMember[];
   messages: RoomChannelMessage[];
   currentEventSeq: number;
+  deletedMemberIds: string[];
 }
 
 export interface PostRoomMessageResult {
@@ -101,6 +120,7 @@ export class RoomChannelStore {
   private members = new Map<string, RoomChannelMember>();
   private messagesByRoom = new Map<string, RoomChannelMessage[]>();
   private events: RoomChannelEvent[] = [];
+  private deletedMemberIds = new Set<string>();
   private currentEventSeq = 0;
 
   restore(snapshot: RoomChannelSnapshot | undefined): void {
@@ -108,12 +128,19 @@ export class RoomChannelStore {
     this.members.clear();
     this.messagesByRoom.clear();
     this.events = [];
+    this.deletedMemberIds.clear();
     this.currentEventSeq = 0;
 
     const normalized = normalizeRoomChannelSnapshot(snapshot);
     this.currentEventSeq = normalized.currentEventSeq;
     for (const member of normalized.members) {
       this.members.set(member.id, member);
+      if (member.disabled) {
+        this.deletedMemberIds.add(member.id);
+      }
+    }
+    for (const memberId of normalized.deletedMemberIds ?? []) {
+      this.deletedMemberIds.add(memberId);
     }
     for (const room of normalized.rooms) {
       this.rooms.set(room.id, room);
@@ -141,6 +168,7 @@ export class RoomChannelStore {
       members: this.listMembers(),
       messages: [...this.messagesByRoom.values()].flatMap((messages) => messages.map((message) => ({ ...message }))),
       events: this.events.map((event) => ({ ...event, payload: { ...event.payload } })),
+      deletedMemberIds: this.listDeletedMemberIds(),
     };
   }
 
@@ -187,22 +215,27 @@ export class RoomChannelStore {
       members: this.listMembers(),
       messages,
       currentEventSeq: this.currentEventSeq,
+      deletedMemberIds: this.listDeletedMemberIds(),
     };
   }
 
   listRooms(): RoomChannelRoom[] {
     return [...this.rooms.values()]
-      .map((room) => ({ ...room, memberIds: [...room.memberIds] }))
+      .map(cloneRoom)
       .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
   }
 
   listMembers(): RoomChannelMember[] {
-    return [...this.members.values()].map((member) => ({ ...member }));
+    return [...this.members.values()].map(cloneMember);
+  }
+
+  listDeletedMemberIds(): string[] {
+    return [...this.deletedMemberIds.values()];
   }
 
   getRoom(roomId: string): RoomChannelRoom | undefined {
     const room = this.rooms.get(roomId);
-    return room ? { ...room, memberIds: [...room.memberIds] } : undefined;
+    return room ? cloneRoom(room) : undefined;
   }
 
   listMessages(roomId: string, options: { limit?: number; beforeSeq?: number; afterSeq?: number } = {}): RoomChannelMessage[] {
@@ -230,7 +263,7 @@ export class RoomChannelStore {
     };
   }
 
-  createRoom(input: { id?: string; title?: string; memberIds?: string[]; badge?: string }): RoomChannelRoom {
+  createRoom(input: { id?: string; title?: string; memberIds?: string[]; badge?: string; matrix?: RoomChannelMatrixBinding }): RoomChannelRoom {
     const createdAt = nowIso();
     const room: RoomChannelRoom = {
       id: input.id?.trim() || createId("room"),
@@ -242,18 +275,19 @@ export class RoomChannelStore {
       archived: false,
       unread: 0,
       updatedAt: createdAt,
+      matrix: normalizeMatrixBinding(input.matrix),
     };
     this.rooms.set(room.id, room);
     this.messagesByRoom.set(room.id, []);
     this.emit("room.created", room.id, { room });
-    return { ...room, memberIds: [...room.memberIds] };
+    return cloneRoom(room);
   }
 
   openDirect(input: { memberId: string; title?: string }): RoomChannelRoom {
     const memberId = input.memberId.trim();
     if (!memberId) throw new Error("member_id_required");
     const existing = [...this.rooms.values()].find((room) => room.kind === "direct" && room.directMemberId === memberId);
-    if (existing) return { ...existing, memberIds: [...existing.memberIds] };
+    if (existing) return cloneRoom(existing);
     const member = this.members.get(memberId);
     if (!member) throw new Error("member_not_found");
     const createdAt = nowIso();
@@ -272,10 +306,10 @@ export class RoomChannelStore {
     this.rooms.set(room.id, room);
     this.messagesByRoom.set(room.id, []);
     this.emit("room.created", room.id, { room });
-    return { ...room, memberIds: [...room.memberIds] };
+    return cloneRoom(room);
   }
 
-  patchRoom(roomId: string, patch: { title?: string; pinned?: boolean; archived?: boolean; badge?: string }): RoomChannelRoom {
+  patchRoom(roomId: string, patch: { title?: string; pinned?: boolean; archived?: boolean; badge?: string; matrix?: RoomChannelMatrixBinding | null }): RoomChannelRoom {
     const room = this.requireRoom(roomId);
     const updated: RoomChannelRoom = {
       ...room,
@@ -283,20 +317,41 @@ export class RoomChannelStore {
       pinned: patch.pinned === undefined ? room.pinned : patch.pinned,
       archived: patch.archived === undefined ? room.archived : patch.archived,
       badge: patch.badge === undefined ? room.badge : patch.badge.trim(),
+      matrix: patch.matrix === undefined ? room.matrix : normalizeMatrixBinding(patch.matrix),
       updatedAt: nowIso(),
     };
     this.rooms.set(roomId, updated);
     this.emit("room.updated", roomId, { room: updated });
-    return { ...updated, memberIds: [...updated.memberIds] };
+    return cloneRoom(updated);
   }
 
   upsertMember(member: RoomChannelMember, options: { emitEvent?: boolean } = {}): RoomChannelMember {
     const normalized = normalizeMember(member);
+    const existed = this.members.has(normalized.id);
     this.members.set(normalized.id, normalized);
-    if (options.emitEvent) {
-      this.emit("room.member.added", "", { member: normalized }, { memberId: normalized.id });
+    if (normalized.disabled) {
+      this.deletedMemberIds.add(normalized.id);
+    } else {
+      this.deletedMemberIds.delete(normalized.id);
     }
-    return { ...normalized };
+    if (options.emitEvent) {
+      this.emit(existed ? "room.member.updated" : "room.member.added", "", { member: normalized }, { memberId: normalized.id });
+    }
+    return cloneMember(normalized);
+  }
+
+  patchMember(memberId: string, patch: Partial<Omit<RoomChannelMember, "id">>): RoomChannelMember {
+    const existing = this.members.get(memberId);
+    if (!existing) throw new Error("member_not_found");
+    const updated = normalizeMember({ ...existing, ...patch, id: memberId });
+    this.members.set(memberId, updated);
+    if (updated.disabled) {
+      this.deletedMemberIds.add(memberId);
+    } else {
+      this.deletedMemberIds.delete(memberId);
+    }
+    this.emit("room.member.updated", "", { member: updated }, { memberId });
+    return cloneMember(updated);
   }
 
   addMember(roomId: string, member: RoomChannelMember): RoomChannelMember {
@@ -319,7 +374,7 @@ export class RoomChannelStore {
     };
     this.rooms.set(roomId, updated);
     this.emit("room.member.removed", roomId, { memberId }, { memberId });
-    return { ...updated, memberIds: [...updated.memberIds] };
+    return cloneRoom(updated);
   }
 
   postUserMessage(input: {
@@ -369,7 +424,11 @@ export class RoomChannelStore {
   createAssistantPlaceholder(input: {
     roomId: string;
     target: RoomChannelMember;
+    id?: string;
     runId?: string;
+    matrixEventId?: string;
+    matrixTurnId?: string;
+    createdAt?: string;
   }): RoomChannelMessage {
     return this.createMessage({
       roomId: input.roomId,
@@ -379,8 +438,63 @@ export class RoomChannelStore {
       text: "",
       targetIds: [],
       status: "running",
+      id: input.id,
       runId: input.runId,
-      startedAt: nowIso(),
+      startedAt: input.createdAt ?? nowIso(),
+      matrixEventId: input.matrixEventId,
+      matrixTurnId: input.matrixTurnId,
+      createdAt: input.createdAt,
+    });
+  }
+
+  postSystemMessage(input: {
+    roomId: string;
+    text: string;
+    id?: string;
+    createdAt?: string;
+    matrixEventId?: string;
+    matrixTurnId?: string;
+  }): RoomChannelMessage {
+    return this.createMessage({
+      roomId: input.roomId,
+      senderId: "system",
+      senderName: "System",
+      senderType: "system",
+      text: input.text,
+      targetIds: [],
+      status: "done",
+      id: input.id,
+      createdAt: input.createdAt,
+      matrixEventId: input.matrixEventId,
+      matrixTurnId: input.matrixTurnId,
+    });
+  }
+
+  postExternalUserMessage(input: {
+    roomId: string;
+    senderId: string;
+    senderName: string;
+    text: string;
+    targetIds?: string[];
+    attachments?: AgentAttachmentContext[];
+    id?: string;
+    createdAt?: string;
+    matrixEventId?: string;
+    matrixTurnId?: string;
+  }): RoomChannelMessage {
+    return this.createMessage({
+      roomId: input.roomId,
+      senderId: input.senderId,
+      senderName: input.senderName,
+      senderType: "user",
+      text: input.text,
+      targetIds: input.targetIds ?? [],
+      status: "sent",
+      attachments: input.attachments,
+      id: input.id,
+      createdAt: input.createdAt,
+      matrixEventId: input.matrixEventId,
+      matrixTurnId: input.matrixTurnId,
     });
   }
 
@@ -422,7 +536,7 @@ export class RoomChannelStore {
     const room = this.requireRoom(roomId);
     const updated = { ...room, updatedAt: nowIso() };
     this.rooms.set(roomId, updated);
-    return { ...updated, memberIds: [...updated.memberIds] };
+    return cloneRoom(updated);
   }
 
   private requireRoom(roomId: string): RoomChannelRoom {
@@ -472,6 +586,7 @@ export function normalizeRoomChannelSnapshot(input: unknown): RoomChannelSnapsho
     members,
     messages,
     events,
+    deletedMemberIds: uniqueIds(Array.isArray(object.deletedMemberIds) ? object.deletedMemberIds : []),
   };
 }
 
@@ -489,6 +604,7 @@ function normalizeRoom(input: Partial<RoomChannelRoom>): RoomChannelRoom | undef
     archived: Boolean(input.archived),
     updatedAt: readString(input.updatedAt) || nowIso(),
     unread: Number.isFinite(input.unread) ? Number(input.unread) : 0,
+    matrix: normalizeMatrixBinding(input.matrix),
   };
 }
 
@@ -503,8 +619,13 @@ function normalizeMember(input: Partial<RoomChannelMember>): RoomChannelMember {
     status: normalizeMemberStatus(input.status),
     color: readString(input.color) || "#64748b",
     lastActive: readString(input.lastActive) || "idle",
+    avatarDataUrl: readOptionalString(input.avatarDataUrl),
     source: normalizeMemberSource(input.source),
-    sourceLabel: readOptionalString(input.sourceLabel),
+    sourceLabel: normalizeSourceLabel(input.sourceLabel, input.source),
+    inviteStatus: normalizeInviteStatus(input.inviteStatus),
+    homeNodeLabel: readOptionalString(input.homeNodeLabel),
+    matrixUserId: readOptionalString(input.matrixUserId),
+    matrixAgentId: readOptionalString(input.matrixAgentId),
     disabled: Boolean(input.disabled),
   };
 }
@@ -521,7 +642,7 @@ function normalizeMessage(input: Partial<RoomChannelMessage>): RoomChannelMessag
     senderId: readString(input.senderId) || "system",
     senderName: readString(input.senderName) || "System",
     senderType: input.senderType === "agent" || input.senderType === "user" ? input.senderType : "system",
-    text: readString(input.text),
+    text: stripModelTemplateTokens(readString(input.text)),
     targetIds: uniqueIds(Array.isArray(input.targetIds) ? input.targetIds : []),
     status: normalizeMessageStatus(input.status),
     createdAt,
@@ -532,6 +653,8 @@ function normalizeMessage(input: Partial<RoomChannelMessage>): RoomChannelMessag
     parts: Array.isArray(input.parts) ? input.parts : undefined,
     startedAt: readOptionalString(input.startedAt),
     finishedAt: readOptionalString(input.finishedAt),
+    matrixEventId: readOptionalString(input.matrixEventId),
+    matrixTurnId: readOptionalString(input.matrixTurnId),
   };
 }
 
@@ -551,6 +674,18 @@ function normalizeEvent(input: Partial<RoomChannelEvent>): RoomChannelEvent | un
       ? input.payload as Record<string, unknown>
       : {},
   };
+}
+
+function cloneRoom(room: RoomChannelRoom): RoomChannelRoom {
+  return {
+    ...room,
+    memberIds: [...room.memberIds],
+    matrix: room.matrix ? { ...room.matrix } : undefined,
+  };
+}
+
+function cloneMember(member: RoomChannelMember): RoomChannelMember {
+  return { ...member };
 }
 
 function cloneMessage(message: RoomChannelMessage): RoomChannelMessage {
@@ -591,12 +726,49 @@ function readOptionalString(value: unknown): string | undefined {
   return text || undefined;
 }
 
+function stripModelTemplateTokens(value: string): string {
+  return value.replace(/<\|(?:assistant|user|system|observation|tool|end|endoftext)\|>/g, "").trimEnd();
+}
+
+function normalizeMatrixBinding(input: unknown): RoomChannelMatrixBinding | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
+  const source = input as Partial<RoomChannelMatrixBinding>;
+  const homeserverUrl = readOptionalString(source.homeserverUrl);
+  const roomId = readOptionalString(source.roomId);
+  if (!homeserverUrl || !roomId) return undefined;
+  return {
+    homeserverUrl,
+    roomId,
+    localMemberId: readOptionalString(source.localMemberId),
+    mode: source.mode === "guest" ? "guest" : "host",
+  };
+}
+
 function normalizeMemberStatus(value: unknown): RoomMemberStatus {
   return value === "running" || value === "done" || value === "waiting" || value === "offline" ? value : "idle";
 }
 
 function normalizeMemberSource(value: unknown): RoomMemberSource | undefined {
   return value === "remote" || value === "human" || value === "local" ? value : undefined;
+}
+
+function normalizeSourceLabel(value: unknown, source: unknown): string | undefined {
+  const label = readOptionalString(value);
+  if (label === "local") return "本机";
+  if (label === "remote") return "远程";
+  if (label === "human") return "人类";
+  if (label) return label;
+  const normalizedSource = normalizeMemberSource(source);
+  if (normalizedSource === "local") return "本机";
+  if (normalizedSource === "remote") return "远程";
+  if (normalizedSource === "human") return "人类";
+  return undefined;
+}
+
+function normalizeInviteStatus(value: unknown): RoomInviteStatus | undefined {
+  return value === "none" || value === "pending" || value === "accepted" || value === "revoked" || value === "expired"
+    ? value
+    : undefined;
 }
 
 function normalizeMessageStatus(value: unknown): RoomMessageStatus {
@@ -608,6 +780,7 @@ function isEventType(value: string): value is RoomChannelEventType {
     "room.created",
     "room.updated",
     "room.member.added",
+    "room.member.updated",
     "room.member.removed",
     "room.message.created",
     "room.message.updated",

@@ -1,0 +1,64 @@
+body {
+  margin: 0;
+  background: var(--c-bg);
+  color: var(--c-text);
+}
+
+#root {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.react-app {
+  height: 100%;
+}
+
+.entity-icon {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--og-border);
+  border-radius: 10px;
+  background: var(--og-surface);
+  color: var(--og-text-muted);
+}
+
+.entity-icon svg {
+  display: block;
+  max-width: 78%;
+  max-height: 78%;
+}
+
+.entity-icon[data-placeholder="true"] {
+  background: var(--og-surface-subtle);
+  color: var(--og-text-soft);
+}
+
+:root[data-resolved-theme="dark"] .entity-icon {
+  border-color: var(--og-border);
+  background: var(--og-surface);
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .entity-icon[data-placeholder="true"] {
+  background: var(--og-surface-subtle);
+  color: var(--og-text-muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"]:not([data-resolved-theme]) .entity-icon,
+  :root:not([data-theme]):not([data-resolved-theme]) .entity-icon {
+    border-color: var(--og-border);
+    background: var(--og-surface);
+    color: var(--og-text);
+  }
+
+  :root[data-theme="system"]:not([data-resolved-theme]) .entity-icon[data-placeholder="true"],
+  :root:not([data-theme]):not([data-resolved-theme]) .entity-icon[data-placeholder="true"] {
+    background: var(--og-surface-subtle);
+    color: var(--og-text-muted);
+  }
+}
+

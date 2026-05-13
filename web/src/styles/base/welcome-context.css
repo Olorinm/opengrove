@@ -1,0 +1,213 @@
+.thread-shell {
+  display: grid;
+  gap: var(--sp-6);
+  width: min(660px, 100%);
+  margin: 0 auto;
+}
+
+.thread-welcome {
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-6) var(--sp-6) var(--sp-5);
+  border: 1px solid var(--og-border);
+  border-radius: var(--r-lg);
+  background: var(--og-surface);
+  animation: fade-in var(--dur-normal) var(--ease-out);
+}
+
+.thread-welcome-copy {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.thread-welcome-kicker {
+  color: var(--c-muted);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+}
+
+.thread-welcome strong {
+  color: var(--c-text);
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+
+.thread-welcome p {
+  margin: 0;
+  color: var(--c-text-3);
+  font-size: var(--fs-md);
+  line-height: var(--lh-relaxed);
+}
+
+.thread-welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.prompt-chip {
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  padding: 7px var(--sp-3);
+  background: var(--og-surface-subtle);
+  color: var(--c-text);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+
+.prompt-chip:hover {
+  border-color: rgba(0, 0, 0, 0.08);
+  background: var(--c-surface-hover);
+}
+
+.workspace-band-title {
+  white-space: pre-wrap;
+}
+
+.workspace-summary {
+  white-space: pre-wrap;
+}
+
+.context-record {
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--og-surface);
+  overflow: visible;
+}
+
+.context-record > summary {
+  display: grid;
+  gap: var(--sp-1);
+  cursor: pointer;
+  padding: var(--sp-3);
+  color: var(--c-text);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-normal);
+  list-style: none;
+}
+
+.context-record > summary::-webkit-details-marker,
+.context-block > summary::-webkit-details-marker {
+  display: none;
+}
+
+.context-record > summary::after {
+  content: "展开";
+  color: var(--c-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+}
+
+.context-record[open] > summary::after {
+  content: "收起";
+}
+
+.context-record-body {
+  display: grid;
+  gap: var(--sp-3);
+  border-top: 1px solid var(--c-border);
+  padding: var(--sp-3);
+}
+
+.context-block {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.context-block > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.context-block-title {
+  color: var(--c-muted);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.04em;
+  line-height: var(--lh-tight);
+  text-transform: uppercase;
+}
+
+.context-pre {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--og-surface);
+  padding: var(--sp-3);
+  color: var(--c-text);
+  font: var(--fs-sm)/1.55 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.context-item-list {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.provider-capture-block {
+  display: grid;
+  gap: 10px;
+}
+
+.provider-capture-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.provider-capture-warning {
+  border-radius: var(--r-md);
+  background: rgba(201, 79, 36, 0.08);
+  padding: 8px 10px;
+  color: #9a391a;
+}
+
+.provider-capture-paths {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--opengrove-muted);
+  font: 11px/1.45 "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.provider-capture-paths span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-capture-flow-list {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.provider-capture-flow .panel-item-title {
+  white-space: normal;
+}
+
+.panel-item-text,
+.workspace-band-meta {
+  white-space: pre-wrap;
+}
+
+.panel-artifact-image {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  margin: 8px 0;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--r-lg);
+  background: #ffffff;
+  object-fit: contain;
+}
+

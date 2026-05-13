@@ -1,0 +1,72 @@
+/* Chat text density: smaller type and tighter reading rhythm. */
+.thread-stack {
+  gap: 30px;
+}
+
+.thread-user-stack,
+.thread-part-stack {
+  gap: 9px;
+}
+
+.thread-user-bubble {
+  padding: 8px 12px;
+  font-size: 14.5px;
+  line-height: 1.42;
+}
+
+.thread-text-block {
+  gap: 9px;
+  font-size: 14.5px;
+  line-height: 1.58;
+}
+
+.thread-md-p,
+.thread-md-list,
+.thread-md-heading {
+  line-height: 1.58;
+}
+
+.thread-md-heading {
+  line-height: 1.45;
+}
+
+.thread-md-heading.level-1 {
+  font-size: 15.5px;
+}
+
+.thread-md-heading.level-2,
+.thread-md-heading.level-3 {
+  font-size: 15px;
+}
+
+.thread-md-list {
+  gap: 5px;
+  padding-left: 22px;
+}
+
+.thread-md-list li {
+  padding-left: 1px;
+}
+
+.thread-md-inline-code,
+.thread-md-file-link {
+  padding: 0 4px 1px;
+  line-height: 1.3;
+}
+
+.thread-md-file-link {
+  padding: 0;
+}
+
+.thread-code-lang {
+  padding: 10px 12px 0;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.thread-code-block pre {
+  padding: 12px;
+  font-size: 13.5px;
+  line-height: 1.42;
+}
+

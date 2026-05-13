@@ -1,0 +1,144 @@
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.15);
+  z-index: var(--z-overlay);
+  animation: fade-in var(--dur-fast) var(--ease-out);
+}
+
+.modal-shell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-6);
+  z-index: var(--z-modal);
+  pointer-events: none;
+}
+
+.modal-card {
+  display: grid;
+  gap: var(--sp-3);
+  width: min(720px, 100%);
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--c-bg);
+  padding: var(--sp-6);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.08);
+  pointer-events: auto;
+  outline: 0;
+  animation: slide-up var(--dur-normal) var(--ease-out);
+}
+
+.modal-title {
+  color: var(--c-text);
+  font-size: 15px;
+  font-weight: var(--fw-bold);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.vault-create-dialog {
+  width: min(360px, calc(100vw - 32px));
+  gap: 14px;
+}
+
+.vault-create-dialog-subtitle {
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.vault-create-dialog-field {
+  display: grid;
+  gap: var(--sp-2);
+  color: var(--c-text-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.vault-create-dialog-field input {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-bg);
+  color: var(--c-text);
+  font: inherit;
+  font-size: var(--fs-md);
+  padding: 0 var(--sp-3);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.vault-create-dialog-field input:focus {
+  border-color: var(--c-muted);
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(88, 91, 82, 0.12);
+}
+
+.ghost-button,
+.primary-button,
+.danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  padding: 0 var(--sp-3);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  transition: background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    opacity var(--dur-fast) var(--ease);
+}
+
+.ghost-button {
+  border-color: var(--c-border);
+  background: rgba(255, 254, 250, 0.86);
+  color: var(--c-text-3);
+}
+
+.ghost-button:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text);
+}
+
+.primary-button {
+  border-color: var(--c-text-2);
+  background: var(--c-text-2);
+  color: var(--c-bg);
+}
+
+.primary-button:hover {
+  border-color: var(--c-text);
+  background: var(--c-text);
+}
+
+.danger-button {
+  border-color: #b94a3c;
+  background: #b94a3c;
+  color: var(--c-bg);
+}
+
+.danger-button:hover {
+  border-color: #943225;
+  background: #943225;
+}
+
+.ghost-button:disabled,
+.primary-button:disabled,
+.danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}

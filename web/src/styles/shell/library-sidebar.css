@@ -1,0 +1,134 @@
+/* Library sidebar mirrors the lighter project-list behavior. */
+.sidebar-panel-space {
+  gap: 10px;
+}
+
+.sidebar-space-header {
+  min-height: 32px;
+  padding: 0 6px 0 8px;
+}
+
+.sidebar-space-title {
+  color: #969a94;
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
+}
+
+.sidebar-space-kicker {
+  display: none;
+}
+
+.sidebar-space-actions {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.sidebar-space-header:hover .sidebar-space-actions,
+.sidebar-space-header:focus-within .sidebar-space-actions,
+.sidebar-space-actions.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sidebar-library-panel {
+  gap: 4px;
+  margin-top: 0;
+}
+
+.sidebar-library-search {
+  min-height: 30px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.045);
+  color: #868b86;
+  font-size: 13px;
+}
+
+.sidebar-library-files {
+  gap: 1px;
+  padding-right: 0;
+}
+
+.sidebar-vault-tree-item,
+.sidebar-vault-tree-children {
+  gap: 1px;
+}
+
+.sidebar-vault-tree-children {
+  margin-left: 0;
+  border-left: 0;
+  padding-left: 0;
+}
+
+.sidebar-library-file {
+  min-height: 30px;
+  border-radius: 10px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  color: #3f4441;
+  font-size: 13px;
+  font-weight: var(--fw-normal);
+}
+
+.sidebar-tree-folder {
+  grid-template-columns: 13px 17px minmax(0, 1fr) 22px;
+  gap: 6px;
+  color: #696d67;
+  font-weight: var(--fw-medium);
+}
+
+.sidebar-tree-file {
+  grid-template-columns: 17px minmax(0, 1fr) 22px;
+  gap: 7px;
+  color: #3f4441;
+  font-weight: var(--fw-normal);
+}
+
+.sidebar-library-file span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-tree-folder svg,
+.sidebar-tree-file svg {
+  color: #747973;
+  stroke-width: 1.8;
+}
+
+.sidebar-library-file:hover,
+.sidebar-library-file:focus-visible {
+  background: var(--codex-sidebar-hover);
+  color: #333733;
+}
+
+.sidebar-library-file[data-active="true"] {
+  background: var(--codex-sidebar-active);
+  color: #252824;
+  font-weight: var(--fw-normal);
+}
+
+.sidebar-tree-folder[data-active="true"] {
+  background: transparent;
+  color: #696d67;
+  font-weight: var(--fw-medium);
+}
+
+.sidebar-tree-folder[data-active="true"]:hover,
+.sidebar-tree-folder[data-active="true"]:focus-visible {
+  background: var(--codex-sidebar-hover);
+  color: #333733;
+}
+
+.sidebar-tree-more {
+  width: 22px;
+  height: 22px;
+}
+
+.sidebar-tree-more:hover,
+.sidebar-tree-more:focus-visible {
+  background: rgba(0, 0, 0, 0.06);
+}
+

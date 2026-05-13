@@ -1,0 +1,381 @@
+.composer-region {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 254, 250, 0.96) 30%,
+    var(--codex-bg) 58%
+  );
+}
+
+.opengrove-composer {
+  display: grid;
+  width: min(760px, calc(100% - 48px));
+  gap: 0;
+  margin: 0 auto;
+  padding: 8px;
+  border: 1px solid #e2ddd1;
+  border-radius: var(--r-xl);
+  background: rgba(255, 254, 250, 0.98);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.05);
+  overflow: visible;
+}
+
+.opengrove-model-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.opengrove-composer-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.opengrove-model-menu {
+  position: absolute;
+  top: auto;
+  bottom: calc(100% + 8px);
+  left: auto;
+  right: 0;
+  display: none;
+  box-sizing: border-box;
+  width: 224px;
+  max-height: var(--opengrove-model-menu-max-height, min(420px, 60vh));
+  overflow: auto;
+  gap: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.08);
+  padding: 7px;
+  z-index: 8;
+}
+
+.opengrove-access-menu {
+  right: auto;
+  left: 0;
+}
+
+.opengrove-model-menu[data-placement="down"] {
+  top: calc(100% + 8px);
+  bottom: auto;
+}
+
+.opengrove-model-menu[data-placement="up"] {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+.opengrove-model-menu[data-open="true"] {
+  display: grid;
+}
+
+.opengrove-model-menu-title {
+  padding: 7px 9px 4px;
+  color: var(--c-muted);
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  line-height: 1.2;
+}
+
+.opengrove-model-menu-title:not(:first-child) {
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.opengrove-model-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #363833;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: var(--fw-medium);
+  padding: 6px 9px;
+  text-align: left;
+}
+
+.opengrove-model-option:hover,
+.opengrove-model-option:focus-visible {
+  background: var(--c-surface-hover);
+  outline: 0;
+}
+
+.opengrove-model-option[data-danger="true"] {
+  color: #d84a12;
+}
+
+.opengrove-model-option-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opengrove-model-option-check::before {
+  content: "";
+}
+
+.opengrove-model-option[aria-selected="true"] .opengrove-model-option-check::before {
+  content: "✓";
+  color: #565952;
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+}
+
+.opengrove-composer-resize-handle {
+  display: none;
+}
+
+.opengrove-question-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-height: 40px;
+}
+
+.opengrove-question-line[data-skill="true"] {
+  padding-top: 3px;
+}
+
+.opengrove-skill-chip {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  gap: 6px;
+  min-height: 26px;
+  max-width: min(48%, 260px);
+  border: 0;
+  border-radius: var(--r-md);
+  background: #f3ebff;
+  margin-top: 0;
+  padding: 4px 8px;
+  color: #7c3aed;
+  font: inherit;
+  font-size: 13px;
+  font-weight: var(--fw-bold);
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.opengrove-skill-chip svg {
+  flex: 0 0 auto;
+  color: #7c3aed;
+}
+
+.opengrove-skill-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opengrove-skill-chip:hover,
+.opengrove-skill-chip:focus-visible {
+  background: #eadbff;
+  outline: 0;
+}
+
+.opengrove-question {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+  min-height: 40px;
+  max-height: 68px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  padding: 2px 2px 4px;
+  color: #202329;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: var(--fw-normal);
+  line-height: 1.5;
+  resize: none;
+}
+
+.opengrove-question::placeholder {
+  color: #b5bac1;
+}
+
+.opengrove-composer[data-skill="true"] .opengrove-question {
+  min-height: 40px;
+  padding-top: 3px;
+}
+
+.opengrove-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+}
+
+.opengrove-composer-footer-left,
+.opengrove-composer-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.opengrove-composer-footer-left {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.opengrove-composer-footer-right {
+  flex: 0 0 auto;
+}
+
+.opengrove-composer-plus {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  border: 0;
+  border-radius: var(--r-pill);
+  padding: 0;
+  color: var(--c-muted);
+  background: transparent;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.opengrove-composer-plus svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  stroke: currentColor;
+}
+
+.opengrove-composer-plus:hover {
+  background: var(--c-surface-hover);
+  color: var(--c-text-2);
+}
+
+.opengrove-action.opengrove-composer-plus:focus-visible {
+  border-color: transparent;
+  background: transparent;
+  outline: 0;
+  box-shadow: 0 0 0 2px rgba(52, 54, 48, 0.16);
+}
+
+.opengrove-model-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  min-height: 24px;
+  padding: 3px 7px;
+  color: #6f726c;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: var(--fw-normal);
+  line-height: 1;
+}
+
+.opengrove-model-button:hover,
+.opengrove-model-button[aria-expanded="true"] {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.opengrove-access-button[data-danger="true"] {
+  color: #f05a1a;
+}
+
+.opengrove-access-button[data-danger="true"]:hover,
+.opengrove-access-button[data-danger="true"][aria-expanded="true"] {
+  background: rgba(240, 90, 26, 0.09);
+}
+
+.opengrove-runtime-button {
+  background: transparent;
+  color: #656962;
+}
+
+.opengrove-runtime-button svg {
+  fill: currentColor;
+  stroke-width: 0;
+}
+
+.opengrove-runtime-button svg,
+.opengrove-access-button svg {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+}
+
+.opengrove-model-label {
+  font-weight: var(--fw-normal);
+}
+
+.opengrove-model-effort {
+  color: #8e918b;
+  font-weight: var(--fw-normal);
+}
+
+.opengrove-model-speed {
+  color: var(--c-text-2);
+  font-weight: var(--fw-medium);
+}
+
+.opengrove-model-option-with-description {
+  min-height: 48px;
+}
+
+.opengrove-model-option-description {
+  display: block;
+  margin-top: 3px;
+  color: var(--c-faint);
+  font-size: 11px;
+  font-weight: var(--fw-regular);
+  line-height: 1.2;
+}
+
+.opengrove-primary.opengrove-send {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  background: #343630;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.opengrove-primary.opengrove-send:hover {
+  background: #20221d;
+}
+
+.opengrove-composer-project-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin: 6px -8px -8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  background: var(--c-surface);
+  padding: 0 12px;
+  color: var(--c-muted);
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+  border-radius: 0 0 15px 15px;
+}
+

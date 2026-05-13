@@ -1,0 +1,89 @@
+/* Sidebar lockup correction: keep the app as a true left/right split. */
+.app-rail {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  padding: 14px 7px;
+}
+
+.app-rail-nav {
+  grid-row: 2;
+}
+
+.app-rail-bottom {
+  grid-row: 4;
+}
+
+.sidebar {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
+  border-right: 0;
+  padding: 14px 12px 16px;
+}
+
+.sidebar-brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 6px;
+  color: var(--og-text);
+}
+
+.sidebar-brand-mark {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--og-border);
+  border-radius: 12px;
+  background: var(--og-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.sidebar-brand-mark svg {
+  width: 23px;
+  height: 23px;
+}
+
+.sidebar-brand-word {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--og-text-strong);
+  font-size: 16px;
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.01em;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-brand-word span {
+  color: var(--og-green);
+}
+
+.nav-list {
+  min-height: 0;
+}
+
+.workspace,
+.app-shell[data-view="settings"] .workspace {
+  margin: 0;
+  border: 0;
+  border-left: 1px solid var(--og-border);
+  border-radius: 0;
+  background: var(--og-surface);
+  box-shadow: none;
+}
+
+.topbar {
+  min-height: 52px;
+}
+
+@media (max-width: 900px) {
+  .app-rail,
+  .sidebar {
+    padding-top: 0;
+  }
+}
+

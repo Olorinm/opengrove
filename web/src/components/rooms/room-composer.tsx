@@ -3,7 +3,7 @@ import { AtSign, CirclePlus, Image as ImageIcon, SendHorizontal, X } from "lucid
 import type { AttachmentPayload } from "../../bridge";
 import { attachmentIcon, formatAttachmentMeta } from "../../runtime/ui-model";
 import { RoomMemberAvatar } from "./member-avatar";
-import type { RoomMember } from "./rooms-storage";
+import type { RoomMember } from "./rooms-model";
 
 export type MentionOption =
   | {

@@ -1,0 +1,226 @@
+.thread-choice-form {
+  display: grid;
+  gap: 10px;
+  max-width: min(760px, 100%);
+  margin-top: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--r-lg);
+  background: rgba(255, 254, 250, 0.92);
+  padding: 12px;
+}
+
+.thread-choice-form-header {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+}
+
+.thread-choice-form-kicker {
+  color: var(--c-muted);
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+}
+
+.thread-choice-form-title {
+  margin-top: 2px;
+  color: #202329;
+  font-size: 14px;
+  font-weight: var(--fw-bold);
+  line-height: 1.35;
+}
+
+.thread-choice-form-instructions {
+  color: var(--c-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.thread-choice-question-list {
+  display: grid;
+  gap: 10px;
+}
+
+.thread-choice-question {
+  display: grid;
+  gap: 7px;
+}
+
+.thread-choice-question-title {
+  color: var(--c-text-3);
+  font-size: 12px;
+  font-weight: var(--fw-bold);
+  line-height: 1.4;
+}
+
+.thread-choice-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.thread-choice-option {
+  display: flex;
+  align-items: start;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 5px;
+  width: 100%;
+  min-height: 58px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--r-lg);
+  background: var(--c-bg);
+  padding: 9px 10px;
+  color: #5c5f57;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+  line-height: 1.2;
+  text-align: left;
+}
+
+.thread-choice-option small {
+  color: var(--c-muted);
+  font-size: 11px;
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
+}
+
+.thread-choice-option:hover,
+.thread-choice-option:focus-visible,
+.thread-choice-option:disabled {
+  background: var(--c-surface);
+  color: #252721;
+  outline: 0;
+}
+
+.thread-choice-option:disabled {
+  cursor: default;
+}
+
+.thread-choice-option.selected {
+  border-color: rgba(201, 79, 36, 0.44);
+  background: rgba(201, 79, 36, 0.08);
+  color: #8c3b24;
+}
+
+.thread-approval-actions.compact {
+  margin-top: 8px;
+}
+
+.panel-item[data-mode="summary"] .panel-item-actions {
+  justify-content: flex-start;
+}
+
+.thread-card-description {
+  color: #586272;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.thread-details {
+  display: grid;
+  gap: 8px;
+  border-top: 1px dashed rgba(31, 41, 55, 0.12);
+  padding-top: 10px;
+}
+
+.thread-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+  cursor: pointer;
+  color: var(--c-muted);
+  font-size: 12px;
+  font-weight: var(--fw-bold);
+  line-height: 1.45;
+}
+
+.thread-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.thread-details summary::after {
+  content: "展开";
+  color: #98a2b3;
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+}
+
+.thread-details[open] summary::after {
+  content: "收起";
+}
+
+.thread-pre {
+  margin: 0;
+  color: var(--opengrove-text);
+  font-size: 12px;
+  line-height: 1.58;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.thread-approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.thread-approval-input-label {
+  display: grid;
+  gap: 7px;
+  color: var(--opengrove-muted);
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+}
+
+.thread-approval-input-label.compact {
+  margin-top: 8px;
+  max-width: min(520px, 100%);
+}
+
+.thread-approval-input {
+  width: 100%;
+  min-height: 82px;
+  resize: vertical;
+  border: 1px solid rgba(31, 41, 55, 0.16);
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--opengrove-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  padding: 10px 11px;
+  outline: none;
+}
+
+.thread-approval-input:focus {
+  border-color: rgba(31, 41, 55, 0.34);
+  box-shadow: 0 0 0 3px rgba(31, 41, 55, 0.06);
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes thinking-text-sheen {
+  0% {
+    background-position: 150% 0;
+  }
+
+  100% {
+    background-position: -70% 0;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -149,7 +149,7 @@ export class HermesRuntime implements AgentRuntime {
       diagnosticPrefix: "hermes.acp",
       toolFailureMessage: "Hermes tool failed",
       onAssistantText(text) {
-        assistantText += text;
+        assistantText += stripHermesTemplateTokens(text);
       },
     });
 
@@ -197,6 +197,11 @@ export class HermesRuntime implements AgentRuntime {
       if (readString(params, "sessionId") !== nativeSession.sessionId) return;
       const update = asObject(params.update);
       for (const event of projector.project(update)) {
+        if (event.type === "assistant.delta") {
+          const text = stripHermesTemplateTokens(event.text);
+          if (text) queue.push({ ...event, text });
+          continue;
+        }
         queue.push(event);
       }
     });
@@ -228,7 +233,8 @@ export class HermesRuntime implements AgentRuntime {
         },
       );
       const usage = readAcpUsage(response);
-      if (!assistantText.trim()) {
+      const finalText = cleanHermesAssistantText(assistantText);
+      if (!finalText.trim()) {
         const diagnostic = this.readHermesFailureDiagnostic() || client.stderr().trim();
         if (diagnostic) {
           queue.push({
@@ -239,11 +245,18 @@ export class HermesRuntime implements AgentRuntime {
             data: { diagnostic },
           });
         }
+        queue.push({
+          type: "error",
+          runId,
+          message: diagnostic || "hermes_empty_response",
+        });
+        queue.push({ type: "turn.finished", runId, at: new Date().toISOString() });
+        return;
       }
       queue.push({
         type: "model.response",
         runId,
-        response: { text: assistantText.trimEnd(), ...(usage ? { usage } : {}) },
+        response: { text: finalText, ...(usage ? { usage } : {}) },
       });
       queue.push({ type: "turn.finished", runId, at: new Date().toISOString() });
     } catch (error) {
@@ -368,7 +381,7 @@ export class HermesRuntime implements AgentRuntime {
       };
       return;
     }
-    const finalText = stdout.trimEnd();
+    const finalText = cleanHermesAssistantText(stdout);
     if (finalText) {
       yield { type: "assistant.delta", runId, text: finalText };
     }
@@ -781,6 +794,14 @@ function toStableHermesSessionId(input: string): string {
 function normalizeOptionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function cleanHermesAssistantText(value: string): string {
+  return stripHermesTemplateTokens(value).trimEnd();
+}
+
+function stripHermesTemplateTokens(value: string): string {
+  return value.replace(/<\|(?:assistant|user|system|observation|tool|end|endoftext)\|>/g, "");
 }
 
 function createHermesAcpApproval(

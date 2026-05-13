@@ -189,6 +189,7 @@ export function normalizePersistedAgentState(input: unknown): PersistedAgentStat
     input && typeof input === "object" && !Array.isArray(input)
       ? (input as Record<string, unknown>)
       : {};
+  const runs = Array.isArray(object.runs) ? object.runs as RunRecord[] : [];
   return {
     version: 8,
     savedAt: typeof object.savedAt === "string" ? object.savedAt : new Date().toISOString(),
@@ -219,24 +220,63 @@ export function normalizePersistedAgentState(input: unknown): PersistedAgentStat
     events: Array.isArray(object.events) ? object.events as AgentEvent[] : [],
     routines: Array.isArray(object.routines) ? object.routines as Routine[] : [],
     sessions: Array.isArray(object.sessions) ? object.sessions as SessionRecord[] : [],
-    runs: Array.isArray(object.runs) ? object.runs as RunRecord[] : [],
+    runs,
     executions: Array.isArray(object.executions) ? object.executions as ExecutionRecord[] : [],
-    rooms: normalizeRoomChannelState(object.rooms),
+    rooms: normalizeRoomChannelState(
+      object.rooms,
+      runs,
+      Array.isArray(object.events) ? object.events as AgentEvent[] : [],
+    ),
   };
 }
 
 const normalizeState = normalizePersistedAgentState;
 
-function normalizeRoomChannelState(input: unknown): RoomChannelSnapshot {
+function normalizeRoomChannelState(
+  input: unknown,
+  runs: RunRecord[] = [],
+  events: AgentEvent[] = [],
+): RoomChannelSnapshot {
   const object = input && typeof input === "object" && !Array.isArray(input)
     ? input as Partial<RoomChannelSnapshot>
     : {};
+  const runsById = new Map(runs.map((run) => [run.id, run]));
+  const roomRunErrors = roomRunErrorsById(events);
   return {
     version: 1,
     currentEventSeq: typeof object.currentEventSeq === "number" ? object.currentEventSeq : 0,
     rooms: Array.isArray(object.rooms) ? object.rooms as RoomChannelSnapshot["rooms"] : [],
     members: Array.isArray(object.members) ? object.members as RoomChannelSnapshot["members"] : [],
-    messages: Array.isArray(object.messages) ? object.messages as RoomChannelSnapshot["messages"] : [],
+    messages: Array.isArray(object.messages)
+      ? (object.messages as RoomChannelSnapshot["messages"]).map((message) => {
+          if (message.text.trim() || !message.runId) return message;
+          if (message.status !== "failed" && message.status !== "done") return message;
+          const error = roomRunErrors.get(message.runId) || String(runsById.get(message.runId)?.error || "").trim();
+          return error ? { ...message, text: error, status: "failed" } : message;
+        })
+      : [],
     events: Array.isArray(object.events) ? object.events as RoomChannelSnapshot["events"] : [],
+    deletedMemberIds: Array.isArray(object.deletedMemberIds) ? object.deletedMemberIds.map(String).filter(Boolean) : [],
   };
+}
+
+function roomRunErrorsById(events: AgentEvent[]): Map<string, string> {
+  const errors = new Map<string, string>();
+  for (const event of events) {
+    if (!event.runId?.startsWith("room_run_")) continue;
+    if (event.type === "error" && event.message.trim()) {
+      errors.set(event.runId, event.message.trim());
+      continue;
+    }
+    if (event.type === "runtime.diagnostic" && event.name === "hermes.acp.empty_response_diagnostic") {
+      const data = event.data && typeof event.data === "object" && !Array.isArray(event.data)
+        ? event.data as Record<string, unknown>
+        : {};
+      const diagnostic = typeof data.diagnostic === "string" ? data.diagnostic.trim() : "";
+      if (diagnostic) {
+        errors.set(event.runId, diagnostic);
+      }
+    }
+  }
+  return errors;
 }

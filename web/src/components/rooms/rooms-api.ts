@@ -1,5 +1,5 @@
 import { bridgeHeaders, fetchJson, postJson } from "../../bridge";
-import type { Room, RoomMember, RoomMessage } from "./rooms-storage";
+import type { Room, RoomMember, RoomMessage } from "./rooms-model";
 
 export type ServerRoomMessage = RoomMessage & {
   roomId: string;
@@ -13,11 +13,12 @@ export type RoomsInitResponse = {
   members: RoomMember[];
   messages: ServerRoomMessage[];
   currentEventSeq: number;
+  deletedMemberIds?: string[];
 };
 
 export type RoomEvent = {
   eventSeq: number;
-  type: "room.created" | "room.updated" | "room.member.added" | "room.member.removed" | "room.message.created" | "room.message.updated";
+  type: "room.created" | "room.updated" | "room.member.added" | "room.member.updated" | "room.member.removed" | "room.message.created" | "room.message.updated";
   roomId: string;
   messageId?: string;
   memberId?: string;
@@ -44,8 +45,8 @@ export async function fetchRoomsInit(limit = 80): Promise<RoomsInitResponse> {
   return fetchJson<RoomsInitResponse>(`/rooms?limit=${limit}`, { headers: bridgeHeaders(false) });
 }
 
-export async function fetchRoomEvents(afterEventSeq: number): Promise<RoomsEventsResponse> {
-  return fetchJson<RoomsEventsResponse>(`/rooms/events?afterEventSeq=${afterEventSeq}`, { headers: bridgeHeaders(false) });
+export async function fetchRoomEvents(afterEventSeq: number, limit = 200): Promise<RoomsEventsResponse> {
+  return fetchJson<RoomsEventsResponse>(`/rooms/events?afterEventSeq=${afterEventSeq}&limit=${limit}`, { headers: bridgeHeaders(false) });
 }
 
 export async function postServerRoomMessage(input: {
@@ -71,6 +72,7 @@ export async function createServerRoom(room: Room): Promise<void> {
     title: room.title,
     memberIds: room.memberIds,
     badge: room.badge,
+    matrix: room.matrix,
   });
 }
 
@@ -78,8 +80,20 @@ export async function openServerDirectRoom(memberId: string, title?: string): Pr
   await postJson("/rooms/dm", { memberId, title });
 }
 
-export async function patchServerRoom(roomId: string, patch: Partial<Pick<Room, "title" | "pinned" | "badge">> & { archived?: boolean }): Promise<void> {
+export async function patchServerRoom(roomId: string, patch: Partial<Pick<Room, "title" | "pinned" | "badge" | "matrix">> & { archived?: boolean }): Promise<void> {
   await fetchJson(`/rooms/${encodeURIComponent(roomId)}`, {
+    method: "PATCH",
+    headers: bridgeHeaders(),
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function upsertServerRoomMember(member: RoomMember): Promise<void> {
+  await postJson("/rooms/members", member);
+}
+
+export async function patchServerRoomMember(memberId: string, patch: Partial<RoomMember>): Promise<void> {
+  await fetchJson(`/rooms/members/${encodeURIComponent(memberId)}`, {
     method: "PATCH",
     headers: bridgeHeaders(),
     body: JSON.stringify(patch),
@@ -114,8 +128,25 @@ export function roomsFromServerSnapshot(snapshot: RoomsInitResponse): Room[] {
   }
   return snapshot.rooms.map((room) => ({
     ...room,
-    messages: (messagesByRoom.get(room.id) ?? []).sort(messageSort),
+    messages: (messagesByRoom.get(room.id) ?? []).sort(sortRoomMessages),
   })).filter((room) => !room.archived);
+}
+
+export function mergeRoomsFromServerSnapshot(
+  currentRooms: Room[],
+  currentMembers: RoomMember[],
+  currentDeletedMemberIds: string[],
+  snapshot: RoomsInitResponse,
+): { rooms: Room[]; members: RoomMember[]; deletedMemberIds: string[] } {
+  const serverRooms = roomsFromServerSnapshot(snapshot);
+  const rooms = mergeRoomLists(currentRooms, serverRooms);
+  const members = mergeMemberLists(currentMembers, snapshot.members);
+  const deletedMemberIds = uniqueIds([
+    ...currentDeletedMemberIds,
+    ...(snapshot.deletedMemberIds ?? []),
+    ...members.filter((member) => member.disabled).map((member) => member.id),
+  ]);
+  return { rooms, members, deletedMemberIds };
 }
 
 export function applyRoomEvents(
@@ -134,8 +165,8 @@ export function applyRoomEvents(
     } else if (event.type === "room.updated" && room) {
       nextRooms = room.archived
         ? nextRooms.filter((item) => item.id !== room.id)
-        : nextRooms.map((item) => item.id === room.id ? { ...item, ...room, messages: item.messages } : item);
-    } else if (event.type === "room.member.added" && member) {
+        : nextRooms.map((item) => item.id === room.id ? mergeRoomRecord(item, { ...room, messages: item.messages }) : item);
+    } else if ((event.type === "room.member.added" || event.type === "room.member.updated") && member) {
       nextMembers = upsertMember(nextMembers, member);
       if (event.roomId) {
         nextRooms = nextRooms.map((item) => item.id === event.roomId && !item.memberIds.includes(member.id)
@@ -160,13 +191,53 @@ export function applyRoomEvents(
 function upsertRoom(rooms: Room[], room: Room): Room[] {
   const index = rooms.findIndex((item) => item.id === room.id);
   if (index < 0) return [room, ...rooms];
-  return rooms.map((item) => item.id === room.id ? { ...room, messages: item.messages } : item);
+  return rooms.map((item) => item.id === room.id ? mergeRoomRecord(item, { ...room, messages: item.messages }) : item);
 }
 
 function upsertMember(members: RoomMember[], member: RoomMember): RoomMember[] {
   return members.some((item) => item.id === member.id)
     ? members.map((item) => item.id === member.id ? { ...item, ...member } : item)
     : [...members, member];
+}
+
+function mergeRoomLists(currentRooms: Room[], incomingRooms: Room[]): Room[] {
+  const byId = new Map(currentRooms.map((room) => [room.id, room]));
+  for (const incoming of incomingRooms) {
+    const current = byId.get(incoming.id);
+    byId.set(incoming.id, current ? mergeRoomRecord(current, incoming) : incoming);
+  }
+  return [...byId.values()]
+    .filter((room) => !room.archived)
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+}
+
+function mergeRoomRecord(current: Room, incoming: Room): Room {
+  const messages = mergeMessageLists(current.messages, incoming.messages);
+  return {
+    ...current,
+    ...incoming,
+    matrix: incoming.matrix ?? current.matrix,
+    memberIds: incoming.memberIds.length ? uniqueIds(incoming.memberIds) : current.memberIds,
+    messages,
+  };
+}
+
+function mergeMemberLists(currentMembers: RoomMember[], incomingMembers: RoomMember[]): RoomMember[] {
+  const byId = new Map(currentMembers.map((member) => [member.id, member]));
+  for (const incoming of incomingMembers) {
+    const current = byId.get(incoming.id);
+    byId.set(incoming.id, current ? { ...current, ...incoming } : incoming);
+  }
+  return [...byId.values()];
+}
+
+function mergeMessageLists(currentMessages: RoomMessage[], incomingMessages: RoomMessage[]): RoomMessage[] {
+  const byId = new Map(currentMessages.map((message) => [message.id, message]));
+  for (const incoming of incomingMessages) {
+    const current = byId.get(incoming.id);
+    byId.set(incoming.id, current ? { ...current, ...incoming } : incoming);
+  }
+  return [...byId.values()].sort(sortRoomMessages);
 }
 
 function upsertRoomMessage(rooms: Room[], roomId: string, message: ServerRoomMessage): Room[] {
@@ -179,7 +250,7 @@ function upsertRoomMessage(rooms: Room[], roomId: string, message: ServerRoomMes
     return {
       ...room,
       updatedAt: message.updatedAt || message.createdAt || room.updatedAt,
-      messages: messages.sort(messageSort),
+      messages: messages.sort(sortRoomMessages),
     };
   });
 }
@@ -197,10 +268,27 @@ function applyMessageMemberStatus(members: RoomMember[], message: ServerRoomMess
   return members.map((member) => member.id === message.senderId ? { ...member, status, lastActive: "just now" } : member);
 }
 
-function messageSort(left: RoomMessage, right: RoomMessage): number {
-  const leftSeq = typeof (left as ServerRoomMessage).channelSeq === "number" ? (left as ServerRoomMessage).channelSeq : 0;
-  const rightSeq = typeof (right as ServerRoomMessage).channelSeq === "number" ? (right as ServerRoomMessage).channelSeq : 0;
-  return leftSeq - rightSeq || left.createdAt.localeCompare(right.createdAt);
+export function sortRoomMessages(left: RoomMessage, right: RoomMessage): number {
+  const leftSeq = typeof (left as ServerRoomMessage).channelSeq === "number" ? (left as ServerRoomMessage).channelSeq : undefined;
+  const rightSeq = typeof (right as ServerRoomMessage).channelSeq === "number" ? (right as ServerRoomMessage).channelSeq : undefined;
+  if (leftSeq !== undefined && rightSeq !== undefined && leftSeq !== rightSeq) {
+    return leftSeq - rightSeq;
+  }
+  return (
+    Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
+    roomSenderOrder(left) - roomSenderOrder(right) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function roomSenderOrder(message: RoomMessage): number {
+  if (message.senderType === "system") return 0;
+  if (message.senderType === "user") return 1;
+  return 2;
+}
+
+function uniqueIds(values: string[]): string[] {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
 function readRoom(value: unknown): Omit<Room, "messages"> | null {

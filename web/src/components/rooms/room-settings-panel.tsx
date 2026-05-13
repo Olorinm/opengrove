@@ -8,10 +8,10 @@ import {
   memberModelLabel,
   roomMemberSourceDetail,
   roomMemberSourceLabel,
-  statusLabel,
+  roomMemberStatusLabel,
   type Room,
   type RoomMember,
-} from "./rooms-storage";
+} from "./rooms-model";
 
 export type RoomMemberPickerMode = "add" | "remove" | null;
 
@@ -141,7 +141,7 @@ export function RoomSettingsPanel(props: RoomSettingsPanelProps) {
                   {member.id === ROOM_OWNER_MEMBER.id ? <span>群主</span> : <span>{roomMemberSourceLabel(member)}</span>}
                 </div>
                 <p>{member.role}</p>
-                <small>{roomMemberSourceDetail(member)} · {statusLabel(member.status)}</small>
+                <small>{roomMemberSourceDetail(member)} · {roomMemberStatusLabel(member)}</small>
               </div>
             </div>
           )) : <div className="rooms-empty-row">没有匹配成员</div>}

@@ -1,5 +1,5 @@
 import { postJson } from "../../bridge";
-import { nowIso, type Room } from "./rooms-storage";
+import { nowIso, type Room } from "./rooms-model";
 
 export type RemoteRoomInvitePayload = {
   provider?: "matrix";

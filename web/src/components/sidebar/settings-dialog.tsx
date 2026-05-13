@@ -699,10 +699,22 @@ export function SettingsDialog(props: {
                                 />
                               </label>
                               <label>
+                                <span>{t("settings.apiKey")}</span>
+                                <input
+                                  autoComplete="off"
+                                  type="password"
+                                  value={detailForm.apiKey}
+                                  onChange={(event) => updateProviderField("apiKey", event.target.value)}
+                                  onBlur={saveProviderProfile}
+                                  placeholder={t("settings.apiKeyPlaceholder")}
+                                />
+                              </label>
+                              <label>
                                 <span>{t("settings.apiKeyEnv")}</span>
                                 <input
                                   value={detailForm.apiKeyEnv}
                                   onChange={(event) => updateProviderField("apiKeyEnv", event.target.value)}
+                                  onBlur={saveProviderProfile}
                                   placeholder="OPENGROVE_VOLC_CODING_API_KEY"
                                 />
                               </label>
@@ -863,11 +875,24 @@ export function SettingsDialog(props: {
                                     />
                                   </label>
                                   <label>
+                                    <span>{t("settings.apiKey")}</span>
+                                    <input
+                                      autoComplete="off"
+                                      type="password"
+                                      value={detailForm.apiKey}
+                                      readOnly={!providerDetailEditable}
+                                      onChange={(event) => updateProviderField("apiKey", event.target.value)}
+                                      onBlur={saveProviderProfile}
+                                      placeholder={t("settings.apiKeyPlaceholder")}
+                                    />
+                                  </label>
+                                  <label>
                                     <span>{t("settings.apiKeyEnv")}</span>
                                     <input
                                       value={detailForm.apiKeyEnv}
                                       readOnly={!providerDetailEditable}
                                       onChange={(event) => updateProviderField("apiKeyEnv", event.target.value)}
+                                      onBlur={saveProviderProfile}
                                       placeholder="OPENGROVE_VOLC_CODING_API_KEY"
                                     />
                                   </label>
@@ -1299,6 +1324,7 @@ type ProviderFormState = {
   openaiBaseUrl: string;
   anthropicBaseUrl: string;
   geminiBaseUrl: string;
+  apiKey: string;
   apiKeyEnv: string;
   models: string;
 };
@@ -1317,6 +1343,7 @@ function emptyProviderForm(): ProviderFormState {
     openaiBaseUrl: "",
     anthropicBaseUrl: "",
     geminiBaseUrl: "",
+    apiKey: "",
     apiKeyEnv: "",
     models: "",
   };
@@ -1339,8 +1366,8 @@ function providerProfileFromForm(form: ProviderFormState): ProviderProfile | und
   const name = form.name.trim();
   if (!id || !name) return undefined;
   const nativeAuth = isNativeAuthProtocol(form.protocol);
-  const keyInput = form.apiKeyEnv.trim();
-  const keyIsEnv = isEnvironmentVariableName(keyInput);
+  const apiKey = form.apiKey.trim();
+  const apiKeyEnv = form.apiKeyEnv.trim();
   return {
     id,
     name,
@@ -1352,9 +1379,9 @@ function providerProfileFromForm(form: ProviderFormState): ProviderProfile | und
     openaiBaseUrl: nativeAuth ? undefined : form.openaiBaseUrl.trim() || undefined,
     anthropicBaseUrl: nativeAuth ? undefined : form.anthropicBaseUrl.trim() || undefined,
     geminiBaseUrl: nativeAuth ? undefined : form.geminiBaseUrl.trim() || undefined,
-    apiKey: nativeAuth || keyIsEnv ? undefined : keyInput || undefined,
-    apiKeyEnv: nativeAuth || !keyIsEnv ? undefined : keyInput || undefined,
-    credentialKind: nativeAuth ? "native-login" : keyInput ? (keyIsEnv ? "env-key" : "api-key") : "none",
+    apiKey: nativeAuth ? undefined : apiKey || undefined,
+    apiKeyEnv: nativeAuth ? undefined : apiKeyEnv || undefined,
+    credentialKind: nativeAuth ? "native-login" : apiKey ? "api-key" : apiKeyEnv ? "env-key" : "none",
     models: form.models
       .split(",")
       .map((item) => item.trim())
@@ -1372,7 +1399,8 @@ function providerFormFromProfile(provider: ProviderProfile): ProviderFormState {
     openaiBaseUrl: provider.openaiBaseUrl || "",
     anthropicBaseUrl: provider.anthropicBaseUrl || "",
     geminiBaseUrl: provider.geminiBaseUrl || "",
-    apiKeyEnv: provider.apiKey || provider.apiKeyEnv || "",
+    apiKey: provider.apiKey || "",
+    apiKeyEnv: provider.apiKeyEnv || "",
     models: (provider.models ?? []).map((model) => model.id).join(", "),
   };
 }
@@ -1603,10 +1631,6 @@ function slug(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function isEnvironmentVariableName(value: string): boolean {
-  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
-}
-
 type InlineSelectOption = { id: string; label: string; icon?: ReactNode };
 
 function InlineSelect(props: {
@@ -1702,9 +1726,15 @@ function sectionDescription(value: SettingsSectionId, t: TranslationFn): string 
 }
 
 function formatKernelLabel(value: string | undefined): string {
-  if (value === "claude-code") return "Claude Code kernel";
-  if (value === "codex") return "Codex kernel";
-  if (value === "hermes") return "Hermes kernel";
-  if (value === "pi") return "Pi kernel";
-  return "";
+  return {
+    codex: "Codex kernel",
+    "claude-code": "Claude Code kernel",
+    hermes: "Hermes kernel",
+    pi: "Pi kernel",
+    openclaw: "OpenClaw kernel",
+    "gemini-cli": "Gemini CLI kernel",
+    "deepseek-tui": "DeepSeek TUI kernel",
+    "qwen-code": "Qwen Code kernel",
+    opencode: "OpenCode kernel",
+  }[value || ""] ?? "";
 }

@@ -1,0 +1,90 @@
+/* Visual cleanup: title areas should breathe through spacing, not extra horizontal rules. */
+.panel-header,
+.room-header,
+.contacts-main-header {
+  border-bottom: 0;
+}
+
+.project-item-copy {
+  display: block;
+  min-width: 0;
+}
+
+.project-item-title {
+  display: block;
+  min-width: 0;
+  color: inherit;
+  font-size: 13px;
+  font-weight: inherit;
+  line-height: 1.35;
+}
+
+.project-item-context {
+  display: none;
+}
+
+.project-thread-list {
+  gap: 1px;
+  padding-left: 30px;
+}
+
+.project-thread-list .thread-item {
+  position: relative;
+  min-height: 30px;
+  border-radius: 10px;
+  padding: 5px 8px 5px 10px;
+  color: #3f4441;
+  font-size: 13px;
+  font-weight: var(--fw-normal);
+}
+
+.project-thread-list .thread-item span:first-child {
+  color: inherit;
+  font-weight: var(--fw-normal);
+  line-height: 1.35;
+}
+
+.project-thread-list .thread-item .thread-item-meta {
+  position: absolute;
+  right: 10px;
+  color: #8f948f;
+  font-size: 12px;
+  font-weight: var(--fw-normal);
+}
+
+.thread-item.active {
+  background: var(--codex-sidebar-active);
+  color: #252824;
+  font-weight: var(--fw-normal);
+}
+
+.thread-item.running .thread-item-meta {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+}
+
+.thread-running-indicator {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(70, 75, 70, 0.22);
+  border-top-color: #687069;
+  border-radius: 999px;
+  animation: thread-running-spin 800ms linear infinite;
+}
+
+@keyframes thread-running-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread-running-indicator {
+    animation: none;
+  }
+}
+

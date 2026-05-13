@@ -426,6 +426,7 @@ export interface MatrixRoomBinding {
   homeserverUrl: string;
   title: string;
   createdAt: string;
+  syncToken?: string;
 }
 
 export interface BridgeSettings {

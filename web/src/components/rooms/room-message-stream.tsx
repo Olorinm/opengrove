@@ -9,11 +9,11 @@ import { RoomMemberAvatar } from "./member-avatar";
 import {
   cloneMessageParts,
   formatShortTime,
-  isRoomActivityEvent,
   roomActivityParts,
   roomMessageToStored,
+  shouldUseRoomActivityEvent,
 } from "./room-message-model";
-import type { MessageStatus, RoomMember, RoomMessage } from "./rooms-storage";
+import type { MessageStatus, RoomMember, RoomMessage } from "./rooms-model";
 
 export function RoomMessageStream(props: {
   messages: RoomMessage[];
@@ -116,19 +116,34 @@ function RoomMessageItem(props: {
 }
 
 function roomDisplayParts(message: RoomMessage, runtimeEventsForRun: AgentEventRecord[] | undefined): MessagePart[] {
-  const messageParts = cloneMessageParts(message.parts);
+  const messageParts = cloneMessageParts(message.parts).filter((part) => !isDuplicateFinalErrorNote(message, part));
   const hasActivityParts = roomActivityParts(messageParts).length > 0;
   if (hasActivityParts || !runtimeEventsForRun?.length) {
     return messageParts;
   }
 
+  const activityEvents = runtimeEventsForRun.filter((event) => shouldUseRoomActivityEvent(event, message.status, message.text));
+  if (!activityEvents.length) {
+    return messageParts;
+  }
+
   const stored = roomMessageToStored({ ...message, text: "", parts: [] });
-  for (const event of runtimeEventsForRun) {
-    if (isRoomActivityEvent(event)) {
-      applyStreamEventToMessage(stored, event);
-    }
+  for (const event of activityEvents) {
+    applyStreamEventToMessage(stored, event);
   }
   return [...stored.parts, ...messageParts];
+}
+
+function isDuplicateFinalErrorNote(message: RoomMessage, part: MessagePart): boolean {
+  if (message.status === "running" || part.type !== "note" || part.tone !== "error") {
+    return false;
+  }
+  const noteText = part.text.trim();
+  const messageText = message.text.trim();
+  return Boolean(
+    messageText &&
+    (noteText === messageText || noteText === `模型调用出错：${messageText}` || messageText === `模型调用出错：${noteText}`),
+  );
 }
 
 type RoomPartGroup =

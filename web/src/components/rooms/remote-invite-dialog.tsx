@@ -2,16 +2,17 @@ import { X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { RoomMemberAvatar } from "./member-avatar";
 import type { RemoteRoomInvitePayload } from "./room-invites";
-import { memberModelLabel, type RoomMember } from "./rooms-storage";
+import { memberModelLabel, type RoomMember } from "./rooms-model";
 
 export function RemoteInviteDialog(props: {
   invite: RemoteRoomInvitePayload | null;
+  errorMessage?: string;
   members: RoomMember[];
   onAccept(member: RoomMember): void;
   onClose(): void;
   onCreateEmployee(): void;
 }) {
-  const localMembers = props.members.filter((member) => !member.source || member.source === "local");
+  const localMembers = props.members.filter((member) => !member.disabled && (!member.source || member.source === "local"));
   return (
     <Dialog open={Boolean(props.invite)} onOpenChange={(open) => {
       if (!open) props.onClose();
@@ -21,6 +22,7 @@ export function RemoteInviteDialog(props: {
         <div className="vault-create-dialog-subtitle">
           {props.invite ? `${props.invite.inviterName} 邀请你加入 ${props.invite.roomTitle}` : ""}
         </div>
+        {props.errorMessage ? <div className="employee-dialog-warning">{props.errorMessage}</div> : null}
         <section className="rooms-create-group-members">
           <div className="rooms-create-group-title">
             <strong>选择一个员工加入</strong>

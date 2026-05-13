@@ -1,0 +1,119 @@
+.settings-dialog-card {
+  width: min(560px, 100%);
+  gap: 16px;
+  padding: 18px;
+}
+
+.settings-dialog-body {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding-top: 14px;
+}
+
+.settings-section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.settings-section-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-section-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: var(--fw-bold);
+}
+
+.settings-section-note,
+.settings-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.settings-select {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 10px;
+  font: inherit;
+}
+
+.settings-switch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.settings-switch-row input {
+  width: 36px;
+  height: 20px;
+  accent-color: var(--codex-accent);
+}
+
+.settings-capture-grid {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 7px 10px;
+  align-items: center;
+  border-radius: var(--r-md);
+  background: rgba(0, 0, 0, 0.04);
+  padding: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-capture-grid code,
+.settings-help code {
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text);
+  padding: 2px 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-capture-grid strong {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+
+.settings-warning {
+  margin: 0;
+  border-radius: var(--r-md);
+  background: rgba(201, 79, 36, 0.08);
+  color: #9a391a;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-restart-note {
+  margin: 0;
+  border-radius: var(--r-md);
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.settings-actions {
+  padding-top: 2px;
+}
+

@@ -4,7 +4,7 @@ import { ThemedPixelIcon } from "../sidebar/app-navigation";
 import { KernelIcon } from "../ui/entity-icons";
 import { RoomGroupAvatar } from "./room-group-avatar";
 import { formatRoomPreview, formatShortTime } from "./room-message-model";
-import { roomMemberSourceDetail, roomMemberSourceLabel, statusLabel, type Room, type RoomMember } from "./rooms-storage";
+import { roomMemberSourceDetail, roomMemberSourceLabel, roomMemberStatusLabel, type Room, type RoomMember } from "./rooms-model";
 
 type RoomSidebarProps = {
   activeRoom: Room;
@@ -34,6 +34,7 @@ export function RoomSidebar(props: RoomSidebarProps) {
     : [];
   const kernelSearchResults = query
     ? props.members.filter((member) => {
+        if (member.disabled) return false;
         const text = `${member.name} ${member.kernel} ${member.role} ${member.model}`.toLowerCase();
         const sourceText = `${roomMemberSourceLabel(member)} ${roomMemberSourceDetail(member)}`.toLowerCase();
         return `${text} ${sourceText}`.includes(query);
@@ -103,7 +104,7 @@ export function RoomSidebar(props: RoomSidebarProps) {
                       </span>
                       <span className="rooms-list-copy">
                         <span className="rooms-list-name">{member.name}</span>
-                        <span className="rooms-list-preview">{roomMemberSourceLabel(member)} · {statusLabel(member.status)}</span>
+                        <span className="rooms-list-preview">{roomMemberSourceLabel(member)} · {roomMemberStatusLabel(member)}</span>
                       </span>
                       <span className="rooms-room-badge">私聊</span>
                     </button>

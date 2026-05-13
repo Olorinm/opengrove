@@ -58,6 +58,28 @@ const CLAUDE_MODEL_FAMILIES = [
   },
 ] as const;
 
+const HERMES_PROVIDER_ENV_KEYS = [
+  "OPENROUTER_API_KEY",
+  "OPENAI_API_KEY",
+  "NOUS_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GOOGLE_API_KEY",
+  "GEMINI_API_KEY",
+  "GLM_API_KEY",
+  "KIMI_API_KEY",
+  "KIMI_CN_API_KEY",
+  "MINIMAX_API_KEY",
+  "MINIMAX_CN_API_KEY",
+  "HF_TOKEN",
+  "NVIDIA_API_KEY",
+  "XIAOMI_API_KEY",
+  "ARCEEAI_API_KEY",
+  "OLLAMA_API_KEY",
+  "KILOCODE_API_KEY",
+  "AI_GATEWAY_API_KEY",
+  "LM_API_KEY",
+] as const;
+
 const CLAUDE_PROVIDER_PRESETS: ClaudeProviderPreset[] = [
   { id: "anthropic", name: "Claude Official", baseUrls: ["https://api.anthropic.com"] },
   { id: "aws-bedrock", name: "AWS Bedrock", baseUrls: ["https://bedrock-runtime."] },
@@ -201,7 +223,9 @@ function readHermesNativeProfile(configHomeOverride?: string): KernelNativeProvi
   const hermesHome = configHome(configHomeOverride, ".hermes");
   const configPath = resolve(hermesHome, "config.yaml");
   const envPath = resolve(hermesHome, ".env");
+  const authPath = resolve(hermesHome, "auth.json");
   const config = existsSync(configPath) ? readFileText(configPath) : "";
+  const env = { ...readDotEnvFile(envPath), ...readSelectedProcessEnv(HERMES_PROVIDER_ENV_KEYS) };
   const providerId = readYamlString(config, ["model", "provider"]) || "hermes-native";
   const providerName = readYamlString(config, ["providers", providerId, "name"]);
   const baseUrl =
@@ -213,6 +237,7 @@ function readHermesNativeProfile(configHomeOverride?: string): KernelNativeProvi
   const apiKeyEnv =
     readYamlString(config, ["model", "key_env"]) ||
     readYamlString(config, ["providers", providerId, "key_env"]);
+  const resolvedApiKeyEnv = apiKeyEnv || inferHermesApiKeyEnv(providerId, baseUrl, env);
   const defaultModel =
     readYamlString(config, ["model", "default"]) ||
     readYamlString(config, ["providers", providerId, "default_model"]);
@@ -226,14 +251,14 @@ function readHermesNativeProfile(configHomeOverride?: string): KernelNativeProvi
     kernel: "hermes",
     source: existsSync(configPath) ? configPath : "hermes-defaults",
     sourcePaths: [configPath, envPath],
-    env: {},
+    env,
     settingsModel: defaultModel,
     providerId,
-    providerLabel: providerName || providerId || "Hermes",
+    providerLabel: providerName || hermesProviderLabel(providerId, baseUrl) || providerId || "Hermes",
     protocol,
     baseUrl,
-    apiKeyEnv,
-    authConfigured: existsSync(configPath),
+    apiKeyEnv: resolvedApiKeyEnv,
+    authConfigured: isHermesNativeProviderConfigured(providerId, baseUrl, resolvedApiKeyEnv, env, existsSync(authPath)),
     models,
     defaultModel: defaultModel || models[0]?.id,
   };
@@ -325,6 +350,37 @@ function readFileText(path: string): string {
   }
 }
 
+function readSelectedProcessEnv(keys: readonly string[]): Record<string, string> {
+  const output: Record<string, string> = {};
+  for (const key of keys) {
+    const value = process.env[key]?.trim();
+    if (value) output[key] = value;
+  }
+  return output;
+}
+
+function readDotEnvFile(path: string): Record<string, string> {
+  const output: Record<string, string> = {};
+  for (const line of readFileText(path).split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = trimmed.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) continue;
+    const value = dotEnvValue(match[2]);
+    if (value) output[match[1]] = value;
+  }
+  return output;
+}
+
+function dotEnvValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed.replace(/\s+#.*$/, "").trim();
+}
+
 function readTomlString(text: string, key: string): string | undefined {
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = text.match(new RegExp(`^\\s*${escapedKey}\\s*=\\s*"(.*?)"\\s*$`, "m"));
@@ -360,6 +416,70 @@ function readYamlMapKeys(text: string, path: string[]): string[] {
       .map((entry) => entry.path[entry.path.length - 1])
       .filter((entry) => Boolean(entry.trim())),
   ));
+}
+
+function inferHermesApiKeyEnv(providerId: string, baseUrl: string | undefined, env: Record<string, string>): string | undefined {
+  const text = `${providerId} ${baseUrl || ""}`.toLowerCase();
+  const candidates = hermesApiKeyEnvCandidates(text);
+  return candidates.find((key) => Boolean(env[key]?.trim())) ?? candidates[0];
+}
+
+function hermesApiKeyEnvCandidates(text: string): string[] {
+  if (text.includes("openrouter")) return ["OPENROUTER_API_KEY", "OPENAI_API_KEY"];
+  if (text.includes("nous-api")) return ["NOUS_API_KEY"];
+  if (text.includes("anthropic")) return ["ANTHROPIC_API_KEY"];
+  if (text.includes("gemini") || text.includes("google")) return ["GEMINI_API_KEY", "GOOGLE_API_KEY"];
+  if (text.includes("zai") || text.includes("zhipu") || text.includes("glm")) return ["GLM_API_KEY"];
+  if (text.includes("kimi") || text.includes("moonshot")) return ["KIMI_API_KEY", "KIMI_CN_API_KEY"];
+  if (text.includes("minimax-cn")) return ["MINIMAX_CN_API_KEY"];
+  if (text.includes("minimax")) return ["MINIMAX_API_KEY"];
+  if (text.includes("huggingface")) return ["HF_TOKEN"];
+  if (text.includes("nvidia")) return ["NVIDIA_API_KEY"];
+  if (text.includes("xiaomi")) return ["XIAOMI_API_KEY"];
+  if (text.includes("arcee")) return ["ARCEEAI_API_KEY"];
+  if (text.includes("ollama-cloud")) return ["OLLAMA_API_KEY"];
+  if (text.includes("kilocode")) return ["KILOCODE_API_KEY"];
+  if (text.includes("ai-gateway")) return ["AI_GATEWAY_API_KEY"];
+  if (text.includes("lmstudio")) return ["LM_API_KEY"];
+  if (text.includes("openai")) return ["OPENAI_API_KEY"];
+  return [];
+}
+
+function hermesProviderLabel(providerId: string, baseUrl: string | undefined): string | undefined {
+  const text = `${providerId} ${baseUrl || ""}`.toLowerCase();
+  if (text.includes("openrouter")) return "OpenRouter";
+  if (text.includes("anthropic")) return "Anthropic";
+  if (text.includes("gemini") || text.includes("google")) return "Google Gemini";
+  if (text.includes("zai") || text.includes("zhipu") || text.includes("glm")) return "Zhipu GLM";
+  if (text.includes("kimi") || text.includes("moonshot")) return "Kimi";
+  if (text.includes("minimax")) return "MiniMax";
+  if (text.includes("xiaomi")) return "Xiaomi MiMo";
+  if (text.includes("lmstudio")) return "LM Studio";
+  if (text.includes("openai")) return "OpenAI";
+  return undefined;
+}
+
+function isHermesNativeProviderConfigured(
+  providerId: string,
+  baseUrl: string | undefined,
+  apiKeyEnv: string | undefined,
+  env: Record<string, string>,
+  hasHermesAuth: boolean,
+): boolean {
+  const provider = providerId.trim().toLowerCase();
+  if ((provider === "nous" || provider === "openai-codex") && hasHermesAuth) return true;
+  if (apiKeyEnv && Boolean(env[apiKeyEnv]?.trim())) return true;
+  return isLocalNoAuthHermesProvider(provider, baseUrl);
+}
+
+function isLocalNoAuthHermesProvider(providerId: string, baseUrl: string | undefined): boolean {
+  if (providerId !== "lmstudio" && providerId !== "custom") return false;
+  try {
+    const url = new URL(baseUrl || "");
+    return ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  } catch {
+    return false;
+  }
 }
 
 function parseYamlEntries(text: string): Array<{ path: string[]; value?: string }> {

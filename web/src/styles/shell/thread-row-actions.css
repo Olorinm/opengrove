@@ -1,0 +1,101 @@
+/* Keep thread row actions from sitting on top of dates or the selected pill. */
+.thread-row .thread-item {
+  padding-right: 34px;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    width 120ms ease;
+}
+
+.thread-row:hover .thread-item:not(.running),
+.thread-row:focus-within .thread-item:not(.running) {
+  width: calc(100% - 30px);
+}
+
+.project-thread-list .thread-item .thread-item-meta {
+  transition: opacity 120ms ease;
+}
+
+.thread-row:hover .thread-item:not(.running) .thread-item-meta,
+.thread-row:focus-within .thread-item:not(.running) .thread-item-meta {
+  opacity: 0;
+}
+
+.thread-row .sidebar-delete-action {
+  right: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 9px;
+}
+
+.thread-row .sidebar-delete-action:hover,
+.thread-row .sidebar-delete-action:focus-visible {
+  background: rgba(0, 0, 0, 0.055);
+}
+
+@media (max-width: 900px) {
+  .app-sidebar-header {
+    display: none;
+  }
+}
+
+:root[data-resolved-theme="dark"] .thread-heading-row,
+:root[data-resolved-theme="dark"] .sidebar-space-title {
+  color: #d0d0d0;
+}
+
+:root[data-resolved-theme="dark"] .project-item,
+:root[data-resolved-theme="dark"] .project-group[data-active="true"] .project-item,
+:root[data-resolved-theme="dark"] .sidebar-tree-folder,
+:root[data-resolved-theme="dark"] .sidebar-tree-folder[data-active="true"] {
+  color: #cfcfcf;
+}
+
+:root[data-resolved-theme="dark"] .project-thread-list .thread-item,
+:root[data-resolved-theme="dark"] .sidebar-tree-file,
+:root[data-resolved-theme="dark"] .sidebar-library-file {
+  color: #e8e8e8;
+}
+
+:root[data-resolved-theme="dark"] .project-thread-list .thread-item .thread-item-meta {
+  color: #b8b8b8;
+}
+
+:root[data-resolved-theme="dark"] .project-item-main svg,
+:root[data-resolved-theme="dark"] .sidebar-tree-folder svg,
+:root[data-resolved-theme="dark"] .sidebar-tree-file svg {
+  color: #d8d8d8;
+}
+
+:root[data-resolved-theme="dark"] .project-group[data-active="true"] .project-item:hover,
+:root[data-resolved-theme="dark"] .project-group[data-active="true"] .project-item:focus-visible,
+:root[data-resolved-theme="dark"] .project-item:hover,
+:root[data-resolved-theme="dark"] .project-item:focus-visible,
+:root[data-resolved-theme="dark"] .project-thread-list .thread-item:hover,
+:root[data-resolved-theme="dark"] .project-thread-list .thread-item:focus-visible,
+:root[data-resolved-theme="dark"] .sidebar-library-file:hover,
+:root[data-resolved-theme="dark"] .sidebar-library-file:focus-visible,
+:root[data-resolved-theme="dark"] .sidebar-tree-folder[data-active="true"]:hover,
+:root[data-resolved-theme="dark"] .sidebar-tree-folder[data-active="true"]:focus-visible {
+  background: #1f1f1f;
+  color: #ffffff;
+}
+
+:root[data-resolved-theme="dark"] .thread-item.active,
+:root[data-resolved-theme="dark"] .sidebar-library-file[data-active="true"] {
+  background: #2f2f2f;
+  color: #ffffff;
+}
+
+:root[data-resolved-theme="dark"] .sidebar-library-search {
+  background: #1f1f1f;
+  color: #d0d0d0;
+}
+
+:root[data-resolved-theme="dark"] .sidebar-tree-more:hover,
+:root[data-resolved-theme="dark"] .sidebar-tree-more:focus-visible,
+:root[data-resolved-theme="dark"] .thread-row .sidebar-delete-action:hover,
+:root[data-resolved-theme="dark"] .thread-row .sidebar-delete-action:focus-visible {
+  background: #2f2f2f;
+}
+

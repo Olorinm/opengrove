@@ -1,0 +1,268 @@
+/* Rooms, refined around existing OpenGrove chat primitives. */
+.rooms-view {
+  grid-template-columns: var(--opengrove-sidebar-width, 284px) minmax(0, 1fr);
+  background: #ffffff;
+}
+
+.rooms-view[data-members-open="true"] {
+  grid-template-columns: var(--opengrove-sidebar-width, 284px) minmax(0, 1fr) minmax(320px, 360px);
+}
+
+.rooms-list-panel {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 12px;
+  background: var(--og-sidebar-bg);
+  padding: 18px 10px 12px;
+}
+
+.rooms-list-title h1 {
+  font-size: 19px;
+}
+
+.rooms-section-label {
+  color: var(--rooms-muted);
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+  padding: 0 8px;
+}
+
+.rooms-pinboard {
+  display: grid;
+  gap: 8px;
+  border-bottom: 1px solid var(--rooms-border);
+  padding-bottom: 12px;
+}
+
+.rooms-pinned-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.rooms-pin-item {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rooms-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  padding: 6px 4px;
+}
+
+.rooms-pin-item:hover,
+.rooms-pin-item:focus-visible,
+.rooms-pin-item[data-active="true"] {
+  background: var(--rooms-blue-soft);
+  color: var(--rooms-text);
+}
+
+.rooms-pin-item > span:last-child {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rooms-pin-avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(217, 119, 6, 0.12);
+  color: #d97706;
+}
+
+.rooms-chat-list {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
+  min-height: 0;
+}
+
+.rooms-list-items {
+  gap: 2px;
+}
+
+.rooms-list-item {
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  min-height: 68px;
+  border-radius: 8px;
+}
+
+.rooms-list-name-row {
+  gap: 6px;
+}
+
+.rooms-room-badge {
+  flex: 0 0 auto;
+}
+
+.room-main-panel {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: #ffffff;
+  border-right: 1px solid var(--rooms-border);
+}
+
+.room-header {
+  min-height: 64px;
+  background: #ffffff;
+  padding: 12px 20px;
+}
+
+.room-header-copy {
+  min-width: 0;
+}
+
+.room-title-row {
+  gap: 8px;
+}
+
+.room-member-count-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--rooms-panel-soft);
+  color: var(--rooms-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+  padding: 0 7px;
+}
+
+.room-member-count-button:hover,
+.room-member-count-button:focus-visible {
+  background: var(--rooms-blue-soft);
+  color: var(--rooms-blue);
+}
+
+.room-running-pill {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--rooms-blue);
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+  line-height: 1;
+  padding: 7px 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-header-actions {
+  gap: 8px;
+}
+
+.room-message-stream {
+  min-height: 0;
+  overflow: auto;
+  background: #ffffff;
+  padding: 0;
+}
+
+.room-message-stream .thread-shell {
+  width: min(860px, calc(100% - 72px));
+  margin: 0 auto;
+  padding: 26px 0 34px;
+}
+
+.room-message-stream .thread-stack {
+  gap: 18px;
+}
+
+.room-message-stream .thread-message {
+  max-width: 100%;
+}
+
+.room-composer {
+  border-top: 0;
+  background: #ffffff;
+  padding: 12px 24px 16px;
+}
+
+.room-composer .room-composer-og {
+  position: relative;
+  width: min(860px, 100%);
+  margin: 0 auto;
+}
+
+.room-composer .opengrove-question {
+  min-height: 54px;
+  font-size: 13px;
+}
+
+.room-composer .opengrove-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.room-composer .opengrove-composer-footer {
+  min-height: 28px;
+  align-items: center;
+}
+
+.room-composer .opengrove-composer-footer-left {
+  align-items: center;
+  gap: 8px;
+}
+
+.room-composer .opengrove-composer-at,
+.room-composer .opengrove-composer-plus {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #5f6673;
+  line-height: 1;
+  padding: 0;
+  box-shadow: none;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.room-composer .opengrove-composer-at svg,
+.room-composer .opengrove-composer-plus svg {
+  display: block;
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  stroke-width: 2.2;
+}
+
+.room-composer .opengrove-primary.opengrove-send {
+  width: 28px;
+  height: 28px;
+}
+
+.room-composer .opengrove-primary.opengrove-send svg {
+  width: 17px;
+  height: 17px;
+}
+
+.room-composer .opengrove-composer-at:hover,
+.room-composer .opengrove-composer-at:focus-visible,
+.room-composer .opengrove-composer-plus:hover,
+.room-composer .opengrove-composer-plus:focus-visible {
+  background: #eef2f7;
+  color: #374151;
+  outline: 0;
+}
+

@@ -1,0 +1,142 @@
+.mobile-nav {
+  display: none;
+}
+
+.sidebar-main-nav {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sidebar-main-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  border-radius: var(--r-md);
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--c-text-2);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: var(--fw-medium);
+  line-height: 1.35;
+  text-align: left;
+}
+
+.sidebar-main-action:hover,
+.sidebar-main-action:focus-visible {
+  background: var(--codex-sidebar-hover);
+  outline: 0;
+}
+
+.sidebar-main-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.conversation-new-action {
+  justify-content: flex-start;
+  width: 100%;
+  margin: -1px 0 3px;
+}
+
+.nav-list {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  min-height: 0;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: 16px;
+  padding-right: 0;
+}
+
+.sidebar-panel-space {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sidebar-space-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 7px;
+}
+
+.sidebar-space-kicker {
+  color: var(--c-faint);
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  line-height: 1.25;
+}
+
+.sidebar-space-title {
+  color: var(--c-text-2);
+  font-size: 15px;
+  font-weight: var(--fw-bold);
+  line-height: 1.35;
+}
+
+.sidebar-space-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.sidebar-space-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 22px;
+  border-radius: var(--r-pill);
+  background: var(--c-surface-hover);
+  color: var(--c-muted);
+  font-size: 12px;
+  font-weight: var(--fw-bold);
+}
+
+.sidebar-settings {
+  display: grid;
+  min-width: 0;
+  border-top: 0;
+  padding-top: 14px;
+}
+
+.sidebar-settings-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 34px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--c-text-2);
+  cursor: pointer;
+  padding: 7px 10px;
+  font-size: 14px;
+  font-weight: var(--fw-medium);
+  text-align: left;
+}
+
+.sidebar-settings-button:hover,
+.sidebar-settings-button:focus-visible {
+  background: var(--codex-sidebar-hover);
+  outline: 0;
+}
+
+.sidebar-settings-button svg {
+  flex: 0 0 auto;
+  color: #60645e;
+}
+
