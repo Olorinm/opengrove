@@ -564,6 +564,10 @@ export function formatKernelLabel(value: string | undefined): string {
     "deepseek-tui": "DeepSeek TUI kernel",
     "qwen-code": "Qwen Code kernel",
     opencode: "OpenCode kernel",
+    copilot: "GitHub Copilot CLI kernel",
+    "cursor-agent": "Cursor Agent kernel",
+    kimi: "Kimi CLI kernel",
+    "kiro-cli": "Kiro CLI kernel",
   }[value || ""] ?? "";
 }
 

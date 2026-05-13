@@ -28,7 +28,11 @@ export type KernelPreference =
   | "deepseek-tui"
   | "gemini-cli"
   | "qwen-code"
-  | "opencode";
+  | "opencode"
+  | "copilot"
+  | "cursor-agent"
+  | "kimi"
+  | "kiro-cli";
 export interface RuntimeControlOption {
   id: string;
   label: string;

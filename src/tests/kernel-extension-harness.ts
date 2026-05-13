@@ -36,8 +36,13 @@ function main() {
   assert.equal(HERMES_KERNEL_MANIFEST.rollout?.status, "implemented");
 
   assert.equal(externalCliDefinition("opencode")?.preferredTransport, "acp");
-  assert.equal(externalCliDefinition("pi")?.preferredTransport, "jsonl-rpc");
-  assert.equal(externalCliDefinition("deepseek-tui")?.preferredTransport, "stdio-jsonrpc");
+  assert.equal(externalCliDefinition("copilot")?.preferredTransport, "acp");
+  assert.equal(externalCliDefinition("kimi")?.preferredTransport, "acp");
+  assert.equal(externalCliDefinition("kiro-cli")?.preferredTransport, "acp");
+  assert.equal(externalCliDefinition("cursor-agent")?.preferredTransport, "oneshot-cli");
+  assert.equal(externalCliDefinition("cursor-agent")?.outputFormat, "agent-jsonl");
+  assert.equal(externalCliDefinition("pi")?.preferredTransport, "sdk-inprocess");
+  assert.equal(externalCliDefinition("deepseek-tui")?.preferredTransport, "acp");
   assert.equal(externalCliDefinition("openclaw")?.preferredTransport, "websocket-gateway");
 }
 

@@ -24,7 +24,7 @@ export interface GenericCliRuntimeOptions {
   args?: string[];
   promptMode?: "stdin" | "arg";
   promptLayout?: "full-context" | "input-only";
-  outputFormat?: "text" | "openclaw-agent-json";
+  outputFormat?: "text" | "agent-jsonl";
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   providerHttpCapture?: ProviderHttpCaptureOptions;
@@ -136,30 +136,89 @@ export class GenericCliRuntime implements AgentRuntime {
 }
 
 function formatCliOutput(stdout: string, outputFormat: GenericCliRuntimeOptions["outputFormat"]): string {
-  if (outputFormat !== "openclaw-agent-json" || !stdout) {
-    return stdout;
+  if (!stdout) {
+    return "";
   }
-  try {
-    const parsed = JSON.parse(stdout) as {
-      result?: {
-        finalAssistantVisibleText?: string;
-        finalAssistantRawText?: string;
-        payloads?: Array<{ text?: string | null }>;
-      };
-    };
-    const directText = parsed.result?.finalAssistantVisibleText?.trim()
-      || parsed.result?.finalAssistantRawText?.trim();
-    if (directText) {
-      return directText;
+  if (outputFormat === "agent-jsonl") {
+    return extractAgentJsonlText(stdout);
+  }
+  return stdout;
+}
+
+function extractAgentJsonlText(stdout: string): string {
+  const assistantParts: string[] = [];
+  let finalText = "";
+  for (const rawLine of stdout.split(/\r?\n/)) {
+    const line = normalizeJsonlLine(rawLine);
+    if (!line) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
     }
-    const payloadText = (parsed.result?.payloads ?? [])
-      .map((payload) => payload.text?.trim())
-      .filter((value): value is string => Boolean(value))
-      .join("\n\n");
-    return payloadText || stdout;
-  } catch {
-    return stdout;
+    const event = isRecord(parsed) ? parsed : {};
+    const type = readString(event, "type");
+    if (type === "assistant") {
+      assistantParts.push(...readAssistantMessageParts(event.message));
+      continue;
+    }
+    if (type === "message") {
+      const role = readString(event, "role") || readString(asRecord(event.message), "role");
+      if (role === "assistant") {
+        assistantParts.push(...readAssistantMessageParts(event));
+        assistantParts.push(...readAssistantMessageParts(event.message));
+      }
+      continue;
+    }
+    if (type === "text") {
+      const text = readString(asRecord(event.part), "text") || readString(event, "text");
+      if (text) assistantParts.push(text);
+      continue;
+    }
+    if (type === "result") {
+      finalText = readString(event, "result") || readString(event, "response") || finalText;
+    }
   }
+  return assistantParts.join("").trimEnd() || finalText.trimEnd();
+}
+
+function readAssistantMessageParts(value: unknown): string[] {
+  const message = asRecord(value);
+  const directText = readString(message, "text") || readString(message, "content");
+  if (directText) return [directText];
+  const parts: string[] = [];
+  const content = message.content;
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      const item = asRecord(block);
+      const type = readString(item, "type");
+      if (type === "text" || type === "output_text") {
+        const text = readString(item, "text");
+        if (text) parts.push(text);
+      }
+    }
+  }
+  return parts;
+}
+
+function normalizeJsonlLine(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/^(stdout|stderr)\s*[:=]?\s*/i, "").trim();
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readString(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 function buildPrompt(

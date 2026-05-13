@@ -24,10 +24,13 @@ import {
 } from "../kernel/adapters/external-cli.js";
 import { createHermesKernelAdapter, discoverHermesKernel } from "../kernel/adapters/hermes.js";
 import { OpenAiHttpKernelAdapter } from "../kernel/adapters/openai-http.js";
+import { createOpenClawGatewayKernelAdapter } from "../kernel/adapters/openclaw.js";
+import { canResolvePiRuntimeModel, createPiKernelAdapter } from "../kernel/adapters/pi.js";
 import type { KernelAdapter, KernelDiscovery, KernelKnowledgeSource } from "../kernel/types.js";
 import { resolveClaudeCodeCliPath } from "../runtime/claude-code-runtime.js";
 import { resolveCodexCommandPath } from "../runtime/codex-runtime.js";
 import { resolveHermesCommandPath } from "../runtime/hermes-runtime.js";
+import { resolveOpenClawGatewayConnection } from "../runtime/openclaw-gateway-runtime.js";
 import { defaultHermesExternalSkillDir } from "../skills/native-publisher.js";
 import {
   providerHttpCaptureSummary,
@@ -180,6 +183,33 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
     });
   }
 
+  if (kernel === "pi") {
+    return createPiKernelAdapter({
+      cwd: workspaceRoot,
+      configuredModel: kernelSelectedModel,
+      runtimeBindingFingerprint,
+      providerHttpCapture,
+      env: runtimeEnv,
+    });
+  }
+
+  if (kernel === "openclaw") {
+    const connection = resolveOpenClawGatewayConnection(runtimeEnv);
+    if (!connection) {
+      throw new Error(
+        `OpenClaw Gateway is not configured. Set ${appEnvName("OPENCLAW_GATEWAY_URL")} or ${appEnvName("OPENCLAW_WS_URL")}.`,
+      );
+    }
+    return createOpenClawGatewayKernelAdapter({
+      ...connection,
+      cwd: workspaceRoot,
+      configuredModel: kernelSelectedModel,
+      runtimeBindingFingerprint,
+      providerHttpCapture,
+      env: runtimeEnv,
+    });
+  }
+
   const httpDefinition = resolveOpenAiHttpKernelDefinition(kernel, {
     env: runtimeEnv,
     providerHttpCapture,
@@ -194,6 +224,8 @@ export function createBridgeKernel(state: BridgeState): KernelAdapter {
     return createExternalCliKernelAdapter(external, {
       command,
       cwd: workspaceRoot,
+      configuredModel: kernelSelectedModel,
+      runtimeBindingFingerprint,
       env: providerEnv,
       providerHttpCapture,
     });
@@ -208,7 +240,7 @@ export function getBridgeKernelOptions(state: BridgeState): JsonObject[] {
     {
       id: "auto",
       label: "自动选择",
-      description: "按 Codex → Claude Code → OpenClaw → Hermes → Pi → DeepSeek TUI → 其他可用内核的顺序选择。",
+      description: "按 Codex → Claude Code → Hermes → 深层协议内核 → 结构化 CLI 的顺序选择。",
       available: true,
       active: state.settings.kernel === "auto",
       resolved: active,
@@ -558,6 +590,18 @@ function buildKernelDiscoverySnapshot(
       available,
     };
   }
+  if (id === "pi" || id === "openclaw") {
+    const external = externalCliDefinition(id);
+    if (external) {
+      const discovery = discoverExternalCliKernel(external, undefined);
+      return rewriteDiscoveryConfigHome(id, state, {
+        ...discovery,
+        installed: available,
+        available,
+        binaryPath: resolveKernelCommandPath(state, id),
+      });
+    }
+  }
   const httpDefinition = resolveOpenAiHttpKernelDefinition(id, {
     env: process.env,
     providerHttpCapture: readProviderHttpCaptureOptions(state, id),
@@ -814,14 +858,27 @@ export function resolveBridgeKernel(preferred: BridgeKernelPreference, state?: B
   }
   if (canUseCodexKernel(state)) return "codex";
   if (canUseClaudeKernel(state)) return "claude-code";
-  if (canUseOpenAiHttpKernel("openclaw") || canUseExternalCliKernel("openclaw", state)) return "openclaw";
   if (canUseHermesKernel(state)) return "hermes";
-  if (canUsePiKernel(state)) return "pi";
-  if (canUseExternalCliKernel("deepseek-tui", state)) return "deepseek-tui";
+  const preferredExternal: BridgeKernelId[] = [
+    "opencode",
+    "copilot",
+    "kimi",
+    "kiro-cli",
+    "gemini-cli",
+    "qwen-code",
+    "cursor-agent",
+    "openclaw",
+    "pi",
+    "deepseek-tui",
+  ];
+  for (const id of preferredExternal) {
+    if (canUseBridgeKernel(id, state)) return id;
+  }
   for (const definition of EXTERNAL_CLI_KERNELS) {
+    if (definition.id === "pi" || definition.id === "openclaw") continue;
     if (canUseExternalCliKernel(definition.id, state)) return definition.id;
   }
-  throw new Error("No available kernel was found. Install Codex, Claude Code, Hermes, Pi, or configure an external CLI kernel.");
+  throw new Error("No available kernel was found. Install Codex, Claude Code, Hermes, or configure an external CLI kernel.");
 }
 
 function canUseBridgeKernel(id: BridgeKernelId, state?: BridgeState): boolean {
@@ -829,6 +886,7 @@ function canUseBridgeKernel(id: BridgeKernelId, state?: BridgeState): boolean {
   if (id === "claude-code") return canUseClaudeKernel(state);
   if (id === "hermes") return canUseHermesKernel(state);
   if (id === "pi") return canUsePiKernel(state);
+  if (id === "openclaw") return canUseOpenClawKernel(state);
   if (canUseOpenAiHttpKernel(id)) return true;
   return canUseExternalCliKernel(id, state);
 }
@@ -865,7 +923,21 @@ function canUseOpenAiHttpKernel(id: BridgeKernelId): boolean {
 }
 
 function canUsePiKernel(state?: BridgeState) {
-  return canUseExternalCliKernel("pi", state);
+  const provider = state
+    ? resolveProviderForKernel("pi", state.settings.kernelProviderBindings, state.settings.customProviders)
+    : undefined;
+  const selectedModel = state ? resolveProviderSelectedModelForKernel(state, "pi", state.model) : undefined;
+  const env = state
+    ? { ...process.env, ...(resolveKernelEnv(state, "pi", provider, selectedModel) ?? {}) }
+    : process.env;
+  return canResolvePiRuntimeModel(env);
+}
+
+function canUseOpenClawKernel(state?: BridgeState) {
+  const env = state
+    ? { ...process.env, ...kernelPathEnv(state.settings, "openclaw") }
+    : process.env;
+  return Boolean(resolveOpenClawGatewayConnection(env));
 }
 
 function canUseExternalCliKernel(id: BridgeKernelId, state?: BridgeState): boolean {
@@ -914,16 +986,27 @@ function kernelDescription(id: BridgeKernelId): string {
     return "SDK 接入";
   }
   if (id === "hermes") {
-    return "CLI 接入";
+    return "ACP 接入";
+  }
+  if (id === "pi") {
+    return "SDK 接入";
+  }
+  if (id === "openclaw") {
+    return "Gateway 接入";
   }
   const external = externalCliDefinition(id);
-  return external ? "CLI 接入" : id;
+  if (!external) return id;
+  if (external.acpRuntime) return "ACP 接入";
+  if (external.outputFormat === "agent-jsonl") return "结构化 CLI 接入";
+  return "CLI 接入";
 }
 
 function unavailableReason(id: BridgeKernelId): string {
   if (id === "codex") return "未找到 Codex";
   if (id === "claude-code") return "未找到 Claude Code";
   if (id === "hermes") return "未找到 Hermes";
+  if (id === "pi") return "未配置 Pi 可用的 API Key";
+  if (id === "openclaw") return `未配置 OpenClaw Gateway WebSocket URL（${appEnvName("OPENCLAW_GATEWAY_URL")}）`;
   const external = externalCliDefinition(id);
   return external ? `未找到 ${external.title}` : "未找到内核";
 }

@@ -106,6 +106,7 @@ function kernelIconSpec(kernelId?: KernelPreference | string): BrandIconSpec {
   if (normalized === "gemini-cli") return { brand: "gemini-cli", component: GeminiCliColor };
   if (normalized === "deepseek-tui" || normalized === "deepseek") return { brand: "deepseek", component: DeepSeekColor };
   if (normalized === "qwen-code" || normalized === "qwen") return { brand: "qwen", component: QwenColor };
+  if (normalized === "kimi") return { brand: "kimi", component: KimiColor };
   if (normalized === "auto") return { brand: "auto", component: Bot };
   return { brand: normalized || "kernel", placeholder: true };
 }

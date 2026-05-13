@@ -125,6 +125,10 @@ export const KERNEL_COLORS: Record<string, string> = {
   "deepseek-tui": "#475569",
   "qwen-code": "#0284c7",
   opencode: "#111827",
+  copilot: "#24292f",
+  "cursor-agent": "#0f172a",
+  kimi: "#00a5ff",
+  "kiro-cli": "#7c3aed",
 };
 
 export const ROOM_OWNER_MEMBER: RoomMember = {

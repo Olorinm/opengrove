@@ -6,6 +6,7 @@ import type {
   BridgeProviderProfile,
   BridgeRuntimeControlOption,
 } from "./bridge-types.js";
+import { BRIDGE_KERNEL_IDS } from "./bridge-types.js";
 import type {
   HermesProviderApiMode,
   HermesProviderRuntimeConfig,
@@ -42,8 +43,8 @@ export function getBridgeProviderProfiles(): BridgeProviderProfile[] {
         "claude-code",
         "pi",
         "deepseek-tui",
-        "openclaw",
         "opencode",
+        "copilot",
         "qwen-code",
       ],
       websiteUrl: "https://console.volcengine.com/ark",
@@ -75,7 +76,7 @@ export function getBridgeProviderProfiles(): BridgeProviderProfile[] {
       apiKeyEnv: "ANTHROPIC_AUTH_TOKEN",
       credentialKind: "env-key",
       models: [],
-      recommendedFor: ["claude-code", "pi"],
+      recommendedFor: ["claude-code", "copilot", "pi"],
       websiteUrl: "https://console.anthropic.com",
     },
     {
@@ -548,6 +549,17 @@ export function providerEnvForKernel(
     return env;
   }
 
+  if (kernelId === "copilot") {
+    const providerType = profile.anthropicBaseUrl && !profile.openaiBaseUrl ? "anthropic" : "openai";
+    const baseUrl = providerType === "anthropic" ? profile.anthropicBaseUrl : profile.openaiBaseUrl;
+    if (!baseUrl) return undefined;
+    env.COPILOT_PROVIDER_TYPE = providerType;
+    env.COPILOT_PROVIDER_BASE_URL = baseUrl;
+    env.COPILOT_PROVIDER_API_KEY = apiKey;
+    if (selectedModel) env.COPILOT_MODEL = selectedModel;
+    return env;
+  }
+
   if (profile.openaiBaseUrl) {
     env.OPENAI_BASE_URL = profile.openaiBaseUrl;
     env.OPENAI_API_KEY = apiKey;
@@ -729,20 +741,11 @@ function hermesProviderKey(providerId: string): string {
 
 function bindingModeForKernel(kernelId: BridgeKernelId): BridgeKernelProviderBinding["mode"] {
   if (kernelId === "codex" || kernelId === "claude-code" || kernelId === "hermes") return "config-file";
-  if (kernelId === "pi" || kernelId === "openclaw") return "native-api";
+  if (kernelId === "pi") return "native-api";
+  if (kernelId === "cursor-agent" || kernelId === "kimi" || kernelId === "kiro-cli") return "native-api";
   return "env";
 }
 
 function isBridgeKernelId(value: string): value is BridgeKernelId {
-  return [
-    "codex",
-    "claude-code",
-    "hermes",
-    "pi",
-    "openclaw",
-    "deepseek-tui",
-    "gemini-cli",
-    "qwen-code",
-    "opencode",
-  ].includes(value);
+  return (BRIDGE_KERNEL_IDS as readonly string[]).includes(value);
 }

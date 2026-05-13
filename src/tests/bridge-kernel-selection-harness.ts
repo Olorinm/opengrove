@@ -188,11 +188,15 @@ async function main() {
     "claude-code": "opus",
     hermes: "glm-5.1",
     pi: "glm-5.1",
-    openclaw: "glm-5.1",
+    openclaw: undefined,
     "deepseek-tui": "glm-5.1",
     "gemini-cli": undefined,
     "qwen-code": "glm-5.1",
     opencode: "glm-5.1",
+    copilot: "glm-5.1",
+    "cursor-agent": undefined,
+    kimi: undefined,
+    "kiro-cli": undefined,
   };
   for (const kernelId of BRIDGE_KERNEL_IDS) {
     const boundProvider = resolveProviderForKernel(kernelId, { [kernelId]: "volc-coding-plan" });
@@ -238,6 +242,7 @@ async function main() {
   assert.equal(providerSupportsKernel("hermes", openai), false, "Hermes cannot reuse Codex/OpenAI native account login directly");
   assert.equal(providerSupportsKernel("hermes", anthropic), true, "Hermes can use Anthropic-compatible providers through isolated config");
   assert.equal(providerSupportsKernel("hermes", openrouter), true, "Hermes can use OpenAI-compatible providers through isolated config");
+  assert.equal(providerSupportsKernel("openclaw", openrouter), false, "OpenClaw should use Gateway-native configuration, not provider bindings");
   assert.equal(providerSupportsKernel("deepseek-tui", anthropic), false, "DeepSeek TUI should not offer Anthropic-only providers");
   assert.equal(providerSupportsKernel("deepseek-tui", openrouter), true, "DeepSeek TUI can use OpenAI-compatible providers");
   const discoveredCodexLogin: BridgeProviderProfile = {

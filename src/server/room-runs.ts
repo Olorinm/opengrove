@@ -1,5 +1,6 @@
 import type { AgentEvent } from "../core.js";
 import type { BridgeKernelId, BridgeState } from "./bridge-types.js";
+import { BRIDGE_KERNEL_IDS } from "./bridge-types.js";
 import type { RoomChannelMember, RoomChannelMessage } from "../rooms/channel-store.js";
 import { recreateBridgeApp } from "./bridge-state.js";
 import { runWithBridgeTurnContext } from "./bridge-turn-context.js";
@@ -288,7 +289,7 @@ function roomAgentThreadId(roomId: string, targetId: string, targetKernel: strin
 }
 
 function isBridgeKernelId(value: string): value is BridgeKernelId {
-  return ["codex", "claude-code", "hermes", "pi", "openclaw", "deepseek-tui", "gemini-cli", "qwen-code", "opencode"].includes(value);
+  return (BRIDGE_KERNEL_IDS as readonly string[]).includes(value);
 }
 
 function escapeXml(value: string): string {

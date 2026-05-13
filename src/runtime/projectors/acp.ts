@@ -21,7 +21,9 @@ export class AcpSessionProjector {
   constructor(private readonly options: AcpSessionProjectorOptions) {}
 
   project(update: Record<string, unknown>): AgentEvent[] {
-    const sessionUpdate = readProjectorString(update, "sessionUpdate");
+    const normalized = normalizeAcpUpdate(update);
+    const sessionUpdate = normalized.kind;
+    update = normalized.update;
     if (sessionUpdate === "agent_message_chunk") {
       const text = acpContentText(update.content);
       if (!text) return [];
@@ -36,7 +38,13 @@ export class AcpSessionProjector {
     if (sessionUpdate === "tool_call") {
       const toolCallId = readProjectorString(update, "toolCallId") ?? `${this.options.kernelId}_tool_${this.toolCalls.size + 1}`;
       const toolId = this.toolId(update);
-      const input = toJsonValue(update.rawInput ?? update.content ?? { title: readProjectorString(update, "title") ?? toolId });
+      const input = toJsonValue(
+        update.rawInput ??
+        update.input ??
+        update.parameters ??
+        update.content ??
+        { title: readProjectorString(update, "title") ?? readProjectorString(update, "name") ?? toolId },
+      );
       this.toolCalls.set(toolCallId, { toolId, input });
       return [{ type: "tool.started", runId: this.options.runId, toolId, input }];
     }
@@ -47,7 +55,7 @@ export class AcpSessionProjector {
       const status = readProjectorString(update, "status");
       if (status && status !== "completed" && status !== "failed") return [];
       const toolId = current?.toolId ?? this.toolId(update);
-      const output = update.rawOutput ?? update.content ?? { status };
+      const output = update.rawOutput ?? update.output ?? update.content ?? { status };
       const ok = status !== "failed";
       if (toolCallId) {
         this.toolCalls.delete(toolCallId);
@@ -96,6 +104,44 @@ export class AcpSessionProjector {
   }
 }
 
+function normalizeAcpUpdate(update: Record<string, unknown>): { kind: string | undefined; update: Record<string, unknown> } {
+  const explicit = readProjectorString(update, "sessionUpdate") || readProjectorString(update, "type");
+  if (explicit) {
+    const kind = normalizeAcpUpdateKind(explicit);
+    return { kind, update: mergeNestedAcpUpdate(kind, update) };
+  }
+  const entries = Object.entries(update);
+  if (entries.length === 1) {
+    const [key, value] = entries[0]!;
+    return { kind: normalizeAcpUpdateKind(key), update: asProjectorObject(value) };
+  }
+  return { kind: undefined, update };
+}
+
+function mergeNestedAcpUpdate(kind: string | undefined, update: Record<string, unknown>): Record<string, unknown> {
+  const nestedKey = {
+    agent_message_chunk: "agentMessageChunk",
+    agent_thought_chunk: "agentThoughtChunk",
+    tool_call: "toolCall",
+    tool_call_update: "toolCallUpdate",
+    usage_update: "usageUpdate",
+  }[kind ?? ""];
+  if (!nestedKey) return update;
+  const nested = asProjectorObject(update[nestedKey]);
+  return Object.keys(nested).length ? { ...nested, ...update } : update;
+}
+
+function normalizeAcpUpdateKind(value: string): string | undefined {
+  const key = value.trim().toLowerCase().replace(/[_-]+/g, "");
+  if (key === "agentmessagechunk") return "agent_message_chunk";
+  if (key === "agentthoughtchunk") return "agent_thought_chunk";
+  if (key === "toolcall") return "tool_call";
+  if (key === "toolcallupdate") return "tool_call_update";
+  if (key === "usageupdate") return "usage_update";
+  if (key === "turnend" || key === "endturn") return "turn_end";
+  return key || undefined;
+}
+
 export function readAcpUsage(response: JsonValue | undefined): UsageStats | undefined {
   const usage = asProjectorObject(asProjectorObject(response).usage);
   const inputTokens = readProjectorNumber(usage, "inputTokens");
@@ -128,7 +174,7 @@ export function acpContentText(value: unknown): string {
 }
 
 export function defaultAcpToolId(kernelId: string, update: Record<string, unknown>): string {
-  const title = readProjectorString(update, "title") || readProjectorString(update, "toolCallId") || "tool";
+  const title = readProjectorString(update, "title") || readProjectorString(update, "name") || readProjectorString(update, "toolCallId") || "tool";
   const guessedName = title.includes(":") ? title.slice(0, title.indexOf(":")) : title.split(/\s+/)[0] || "tool";
   const normalized = guessedName.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
   return `${kernelId}.${normalized || "tool"}`;

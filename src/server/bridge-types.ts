@@ -51,6 +51,10 @@ export const BRIDGE_KERNEL_IDS = [
   "gemini-cli",
   "qwen-code",
   "opencode",
+  "copilot",
+  "cursor-agent",
+  "kimi",
+  "kiro-cli",
 ] as const;
 export type BridgeKernelId = (typeof BRIDGE_KERNEL_IDS)[number];
 export type BridgeKernelPreference = BridgeKernelId | "auto";

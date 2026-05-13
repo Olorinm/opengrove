@@ -11,22 +11,6 @@ export interface OpenAiHttpKernelFactoryContext {
 type OpenAiHttpKernelFactory = (context: OpenAiHttpKernelFactoryContext) => OpenAiHttpKernelDefinition | undefined;
 
 const OPENAI_HTTP_KERNEL_FACTORIES: Partial<Record<BridgeKernelId, OpenAiHttpKernelFactory>> = {
-  openclaw: (context) => {
-    const baseUrl = readAppEnv("OPENCLAW_API_URL")?.trim();
-    if (!baseUrl) return undefined;
-    return withOpenAiHttpRuntimeContext({
-      id: "openclaw",
-      title: "OpenClaw",
-      baseUrl,
-      apiKeyEnv: appEnvName("OPENCLAW_API_KEY"),
-      apiKey: process.env.OPENCLAW_API_KEY?.trim(),
-      model: readAppEnv("OPENCLAW_MODEL")?.trim() || "default",
-      sessionMode: "stateless",
-      healthPath: "/models",
-      knowledgeSources: [],
-      notes: ["OpenClaw connected via OpenAI-compatible HTTP gateway."],
-    }, context);
-  },
   hermes: (context) => {
     const baseUrl = readAppEnv("HERMES_API_URL")?.trim();
     if (!baseUrl) return undefined;

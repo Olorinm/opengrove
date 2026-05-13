@@ -262,7 +262,7 @@ export function discoverHermesKernel(
     ],
     notes: [
       `Hermes 的 skills/memories/config 都在 ~/.hermes 下，外部 skill 目录是 ${APP_PRODUCT_NAME} 与 Hermes 对接的关键入口。`,
-      `Preferred transport: ${HERMES_KERNEL_MANIFEST.transport.primary}; fallback: ${HERMES_KERNEL_MANIFEST.transport.fallbacks?.join(", ") ?? "none"}.`,
+      `Transport: ${HERMES_KERNEL_MANIFEST.transport.primary}.`,
     ],
   };
 }
@@ -463,7 +463,7 @@ export const HERMES_KERNEL_CONTRACT: KernelAdapterContract = {
   },
   notes: [
     `Hermes has a real native skill system. ${APP_PRODUCT_NAME} publishes skills as external skill directories and should not host-inject duplicate skill bodies.`,
-    "The primary bridge uses ACP. The legacy oneshot CLI path remains available as an explicit fallback for environments where ACP is unavailable.",
+    "Hermes is bridged through ACP so session updates, tool calls, and permission requests stay structured.",
   ],
 };
 
@@ -472,7 +472,6 @@ export const HERMES_KERNEL_MANIFEST: KernelIntegrationManifest = {
   title: "Hermes",
   transport: {
     primary: "acp",
-    fallbacks: ["oneshot-cli"],
     launch: {
       command: "hermes",
       args: ["acp", "--accept-hooks"],

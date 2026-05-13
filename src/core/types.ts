@@ -168,6 +168,7 @@ export interface AgentSessionTrace {
   priorMessageCount: number;
   priorMessages: ModelMessage[];
   retainedMessageLimit?: number;
+  nativeSessionId?: string;
 }
 
 export interface AgentModelRequestTrace {

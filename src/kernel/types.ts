@@ -55,6 +55,7 @@ export type KernelHarnessFeature =
   | "compaction"
   | "auth"
   | "sandbox"
+  | "transport"
   | "trajectory"
   | "diagnostics";
 

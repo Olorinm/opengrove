@@ -153,7 +153,7 @@ Security boundaries:
 
 ## Kernels
 
-OpenGrove selects kernels through `OPENGROVE_KERNEL`. The default is `auto`, which chooses the first available kernel in this order: Codex, Claude Code, OpenClaw, Hermes, Pi, DeepSeek TUI, then other configured external CLI kernels.
+OpenGrove selects kernels through `OPENGROVE_KERNEL`. The default is `auto`, which chooses Codex first, then Claude Code, Hermes, deep-protocol kernels such as OpenCode/Copilot/Kimi/Kiro/OpenClaw/Pi/DeepSeek TUI, then structured CLI kernels.
 
 ```bash
 # Automatic selection
@@ -169,17 +169,21 @@ OPENGROVE_KERNEL=opencode npm run bridge
 
 Supported kernel ids:
 
-| Kernel | Current runtime path | Deeper/preferred path tracked by OpenGrove | Overrides |
+| Kernel | Runtime path | Provider/config boundary | Overrides |
 | --- | --- | --- | --- |
 | Codex | `codex app-server --listen stdio://` JSON-RPC bridge | Native app-server events, approvals, dynamic tools, thread reuse | `OPENGROVE_CODEX_BIN` |
 | Claude Code | Claude Code SDK / CLI stream bridge | SDK-managed session and native Claude Code tools | `OPENGROVE_CLAUDE_CLI_PATH` |
 | Hermes | ACP over stdio JSON-RPC by default; OpenAI-compatible HTTP gateway when configured | ACP session updates, native permission requests, native skill directory | `OPENGROVE_HERMES_BIN`, `OPENGROVE_HERMES_API_URL` |
-| Pi | one-shot CLI fallback (`pi -p`) | JSONL RPC | `OPENGROVE_PI_BIN` |
-| OpenClaw | OpenAI-compatible HTTP gateway when configured; one-shot CLI fallback | Gateway WebSocket | `OPENGROVE_OPENCLAW_BIN`, `OPENGROVE_OPENCLAW_API_URL` |
-| OpenCode | one-shot CLI fallback (`opencode run`) | ACP | `OPENGROVE_OPENCODE_BIN` |
-| DeepSeek TUI | one-shot CLI fallback (`deepseek --print`) | stdio JSON-RPC | `OPENGROVE_DEEPSEEK_TUI_BIN` |
-| Gemini CLI | one-shot CLI fallback | one-shot CLI | `OPENGROVE_GEMINI_CLI_BIN` |
-| Qwen Code | one-shot CLI fallback | one-shot CLI | `OPENGROVE_QWEN_CODE_BIN` |
+| Pi | Pi Agent SDK in-process | OpenGrove passes provider env/model into `NativePiSession` | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`, optional `PI_MODEL` |
+| OpenClaw | Gateway WebSocket (`chat.send` + `agent.wait`) | OpenClaw owns its provider config; OpenGrove only needs Gateway URL/auth | `OPENGROVE_OPENCLAW_GATEWAY_URL`, `OPENGROVE_OPENCLAW_GATEWAY_TOKEN` |
+| OpenCode | ACP over stdio (`opencode acp`) | OpenCode owns native config unless provider binding is explicitly selected | `OPENGROVE_OPENCODE_BIN` |
+| GitHub Copilot CLI | ACP over stdio (`copilot --acp --stdio`) | Copilot owns native config unless provider binding is explicitly selected | `OPENGROVE_COPILOT_BIN` |
+| Kimi CLI | ACP over stdio (`kimi acp`) | Kimi owns native config | `OPENGROVE_KIMI_BIN` |
+| Kiro CLI | ACP over stdio (`kiro-cli acp`) | Kiro owns native config | `OPENGROVE_KIRO_CLI_BIN` |
+| DeepSeek TUI | ACP over stdio (`deepseek serve --acp`) | DeepSeek owns native config; provider env can be injected when selected | `OPENGROVE_DEEPSEEK_TUI_BIN` |
+| Gemini CLI | structured one-shot stream JSON | Gemini CLI config/env | `OPENGROVE_GEMINI_CLI_BIN` |
+| Qwen Code | structured one-shot stream JSON | Qwen Code config/env | `OPENGROVE_QWEN_CODE_BIN` |
+| Cursor Agent | structured one-shot stream JSON | Cursor Agent config/env | `OPENGROVE_CURSOR_AGENT_BIN` |
 
 Codex-specific options:
 
@@ -201,15 +205,18 @@ OPENGROVE_HERMES_TOOLSETS=shell,edit
 npm run bridge
 ```
 
-OpenAI-compatible gateway options for kernels that expose a `/chat/completions` surface:
+OpenClaw Gateway options:
 
 ```bash
 OPENGROVE_KERNEL=openclaw
-OPENGROVE_OPENCLAW_API_URL=http://127.0.0.1:11434/v1
-OPENGROVE_OPENCLAW_API_KEY=replace-with-your-key
-OPENGROVE_OPENCLAW_MODEL=your-model
+OPENGROVE_OPENCLAW_GATEWAY_URL=ws://127.0.0.1:PORT
+OPENGROVE_OPENCLAW_GATEWAY_TOKEN=replace-with-gateway-token
 npm run bridge
+```
 
+OpenAI-compatible gateway options for kernels that expose a `/chat/completions` surface:
+
+```bash
 OPENGROVE_KERNEL=hermes
 OPENGROVE_HERMES_API_URL=http://127.0.0.1:8000/v1
 OPENGROVE_HERMES_API_KEY=replace-with-your-key
@@ -228,7 +235,7 @@ OpenGrove no longer treats every kernel as "prompt in, stdout out." Kernel integ
 | Kernel manifest | Records launch command, session strategy, provider binding, approval policy, event mapping, capabilities, and rollout status. |
 | Harness template | Gives each protocol a fake-server test shape so new kernels can be added without guessing at runtime behavior. |
 
-Implemented runtime paths include Codex app-server JSON-RPC, Claude Code SDK/CLI streaming, Hermes ACP, OpenAI-compatible HTTP/SSE with host tool loops, and one-shot CLI fallbacks. Preferred-but-not-yet-wired transports are documented in the kernel manifests so adapter work can move one protocol at a time.
+Implemented runtime paths include Codex app-server JSON-RPC, Claude Code SDK/CLI streaming, Hermes ACP, Pi SDK in-process, OpenClaw Gateway WebSocket, OpenCode/Copilot/Kimi/Kiro/DeepSeek ACP, OpenAI-compatible HTTP/SSE for supported HTTP kernels, and structured JSONL paths for CLIs whose deepest public headless surface is still a one-shot command.
 
 ## Providers
 

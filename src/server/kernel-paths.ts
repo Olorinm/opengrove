@@ -61,6 +61,7 @@ export function kernelPathEnv(
   if (kernel === "codex") return { CODEX_HOME: configHome };
   if (kernel === "claude-code") return { CLAUDE_CONFIG_DIR: configHome };
   if (kernel === "hermes") return { HERMES_HOME: configHome };
+  if (kernel === "copilot") return { COPILOT_HOME: configHome };
   return {};
 }
 
@@ -74,6 +75,10 @@ export function defaultKernelConfigHome(kernel: BridgeKernelId): string {
   if (kernel === "gemini-cli") return resolve(homedir(), ".gemini");
   if (kernel === "qwen-code") return resolve(homedir(), ".qwen");
   if (kernel === "opencode") return resolve(homedir(), ".config", "opencode");
+  if (kernel === "copilot") return resolve(homedir(), ".copilot");
+  if (kernel === "cursor-agent") return resolve(homedir(), ".cursor");
+  if (kernel === "kimi") return resolve(homedir(), ".kimi");
+  if (kernel === "kiro-cli") return resolve(homedir(), ".kiro");
   return resolve(process.cwd(), "data", "vault");
 }
 

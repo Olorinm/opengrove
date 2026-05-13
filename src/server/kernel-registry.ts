@@ -74,7 +74,7 @@ const KERNEL_DESCRIPTORS: Record<BridgeKernelId, BridgeKernelDescriptor> = {
     externalControls: { reasoning: false, speed: false },
     thread: { isolateByRuntimeBinding: true, reuseAcrossModelChanges: true },
   },
-  openclaw: openAiCliDescriptor("openclaw", "OpenClaw"),
+  openclaw: nativeCliDescriptor("openclaw", "OpenClaw"),
   "deepseek-tui": openAiCliDescriptor("deepseek-tui", "DeepSeek TUI"),
   "gemini-cli": {
     id: "gemini-cli",
@@ -88,6 +88,19 @@ const KERNEL_DESCRIPTORS: Record<BridgeKernelId, BridgeKernelDescriptor> = {
   },
   "qwen-code": openAiCliDescriptor("qwen-code", "Qwen Code"),
   opencode: openAiCliDescriptor("opencode", "OpenCode"),
+  copilot: {
+    id: "copilot",
+    label: "GitHub Copilot CLI",
+    externalProtocols: ["openai-compatible", "anthropic-compatible"],
+    externalCredentialKinds: API_CREDENTIALS,
+    bindingMode: "env",
+    nativeControls: { reasoning: false, speed: false },
+    externalControls: { reasoning: false, speed: false },
+    thread: { isolateByRuntimeBinding: true, reuseAcrossModelChanges: true },
+  },
+  "cursor-agent": nativeCliDescriptor("cursor-agent", "Cursor Agent"),
+  kimi: nativeCliDescriptor("kimi", "Kimi CLI"),
+  "kiro-cli": nativeCliDescriptor("kiro-cli", "Kiro CLI"),
 };
 
 export function getBridgeKernelDescriptor(kernelId: BridgeKernelId): BridgeKernelDescriptor {
@@ -104,5 +117,18 @@ function openAiCliDescriptor(id: BridgeKernelId, label: string): BridgeKernelDes
     nativeControls: { reasoning: false, speed: false },
     externalControls: { reasoning: false, speed: false },
     thread: { isolateByRuntimeBinding: true, reuseAcrossModelChanges: false },
+  };
+}
+
+function nativeCliDescriptor(id: BridgeKernelId, label: string): BridgeKernelDescriptor {
+  return {
+    id,
+    label,
+    externalProtocols: [],
+    externalCredentialKinds: ["kernel-native"],
+    bindingMode: "native",
+    nativeControls: { reasoning: false, speed: false },
+    externalControls: { reasoning: false, speed: false },
+    thread: { isolateByRuntimeBinding: true, reuseAcrossModelChanges: true },
   };
 }

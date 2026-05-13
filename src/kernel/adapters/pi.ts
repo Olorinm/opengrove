@@ -1,5 +1,170 @@
-import type { KernelAdapterContract } from "../types.js";
+import type { Model } from "@mariozechner/pi-ai";
+import { getModel } from "@mariozechner/pi-ai";
+import { createRuntimeKernelAdapter } from "../adapter.js";
+import type { KernelAdapter, KernelAdapterContract, KernelCapabilities } from "../types.js";
 import { APP_PRODUCT_NAME, APP_PROTOCOL_ID } from "../../identity.js";
+import { PiAgentRuntime } from "../../runtime/pi-runtime.js";
+import { createNativePiSessionFactory } from "../../runtime/native-pi-session.js";
+import type { ProviderHttpCaptureOptions } from "../../runtime/provider-http-capture.js";
+
+export interface PiKernelAdapterOptions {
+  cwd?: string;
+  configuredModel?: string;
+  runtimeBindingFingerprint?: string;
+  env?: NodeJS.ProcessEnv;
+  providerHttpCapture?: ProviderHttpCaptureOptions;
+}
+
+const PI_KERNEL_CAPABILITIES: KernelCapabilities = {
+  streaming: true,
+  toolCalls: true,
+  hostTools: true,
+  approvals: true,
+  elicitation: false,
+  artifacts: true,
+  compaction: false,
+  authRefresh: false,
+  sandbox: ["danger-full-access"],
+  knowledge: {
+    nativeSkills: false,
+    toolMediatedSkills: true,
+    progressiveDisclosure: true,
+    nativeArtifacts: false,
+    deliveryLedger: true,
+  },
+};
+
+export function createPiKernelAdapter(options: PiKernelAdapterOptions = {}): KernelAdapter {
+  const env = { ...process.env, ...options.env };
+  return createRuntimeKernelAdapter({
+    id: "pi",
+    title: "Pi",
+    runtime: new PiAgentRuntime({
+      createSession: createNativePiSessionFactory({
+        model: (requestedModelId) => resolvePiRuntimeModel(env, requestedModelId ?? options.configuredModel),
+        getApiKey: (provider) => resolvePiApiKey(env, provider),
+      }),
+    }),
+    capabilities: PI_KERNEL_CAPABILITIES,
+    contract: PI_KERNEL_CONTRACT,
+  });
+}
+
+export function canResolvePiRuntimeModel(env: NodeJS.ProcessEnv = process.env): boolean {
+  return Boolean(
+    readEnv(env, "OPENAI_API_KEY", "MODEL_API_KEY") ||
+      readEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN") ||
+      readEnv(env, "GEMINI_API_KEY", "GOOGLE_API_KEY"),
+  );
+}
+
+function resolvePiRuntimeModel(env: NodeJS.ProcessEnv, requestedModelId?: string): Model<any> {
+  const modelId =
+    requestedModelId?.trim() ||
+    readEnv(env, "PI_MODEL", "OPENAI_MODEL", "DEFAULT_MODEL", "ANTHROPIC_MODEL", "GEMINI_MODEL") ||
+    "gpt-4o-mini";
+  const provider = resolvePiProvider(env);
+  const known = getKnownPiModel(provider.knownProvider, modelId);
+  if (known && (!provider.baseUrl || known.baseUrl === provider.baseUrl)) {
+    return known;
+  }
+  if (known && provider.baseUrl) {
+    return { ...known, baseUrl: provider.baseUrl };
+  }
+  return createCustomPiModel(provider, modelId);
+}
+
+function resolvePiProvider(env: NodeJS.ProcessEnv): {
+  kind: "openai" | "anthropic" | "google";
+  knownProvider: string;
+  api: "openai-completions" | "anthropic-messages" | "google-generative-ai";
+  provider: string;
+  baseUrl: string;
+} {
+  const openAiBaseUrl = readEnv(env, "OPENAI_BASE_URL", "MODEL_BASE_URL");
+  if (readEnv(env, "OPENAI_API_KEY", "MODEL_API_KEY") || openAiBaseUrl) {
+    return {
+      kind: "openai",
+      knownProvider: "openai",
+      api: "openai-completions",
+      provider: "opengrove-openai",
+      baseUrl: openAiBaseUrl || "https://api.openai.com/v1",
+    };
+  }
+  const anthropicBaseUrl = readEnv(env, "ANTHROPIC_BASE_URL");
+  if (readEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN") || anthropicBaseUrl) {
+    return {
+      kind: "anthropic",
+      knownProvider: "anthropic",
+      api: "anthropic-messages",
+      provider: "opengrove-anthropic",
+      baseUrl: anthropicBaseUrl || "https://api.anthropic.com",
+    };
+  }
+  return {
+    kind: "google",
+    knownProvider: "google",
+    api: "google-generative-ai",
+    provider: "opengrove-google",
+    baseUrl: readEnv(env, "GEMINI_BASE_URL", "GOOGLE_BASE_URL") || "https://generativelanguage.googleapis.com",
+  };
+}
+
+function getKnownPiModel(provider: string, modelId: string): Model<any> | undefined {
+  try {
+    return (getModel as (provider: string, modelId: string) => Model<any> | undefined)(provider, modelId);
+  } catch {
+    return undefined;
+  }
+}
+
+function createCustomPiModel(
+  provider: ReturnType<typeof resolvePiProvider>,
+  modelId: string,
+): Model<any> {
+  return {
+    id: modelId,
+    name: modelId,
+    api: provider.api,
+    provider: provider.provider,
+    baseUrl: provider.baseUrl,
+    reasoning: /gpt-5|o[134]|claude|glm|deepseek|qwen|kimi/i.test(modelId),
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128_000,
+    maxTokens: 16_384,
+    ...(provider.api === "openai-completions"
+      ? {
+          compat: {
+            supportsStore: false,
+            supportsDeveloperRole: false,
+            supportsReasoningEffort: false,
+          },
+        }
+      : {}),
+  };
+}
+
+function resolvePiApiKey(env: NodeJS.ProcessEnv, provider: string): string | undefined {
+  const normalized = provider.toLowerCase();
+  if (normalized.includes("anthropic")) {
+    return readEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN");
+  }
+  if (normalized.includes("google") || normalized.includes("gemini")) {
+    return readEnv(env, "GEMINI_API_KEY", "GOOGLE_API_KEY");
+  }
+  return readEnv(env, "OPENAI_API_KEY", "MODEL_API_KEY") ||
+    readEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN") ||
+    readEnv(env, "GEMINI_API_KEY", "GOOGLE_API_KEY");
+}
+
+function readEnv(env: NodeJS.ProcessEnv, ...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = env[name]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
 
 export const PI_KERNEL_CONTRACT: KernelAdapterContract = {
   ownership: [

@@ -1,5 +1,5 @@
-import { spawn, spawnSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
@@ -13,7 +13,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { readAppEnv } from "../identity.js";
-import { resolveCommandInvocation, resolveCommandPath } from "../kernel/discovery.js";
+import { resolveCommandPath } from "../kernel/discovery.js";
 import type {
   AgentEvent,
   AgentRuntime,
@@ -44,7 +44,6 @@ import {
 export interface HermesRuntimeOptions {
   command: string;
   commandArgs?: string[];
-  transport?: "acp" | "oneshot";
   acpArgs?: string[];
   cwd?: string;
   configuredModel?: string;
@@ -85,11 +84,6 @@ export class HermesRuntime implements AgentRuntime {
   }
 
   async *runTurn(request: AgentTurnRequest): AsyncIterable<AgentEvent> {
-    if ((this.options.transport ?? "acp") === "oneshot") {
-      yield* this.runOneshotTurn(request);
-      return;
-    }
-
     const queue = new AsyncEventQueue<AgentEvent>();
     const runId = request.runId ?? `run_${Date.now()}`;
     const producer = this.produceAcpTurn(request, queue, runId)
@@ -271,136 +265,6 @@ export class HermesRuntime implements AgentRuntime {
       cleanupRequests();
       cleanupNotifications();
     }
-  }
-
-  private async *runOneshotTurn(request: AgentTurnRequest): AsyncIterable<AgentEvent> {
-    const runId = request.runId ?? `run_${Date.now()}`;
-    const hermesSessionId = toStableHermesSessionId(request.context.sessionId);
-    const requestedModel =
-      normalizeOptionalString(request.requestedModelId) ??
-      normalizeOptionalString(this.options.configuredModel);
-    const requestedProvider = normalizeOptionalString(this.options.configuredProvider);
-    const priorMessages = recentSessionMessages(request);
-    const prompt = buildHermesPrompt(request);
-    const providerCapture = resolveProviderHttpCaptureOptions(
-      this.options.providerHttpCapture,
-      this.options.env,
-    );
-    const sessionTrace: AgentSessionTrace = {
-      provider: "hermes",
-      sessionId: hermesSessionId,
-      persistent: false,
-      priorMessageCount: priorMessages.length,
-      priorMessages,
-    };
-
-    yield { type: "turn.started", runId, at: new Date().toISOString() };
-    if (request.assembledContext) {
-      yield { type: "context.assembled", runId, context: request.assembledContext };
-    }
-    yield {
-      type: "runtime.diagnostic",
-      runId,
-      at: new Date().toISOString(),
-      name: "provider_http_capture.configured",
-      data: providerHttpCaptureSummary(providerCapture),
-    };
-    yield {
-      type: "model.requested",
-      runId,
-      request: {
-        systemPrompt: "Hermes oneshot mode. OpenGrove host context is prepended to the user prompt when present.",
-        userInput: request.input,
-        modelId: requestedModel,
-        session: sessionTrace,
-        context: request.assembledContext,
-        tools: request.tools.map((tool) => tool.spec),
-        skills: request.skills ?? [],
-        packs: request.packs ?? [],
-        capabilities: request.capabilities ?? [],
-      },
-    };
-
-    const args = buildHermesArgs({
-      prompt,
-      model: requestedModel,
-      provider: requestedProvider,
-      toolsets: this.options.toolsets,
-    });
-    const invocation = resolveCommandInvocation(this.options.command, [...(this.options.commandArgs ?? []), ...args]);
-    const env = this.prepareEnv(providerCapture);
-    const cwd = this.options.cwd ?? process.cwd();
-    const child = spawn(invocation.command, invocation.args, {
-      cwd,
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let aborted = false;
-    let killTimer: ReturnType<typeof setTimeout> | undefined;
-    const abortChild = () => {
-      aborted = true;
-      if (!child.killed) {
-        child.kill("SIGTERM");
-        killTimer = setTimeout(() => {
-          if (!child.killed) child.kill("SIGKILL");
-        }, 2_000);
-      }
-    };
-    if (request.signal?.aborted) {
-      abortChild();
-    } else {
-      request.signal?.addEventListener("abort", abortChild, { once: true });
-    }
-
-    let stdout = "";
-    let stderr = "";
-    child.stdout?.setEncoding("utf8");
-    child.stderr?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk: string) => {
-      stdout += chunk;
-    });
-    child.stderr?.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-
-    let spawnError: Error | undefined;
-    const exitCode = await new Promise<number | null>((resolveExit) => {
-      child.once("error", (error) => {
-        spawnError = error;
-        resolveExit(null);
-      });
-      child.once("close", resolveExit);
-    });
-    request.signal?.removeEventListener("abort", abortChild);
-    if (killTimer) clearTimeout(killTimer);
-    if (aborted) {
-      yield {
-        type: "error",
-        runId,
-        message: "hermes_aborted",
-      };
-      return;
-    }
-    const finalText = cleanHermesAssistantText(stdout);
-    if (finalText) {
-      yield { type: "assistant.delta", runId, text: finalText };
-    }
-    const hermesDiagnostic = finalText ? undefined : this.readHermesFailureDiagnostic();
-    const errorMessage = spawnError?.message ||
-      ((exitCode && exitCode !== 0) || !finalText ? stderr.trim() || hermesDiagnostic : undefined);
-    if (errorMessage) {
-      yield {
-        type: "error",
-        runId,
-        message: errorMessage || `hermes_failed:${exitCode}`,
-      };
-    }
-    yield {
-      type: "model.response",
-      runId,
-      response: { text: finalText },
-    };
-    yield { type: "turn.finished", runId, at: new Date().toISOString() };
   }
 
   private async ensureAcpClient(
@@ -652,26 +516,6 @@ export function hermesHealth(command: string): { ok: boolean; message: string } 
   }
 }
 
-function buildHermesArgs(input: {
-  prompt: string;
-  model?: string;
-  provider?: string;
-  toolsets?: string[];
-}): string[] {
-  const args: string[] = [];
-  if (input.model) {
-    args.push("--model", input.model);
-  }
-  if (input.provider) {
-    args.push("--provider", input.provider);
-  }
-  if (input.toolsets?.length) {
-    args.push("--toolsets", input.toolsets.join(","));
-  }
-  args.push("-z", input.prompt);
-  return args;
-}
-
 function buildHermesPrompt(request: AgentTurnRequest): string {
   const hostContext = request.assembledContext?.promptBlock?.trim();
   const threadHistory = recentSessionPromptBlock(request);
@@ -785,10 +629,6 @@ function resolveHermesCommandCandidate(value: string | undefined): string | unde
     return undefined;
   }
   return resolveCommandPath(trimmed);
-}
-
-function toStableHermesSessionId(input: string): string {
-  return createHash("sha1").update(input).digest("hex").slice(0, 24);
 }
 
 function normalizeOptionalString(value: string | undefined): string | undefined {

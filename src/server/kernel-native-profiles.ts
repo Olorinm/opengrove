@@ -122,6 +122,10 @@ export function readKernelNativeProviderProfile(
   if (kernel === "pi") return readSimpleHomeConfigProfile(kernel, "Pi", resolve(configHome(options.configHome, ".pi"), "agent", "auth.json"));
   if (kernel === "openclaw") return readSimpleHomeConfigProfile(kernel, "OpenClaw", resolve(configHome(options.configHome, ".openclaw"), "providers"));
   if (kernel === "opencode") return readSimpleHomeConfigProfile(kernel, "OpenCode", resolve(configHome(options.configHome, ".config/opencode"), "opencode.json"));
+  if (kernel === "copilot") return readSimpleHomeConfigProfile(kernel, "GitHub Copilot CLI", resolve(configHome(options.configHome, ".copilot"), "settings.json"));
+  if (kernel === "cursor-agent") return readSimpleHomeConfigProfile(kernel, "Cursor Agent", resolve(configHome(options.configHome, ".cursor"), "mcp.json"));
+  if (kernel === "kimi") return readSimpleHomeConfigProfile(kernel, "Kimi CLI", resolve(configHome(options.configHome, ".kimi"), "config.toml"));
+  if (kernel === "kiro-cli") return readSimpleHomeConfigProfile(kernel, "Kiro CLI", resolve(configHome(options.configHome, ".kiro"), "settings.json"));
   return undefined;
 }
 
