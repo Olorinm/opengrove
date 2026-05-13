@@ -81,12 +81,8 @@ async function executeRoomRun(
   const startedAt = Date.now();
   const model = resolveRoomTargetModel(state, input.target);
   const target = { ...input.target, model };
-  const sessionId = roomAgentThreadId(
-    input.roomId,
-    target.id,
-    target.kernel,
-    target.kernel === "claude-code" ? input.runId : undefined,
-  );
+  // Stable per-room-member session ids preserve native kernel continuity while the room ledger remains the shared source of truth.
+  const sessionId = roomAgentThreadId(input.roomId, target.id, target.kernel);
   const question = buildRoomRunPrompt(state, { ...input, target });
   const events: AgentEvent[] = [];
 
@@ -285,8 +281,8 @@ function durationLabel(durationMs: number): string {
   return `${Math.max(0.1, durationMs / 1000).toFixed(1)}s`;
 }
 
-function roomAgentThreadId(roomId: string, targetId: string, targetKernel: string, runId?: string): string {
-  const safeTarget = `${roomId || "room"}-${targetId || "member"}-${targetKernel || "kernel"}-${runId || "shared"}`
+function roomAgentThreadId(roomId: string, targetId: string, targetKernel: string): string {
+  const safeTarget = `${roomId || "room"}-${targetId || "member"}-${targetKernel || "kernel"}-shared`
     .replace(/[^a-zA-Z0-9_-]/g, "-");
   return `room-agent-${safeTarget}`;
 }

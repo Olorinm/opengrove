@@ -111,7 +111,7 @@ npm run eval
 
 Rooms 由服务端 `RoomChannelStore` 支撑，不再由浏览器 `localStorage` 保存。前端从 `/rooms` 拉取当前 Rooms 快照，通过 `/rooms/events` 轮询增量事件，并把用户消息发回 bridge。Room 状态会持久化到 `data/local-state.json` 的 `rooms` 字段里。
 
-Room ledger 是本地事实源，负责保存房间、成员、消息、目标成员 id、状态、run id、Matrix id 和最近的 room events。当一条消息投递给本机成员时，bridge 会为每个可运行目标调度一个 room agent run，按成员生成包含当前消息和最近账本窗口的 prompt，然后把最终回复写回同一个 ledger。如果 agent 需要更早的上下文，可以调用 `room.ledger.read`，参数包括 `roomId`，以及可选的 `query`、`limit`、`beforeSeq`、`afterSeq`。
+Room ledger 是本地共享事实源，负责保存房间、成员、消息、目标成员 id、状态、run id、Matrix id 和最近的 room events。当一条消息投递给本机成员时，bridge 会为每个可运行目标调度一个 room agent run，按成员生成包含当前消息和最近账本窗口的 prompt，然后把最终回复写回同一个 ledger。支持原生 session 的 kernel 仍然保留稳定的“每个房间成员一个 native session”连续性，只是共享事实以 ledger 为准。如果 agent 需要更早的上下文，可以调用 `room.ledger.read`，参数包括 `roomId`，以及可选的 `query`、`limit`、`beforeSeq`、`afterSeq`。
 
 Matrix/Tuwunel 是远程传输层，不替代本地账本。Bridge 在后端加入并同步 Matrix room，把 OpenGrove profile/request/final custom events 映射进本地 room ledger，也会把本机最终回复发布回 Matrix。Matrix sync 完全在 bridge 端完成；前端不持有 Matrix 状态，也不直接调用 Matrix。
 
