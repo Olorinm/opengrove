@@ -32,6 +32,7 @@ import {
   type ProviderHttpCaptureOptions,
   type ResolvedProviderHttpCaptureOptions,
 } from "./provider-http-capture.js";
+import { runWithNativeSessionLock } from "./native-session-lock.js";
 
 export type ClaudeAgentSdkQueryFunction = (params: {
   prompt: string;
@@ -151,38 +152,40 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
       compactionActive: false,
       toolCalls: new Map(),
     };
-    const query = (this.options.query ?? claudeQuery)({
-      prompt: request.input,
-      options: this.createQueryOptions({
-        request,
-        cwd,
-        requestedModel,
-        permissionMode,
-        nativeSession,
-        systemPrompt,
-        providerCapture,
-        hostBridge,
-        abortController,
-      }),
-    });
-
-    try {
-      for await (const message of query) {
-        for (const event of mapClaudeSdkMessage(message, {
-          runId,
-          state: messageState,
+    await runWithNativeSessionLock("claude-code", nativeSession.sessionId, async () => {
+      const query = (this.options.query ?? claudeQuery)({
+        prompt: request.input,
+        options: this.createQueryOptions({
+          request,
+          cwd,
+          requestedModel,
+          permissionMode,
+          nativeSession,
+          systemPrompt,
+          providerCapture,
           hostBridge,
-          onInit: (init) => {
-            rememberClaudeNativeSession(request, init.session_id, runtimeBindingFingerprint);
-            recordClaudeRuntimeInventory(request, init);
-          },
-        })) {
-          queue.push(event);
+          abortController,
+        }),
+      });
+
+      try {
+        for await (const message of query) {
+          for (const event of mapClaudeSdkMessage(message, {
+            runId,
+            state: messageState,
+            hostBridge,
+            onInit: (init) => {
+              rememberClaudeNativeSession(request, init.session_id, runtimeBindingFingerprint);
+              recordClaudeRuntimeInventory(request, init);
+            },
+          })) {
+            queue.push(event);
+          }
         }
+      } finally {
+        query.close();
       }
-    } finally {
-      query.close();
-    }
+    });
 
     const finalText = messageState.resultText || messageState.assistantText;
     if (messageState.compactionActive) {

@@ -194,6 +194,83 @@ async function main() {
     JSON.parse(app.workingState.get().toolSchemaCache["claude.slashCommands"] || "[]"),
     ["/compact", "/model", "/status"],
   );
+
+  let activeQueries = 0;
+  let maxActiveQueries = 0;
+  const lockingRuntime = new ClaudeAgentSdkRuntime({
+    cwd,
+    permissionMode: "default",
+    configuredModel: "opus",
+    query: ((params) => {
+      async function* messages() {
+        activeQueries += 1;
+        maxActiveQueries = Math.max(maxActiveQueries, activeQueries);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        yield {
+          type: "system",
+          subtype: "init",
+          apiKeySource: "user",
+          claude_code_version: "2.1.fake",
+          cwd,
+          tools: [],
+          mcp_servers: [],
+          model: "claude-test",
+          permissionMode: "default",
+          slash_commands: [],
+          output_style: "default",
+          skills: [],
+          plugins: [],
+          uuid: `00000000-0000-5000-8000-${params.prompt === "first" ? "000000000101" : "000000000201"}`,
+          session_id: "00000000-0000-5000-8000-000000000099",
+        };
+        yield {
+          type: "result",
+          subtype: "success",
+          duration_ms: 10,
+          duration_api_ms: 5,
+          is_error: false,
+          num_turns: 1,
+          result: `done ${params.prompt}`,
+          stop_reason: "end_turn",
+          total_cost_usd: 0,
+          usage: {},
+          modelUsage: {},
+          permission_denials: [],
+          uuid: `00000000-0000-5000-8000-${params.prompt === "first" ? "000000000102" : "000000000202"}`,
+          session_id: "00000000-0000-5000-8000-000000000099",
+        };
+        activeQueries -= 1;
+      }
+      const iterator = messages();
+      return Object.assign(iterator, {
+        close() {},
+        interrupt: async () => {},
+        setPermissionMode: async () => {},
+        setModel: async () => {},
+        setMaxThinkingTokens: async () => {},
+        setMcpServers: async () => ({ added: [], removed: [], errors: {} }),
+        reloadPlugins: async () => ({ commands: [], agents: [], plugins: [], mcpServers: [] }),
+        getSettings: async () => ({}),
+      }) as unknown;
+    }) as ClaudeAgentSdkQueryFunction,
+  });
+  const lockContext = { ...context, sessionId: "claude-sdk-lock-harness" };
+  async function collect(input: string): Promise<AgentEvent[]> {
+    const collected: AgentEvent[] = [];
+    for await (const event of lockingRuntime.runTurn({
+      input,
+      context: lockContext,
+      tools: app.tools.list(),
+      skills: app.skills.list(),
+      packs: app.packs.list(),
+      capabilities: app.capabilities.list(),
+    })) {
+      collected.push(event);
+    }
+    return collected;
+  }
+  await Promise.all([collect("first"), collect("second")]);
+  assert.equal(maxActiveQueries, 1, "Claude SDK runs sharing a native session should be serialized");
 }
 
 main().catch((error) => {
