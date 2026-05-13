@@ -1,6 +1,6 @@
 # OpenGrove Technical Reference
 
-This document covers kernel configuration, provider setup, Bridge API, data paths, repository layout, and troubleshooting. For an introduction, see the [README](../README.md).
+This document covers kernel configuration, provider setup, Bridge API, rooms & ledger, data paths, repository layout, and troubleshooting. For an introduction, see the [README](../README.md).
 
 ## Status
 
@@ -15,7 +15,7 @@ OpenGrove is an early local development project.
 
 ## Kernels
 
-OpenGrove selects kernels through `OPENGROVE_KERNEL`. The default is `auto`, which chooses the first available healthy kernel in this order: Codex, Claude Code, Hermes, then configured external kernels such as OpenCode, Copilot, Kimi, Kiro, Gemini, Qwen, Cursor, OpenClaw, Pi, and DeepSeek TUI.
+OpenGrove selects kernels through `OPENGROVE_KERNEL`. The default is `auto`, which chooses Codex first, then Claude Code, Hermes, deep-protocol kernels such as OpenCode/Copilot/Kimi/Kiro/OpenClaw/Pi/DeepSeek TUI, then structured CLI kernels.
 
 ```bash
 # Automatic selection
@@ -37,7 +37,7 @@ OPENGROVE_KERNEL=opencode npm run bridge
 | Claude Code | Claude Code SDK / CLI stream bridge | SDK-managed session and native Claude Code tools | `OPENGROVE_CLAUDE_CLI_PATH` |
 | Hermes | ACP over stdio JSON-RPC by default; OpenAI-compatible HTTP gateway when configured | ACP session updates, native permission requests, native skill directory | `OPENGROVE_HERMES_BIN`, `OPENGROVE_HERMES_API_URL` |
 | Pi | Pi Agent SDK in-process | OpenGrove passes provider env/model into `NativePiSession` | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`, optional `PI_MODEL` |
-| OpenClaw | Gateway WebSocket (`chat.send` + `agent.wait`) | OpenClaw owns provider config; OpenGrove only needs Gateway URL/auth | `OPENGROVE_OPENCLAW_GATEWAY_URL`, `OPENGROVE_OPENCLAW_GATEWAY_TOKEN` |
+| OpenClaw | Gateway WebSocket (`chat.send` + `agent.wait`) | OpenClaw owns its provider config; OpenGrove only needs Gateway URL/auth | `OPENGROVE_OPENCLAW_GATEWAY_URL`, `OPENGROVE_OPENCLAW_GATEWAY_TOKEN` |
 | OpenCode | ACP over stdio (`opencode acp`) | OpenCode owns native config unless provider binding is explicitly selected | `OPENGROVE_OPENCODE_BIN` |
 | GitHub Copilot CLI | ACP over stdio (`copilot --acp --stdio`) | Copilot owns native config unless provider binding is explicitly selected | `OPENGROVE_COPILOT_BIN` |
 | Kimi CLI | ACP over stdio (`kimi acp`) | Kimi owns native config | `OPENGROVE_KIMI_BIN` |
@@ -69,8 +69,6 @@ npm run bridge
 
 ### OpenClaw Gateway Options
 
-OpenClaw is treated as a Gateway-backed kernel. OpenGrove does not bind OpenClaw directly to an OpenAI-compatible provider URL.
-
 ```bash
 OPENGROVE_KERNEL=openclaw
 OPENGROVE_OPENCLAW_GATEWAY_URL=ws://127.0.0.1:PORT
@@ -80,7 +78,7 @@ npm run bridge
 
 ### OpenAI-compatible Gateway Options
 
-Hermes can also be reached through an OpenAI-compatible `/chat/completions` gateway when that gateway is explicitly configured:
+For kernels that expose a `/chat/completions` surface:
 
 ```bash
 OPENGROVE_KERNEL=hermes
@@ -98,18 +96,20 @@ Kernel integrations are split into four layers:
 
 | Layer | Purpose |
 | --- | --- |
-| Transport | Owns the wire boundary: `acp`, `stdio-jsonrpc`, `http-sse`, `websocket-gateway`, `pty-terminal`, structured stream JSON CLI, or `sdk-inprocess`. |
+| Transport | Owns the wire boundary: ACP, stdio JSON-RPC, HTTP/SSE, Gateway WebSocket, PTY terminal, structured stream JSON CLI, or SDK in-process. |
 | Event projector | Converts native events into OpenGrove events such as `assistant.delta`, `tool.started`, `tool.finished`, and `approval.requested`. |
 | Kernel manifest | Records launch command, session strategy, provider binding, approval policy, event mapping, capabilities, and rollout status. |
 | Harness template | Gives each protocol a fake-server test shape so new kernels can be added without guessing at runtime behavior. |
 
-Implemented runtime paths include Codex app-server JSON-RPC, Claude Code SDK/CLI streaming, Hermes ACP, generic ACP CLI sessions, Pi SDK in-process sessions, OpenClaw Gateway WebSocket, OpenAI-compatible HTTP/SSE with host tool loops, and structured stream JSON CLI runtimes for kernels whose deepest stable headless interface is still CLI output.
+Implemented runtime paths include Codex app-server JSON-RPC, Claude Code SDK/CLI streaming, Hermes ACP, Pi SDK in-process, OpenClaw Gateway WebSocket, OpenCode/Copilot/Kimi/Kiro/DeepSeek ACP, OpenAI-compatible HTTP/SSE for supported HTTP kernels, and structured stream JSON CLI paths for CLIs whose deepest public headless surface is a structured CLI protocol.
 
 ---
 
 ## Providers
 
 Provider setup can be managed in the settings UI or through environment variables. OpenGrove supports native provider profiles and compatible API providers, including OpenAI, Anthropic, Gemini, DeepSeek, Zhipu GLM, Kimi, DashScope, Qianfan, SiliconFlow, ModelScope, MiniMax, Stepfun, OpenRouter, NewAPI, and others defined in `src/server/provider-profiles.ts`.
+
+The settings UI writes local bridge preferences to `data/bridge-settings.json`. That file is ignored by git and may contain pasted provider API keys, Matrix access tokens, custom provider definitions, kernel/provider bindings, invite landing settings, and Matrix room sync cursors. Treat it as a local secret file; prefer environment variables for shared or reproducible setups.
 
 ### Environment File Load Order
 
@@ -133,11 +133,21 @@ The browser extension reads the same bridge token from `chrome.storage.local.ope
 
 ---
 
+## Rooms, Ledger, and Matrix
+
+Rooms are backed by the server-side `RoomChannelStore`, not browser `localStorage`. The UI fetches the current Rooms snapshot from `/rooms`, polls `/rooms/events` for incremental changes, and posts user messages back to the bridge. Room state is persisted under the `rooms` field in `data/local-state.json`.
+
+The room ledger is the local shared source of truth for rooms, members, messages, target ids, statuses, run ids, Matrix ids, and recent room events. When a message targets local members, the bridge schedules one room agent run per runnable target, builds a per-member prompt with the current message and a recent ledger window, then writes final results back to the same ledger. Kernels that support native sessions still keep stable per-room-member native continuity behind that ledger-backed prompt. If an agent needs older channel context, it can call `room.ledger.read` with `roomId`, optional `query`, `limit`, `beforeSeq`, or `afterSeq`.
+
+Matrix/Tuwunel is the remote transport, not a replacement for the local ledger. The bridge joins and syncs Matrix rooms in the background, maps OpenGrove profile/request/final custom events into the local room ledger, and publishes local final replies back to Matrix. Matrix sync is fully bridge-side; the frontend does not own Matrix state or call Matrix directly.
+
+---
+
 ## Remote Agent Employees
 
 OpenGrove uses Matrix-compatible homeservers for remote Room membership and message delivery. The commercial-friendly default target is Tuwunel; Synapse and other Matrix homeservers are useful reference deployments.
 
-The homeserver is the routing and persistence boundary. Local OpenGrove nodes still choose and run their own employees locally, and model/API credentials stay on each owner machine.
+The homeserver is the remote routing and remote persistence boundary. Each OpenGrove node still keeps its own local room ledger, chooses and runs its own employees locally, and keeps model/API credentials on the owner machine.
 
 ### Typical Flow
 
@@ -185,12 +195,19 @@ The local bridge is the boundary between UI, state, tools, and kernels.
 | `/artifacts` | `GET` / `POST` | list or create artifacts |
 | `/routines` | `GET` | list routines |
 | `/context-records` | `GET` | recent prompt/context diagnostics |
-| `/rooms` | `GET` | current server-backed Room snapshot |
-| `/rooms/events` | `GET` | incremental Room ledger events |
+| `/rooms` | `GET` / `POST` | read the room ledger snapshot or create a room |
+| `/rooms/events` | `GET` | poll room ledger events after `afterEventSeq` |
+| `/rooms/dm` | `POST` | open or create a direct room with one member |
+| `/rooms/:roomId` | `PATCH` | update room title, pin/archive state, badge, or Matrix binding |
+| `/rooms/members` | `POST` | upsert a global room member |
+| `/rooms/:roomId/members` | `POST` | add a member to a room |
+| `/rooms/:roomId/members/:memberId` | `DELETE` | remove a member from a room |
+| `/rooms/:roomId/messages` | `GET` / `POST` | read room messages or post a user message and schedule room runs |
+| `/rooms/:roomId/messages/:messageId` | `PATCH` | update message status, run metadata, Matrix ids, or rendered parts |
 | `/rooms/remote-invites` | `POST` | create a Matrix/Tuwunel shared Room invite |
 | `/rooms/matrix/join` | `POST` | join a Matrix shared Room and publish the selected employee profile |
-| `/rooms/matrix/events` | `POST` | publish OpenGrove Matrix room events |
-| `/rooms/matrix/sync` | `GET` | sync Matrix room state and timeline events |
+
+Matrix timeline sync is handled by a bridge-side background loop, not a public frontend endpoint.
 
 When `OPENGROVE_BRIDGE_TOKEN` is set, non-health endpoints require the `x-opengrove-token` header.
 
@@ -202,8 +219,8 @@ By default, OpenGrove writes runtime state under `data/`:
 
 | Path | Purpose |
 | --- | --- |
-| `data/local-state.json` | persisted memory, artifacts, sessions, runs, approvals, routines, events, and Rooms ledger state |
-| `data/bridge-settings.json` | local bridge settings and kernel/provider bindings |
+| `data/local-state.json` | persisted memory, artifacts, sessions, runs, approvals, routines, events, and the server-backed room ledger |
+| `data/bridge-settings.json` | ignored local bridge settings, including kernel/provider bindings, custom providers, optional API keys, Matrix settings, and sync cursors |
 | `data/opengrove-vault/` | file-first vault mirror for OpenGrove knowledge |
 | `data/codex-threads.json` | OpenGrove session to Codex thread bindings |
 | `data/provider-http-captures/` | optional provider HTTP capture diagnostics |
@@ -238,8 +255,9 @@ The extension sends selected page context to OpenGrove, but it does not call the
 src/core/              Stable event, policy, registry, store, and shared type contracts
 src/app/               OpenGrove composition root and app wiring
 src/kernel/            Kernel contracts, discovery, tool bridge, and adapters
-src/runtime/           Codex, Claude Code, Hermes, Pi, ACP CLI, OpenClaw Gateway, HTTP, structured CLI, proxy, capture, transports, and projectors
+src/runtime/           Codex, Claude Code, Hermes, Pi, HTTP, generic CLI, proxy, capture, transports, and projectors
 src/server/            Local bridge, settings, kernel selection, routes, approvals, artifacts
+src/rooms/             Server-backed room ledger, members, messages, Matrix bindings, and room events
 src/invite/            Public invite landing page server
 src/knowledge/         Knowledge store views, organizer helpers, feedback, and vault logic
 src/skills/            Skill catalog, runtime, and native publication helpers
@@ -247,10 +265,49 @@ src/tests/             Harness tests for skills, kernels, runtimes, and bridge s
 src/evals/             Evaluation runner
 web/                   React local UI
 web/src/components/rooms/
-                       Rooms, contacts, member targeting, mentions, and server-backed Room UI
+                       Rooms, contacts, member targeting, mentions, and room API integration
 extension/             Browser context adapter
 assets/brand/          Wordmark, sapling mark, and visual system assets
 ```
+
+---
+
+## Development
+
+Install once:
+
+```bash
+npm install
+```
+
+Run checks:
+
+```bash
+npm run check:secrets
+npm run typecheck
+npm run build
+npm run smoke
+npm run test:rooms
+npm run test:harness
+```
+
+Run the bridge:
+
+```bash
+npm run bridge
+```
+
+The bridge command builds both server and web assets before starting `dist/server/local-bridge.js`.
+
+The npm CLI exposes the same bridge with:
+
+```bash
+opengrove start
+opengrove update
+opengrove --version
+```
+
+When `opengrove update` detects a source checkout, it prints the `git pull`, `npm install`, and `npm run build` flow instead of modifying the checkout.
 
 ---
 
@@ -260,7 +317,7 @@ assets/brand/          Wordmark, sapling mark, and visual system assets
 - Keep host concepts small, typed, and visible.
 - Prefer explicit user context over ambient prompt stuffing.
 - Let native kernels use their own tools and skill loaders when possible.
-- Store secrets only in local environment files or provider-native config.
+- Store secrets only in ignored local files, environment variables, or provider-native config.
 - Make risky actions visible through policy, approvals, and event logs.
 - Keep the UI quiet: collapsed tool summaries, stable status rows, and no half-wired controls.
 
@@ -273,7 +330,7 @@ OpenGrove is local-first, but it can still connect to powerful native agents and
 - The local bridge binds to `127.0.0.1` by default.
 - Set `OPENGROVE_BRIDGE_TOKEN` before exposing the bridge to any non-local client.
 - Restrict CORS with `OPENGROVE_BRIDGE_ALLOWED_ORIGINS`.
-- Do not commit `.env`, `.env.local`, provider keys, OAuth tokens, native auth files, or capture logs.
+- Do not commit `.env`, `.env.local`, `data/bridge-settings.json`, provider keys, Matrix access tokens, OAuth tokens, native auth files, or capture logs.
 - Run `npm run check:secrets` before committing; it scans tracked and non-ignored untracked files for high-confidence secrets and local absolute paths.
 - Keep provider HTTP capture disabled unless you are actively debugging.
 - Review approvals for commands, file changes, desktop/browser actions, and durable memory writes.
