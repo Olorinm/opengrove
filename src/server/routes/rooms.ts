@@ -196,11 +196,12 @@ export async function handleRoomsRoute(input: {
 function normalizeMember(input: Record<string, unknown>): RoomChannelMember {
   const id = readString(input.id);
   if (!id) throw new Error("member_id_required");
+  const kernel = readString(input.kernel) || id;
   return {
     id,
     name: readString(input.name) || id,
-    kernel: readString(input.kernel) || id,
-    model: readString(input.model) || "native",
+    kernel,
+    model: normalizeMemberModelForKernel(kernel, readString(input.model)),
     role: readString(input.role) || "member",
     status: readMemberStatus(input.status),
     color: readString(input.color) || "#64748b",
@@ -214,6 +215,17 @@ function normalizeMember(input: Record<string, unknown>): RoomChannelMember {
     matrixAgentId: readOptionalString(input.matrixAgentId),
     disabled: input.disabled === true,
   };
+}
+
+function normalizeMemberModelForKernel(kernel: string, model: string): string {
+  const value = model.trim();
+  if (kernel === "claude-code" && (!value || value === "Claude Code" || value === "AWS Bedrock (API Key)" || value.endsWith("(Claude Code)"))) {
+    return "claude-code-default";
+  }
+  if (kernel === "pi" && (!value || value === "Pi")) {
+    return "pi-default";
+  }
+  return value || "native";
 }
 
 function normalizeMemberPatch(input: Record<string, unknown>): Partial<Omit<RoomChannelMember, "id">> {

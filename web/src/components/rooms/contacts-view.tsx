@@ -22,6 +22,7 @@ import {
   createId,
   directRoomId,
   memberModelLabel,
+  normalizeRoomMemberModelForKernel,
   nowIso,
   roomMemberSourceDetail,
   roomMemberSourceLabel,
@@ -267,7 +268,7 @@ export function ContactsView(props: {
       name: member.name,
       role: member.role,
       kernel: member.kernel,
-      model: member.model,
+      model: normalizeRoomMemberModelForKernel(member.kernel, member.model),
       avatarDataUrl: member.avatarDataUrl,
     });
   }
@@ -294,7 +295,9 @@ export function ContactsView(props: {
       name: editDraft.name.trim() || selectedMember.name,
       role: editDraft.role.trim() || "员工",
       kernel: canEditRuntime ? editDraft.kernel : selectedMember.kernel,
-      model: canEditRuntime ? editDraft.model || selectedMember.model : selectedMember.model,
+      model: canEditRuntime
+        ? normalizeRoomMemberModelForKernel(editDraft.kernel, editDraft.model || selectedMember.model)
+        : selectedMember.model,
       color: canEditRuntime ? KERNEL_COLORS[editDraft.kernel] || selectedMember.color : selectedMember.color,
       avatarDataUrl: editDraft.avatarDataUrl,
     };

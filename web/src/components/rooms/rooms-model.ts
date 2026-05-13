@@ -170,7 +170,7 @@ export function roomMemberSourceDetail(member: Pick<RoomMember, "source" | "kern
   if (member.source === "human") {
     return "人类成员";
   }
-  return `${member.kernel} / ${member.model}`;
+  return `${member.kernel} / ${memberModelLabel(member)}`;
 }
 
 export function inviteStatusLabel(status: RoomInviteStatus | undefined): string {
@@ -214,13 +214,14 @@ export function roomMemberStatusLabel(member: Pick<RoomMember, "status" | "disab
 }
 
 export function memberModelLabel(member: Pick<RoomMember, "kernel" | "model">): string {
-  if (member.kernel === "claude-code" && member.model === "claude-code-default") {
+  const model = normalizeRoomMemberModelForKernel(member.kernel, member.model);
+  if (member.kernel === "claude-code" && model === "claude-code-default") {
     return "跟随 Claude Code 配置";
   }
-  if (member.kernel === "pi" && member.model === "pi-default") {
+  if (member.kernel === "pi" && model === "pi-default") {
     return "跟随 Pi 配置";
   }
-  return member.model;
+  return model;
 }
 
 export function selectableKernelOptions(kernelOptions: KernelOption[], activeKernel: string | undefined): KernelOption[] {
@@ -236,7 +237,7 @@ export function roomMemberFromKernel(kernel: KernelOption, activeKernel: string 
     id: fallback.id || defaultMemberIdForKernel(kernel.id),
     name: kernel.label || fallback.name || kernel.id,
     kernel: kernel.id,
-    model: normalizeMemberModelForKernel(kernel.id, kernel.id === activeKernel ? activeModel : fallback.model || kernel.providerLabel || kernel.version || "native"),
+    model: normalizeRoomMemberModelForKernel(kernel.id, kernel.id === activeKernel ? activeModel : fallback.model || kernel.providerLabel || kernel.version || "native"),
     role: kernel.description || fallback.role || "员工",
     status: kernel.id === activeKernel ? "idle" : "waiting",
     color: fallback.color || KERNEL_COLORS[kernel.id] || "#64748b",
@@ -256,7 +257,7 @@ function hashStableId(value: string): string {
   return (hash >>> 0).toString(36).padStart(7, "0");
 }
 
-function normalizeMemberModelForKernel(kernel: string, model: string): string {
+export function normalizeRoomMemberModelForKernel(kernel: string, model: string): string {
   const value = model.trim();
   if (kernel === "claude-code" && (!value || value === "Claude Code" || value === "AWS Bedrock (API Key)" || value.endsWith("(Claude Code)"))) {
     return "claude-code-default";

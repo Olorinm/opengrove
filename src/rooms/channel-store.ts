@@ -172,11 +172,17 @@ export class RoomChannelStore {
     };
   }
 
-  ensureOpenGroup(seedMembers: RoomChannelMember[]): void {
+  ensureOpenGroup(seedMembers: RoomChannelMember[]): boolean {
+    let changed = false;
     for (const member of seedMembers) {
-      this.upsertMember(member, { emitEvent: false });
+      const normalized = normalizeMember(member);
+      const existing = this.members.get(normalized.id);
+      if (!existing || JSON.stringify(existing) !== JSON.stringify(normalized)) {
+        changed = true;
+      }
+      this.upsertMember(normalized, { emitEvent: false });
     }
-    if (this.rooms.size > 0) return;
+    if (this.rooms.size > 0) return changed;
     const createdAt = nowIso();
     const room: RoomChannelRoom = {
       id: "room-open-group",
@@ -205,6 +211,7 @@ export class RoomChannelStore {
     }]);
     this.emit("room.created", room.id, { room });
     this.emit("room.message.created", room.id, { message: this.messagesByRoom.get(room.id)?.[0] }, { messageId: "seed-open-system" });
+    return true;
   }
 
   getInit(limit = RECENT_MESSAGE_LIMIT): RoomChannelInit {
@@ -610,11 +617,12 @@ function normalizeRoom(input: Partial<RoomChannelRoom>): RoomChannelRoom | undef
 
 function normalizeMember(input: Partial<RoomChannelMember>): RoomChannelMember {
   const id = readString(input.id) || createId("member");
+  const kernel = readString(input.kernel) || id;
   return {
     id,
     name: readString(input.name) || id,
-    kernel: readString(input.kernel) || id,
-    model: readString(input.model) || "native",
+    kernel,
+    model: normalizeMemberModelForKernel(kernel, readString(input.model)),
     role: readString(input.role) || "member",
     status: normalizeMemberStatus(input.status),
     color: readString(input.color) || "#64748b",
@@ -628,6 +636,17 @@ function normalizeMember(input: Partial<RoomChannelMember>): RoomChannelMember {
     matrixAgentId: readOptionalString(input.matrixAgentId),
     disabled: Boolean(input.disabled),
   };
+}
+
+function normalizeMemberModelForKernel(kernel: string, model: string): string {
+  const value = model.trim();
+  if (kernel === "claude-code" && (!value || value === "Claude Code" || value === "AWS Bedrock (API Key)" || value.endsWith("(Claude Code)"))) {
+    return "claude-code-default";
+  }
+  if (kernel === "pi" && (!value || value === "Pi")) {
+    return "pi-default";
+  }
+  return value || "native";
 }
 
 function normalizeMessage(input: Partial<RoomChannelMessage>): RoomChannelMessage | undefined {

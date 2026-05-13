@@ -104,8 +104,8 @@ export function recreateBridgeApp(state: BridgeState): void {
   });
   state.store.loadInto(state.app);
   const hadRooms = state.app.rooms.snapshot().rooms.length > 0;
-  state.app.rooms.ensureOpenGroup(seedRoomMembers(state));
-  if (!hadRooms) {
+  const roomSeedChanged = state.app.rooms.ensureOpenGroup(seedRoomMembers(state));
+  if (!hadRooms || roomSeedChanged) {
     state.store.saveFrom(state.app);
   }
   state.app.skills.list();
@@ -289,7 +289,7 @@ function seedRoomMembers(state: BridgeState): RoomChannelMember[] {
 }
 
 function roomMemberRuntimeModel(state: BridgeState, kernelId: string, kernel: JsonObject): string {
-  if (isBridgeKernelId(kernelId) && state.settings.kernelProviderBindings[kernelId]) {
+  if (isBridgeKernelId(kernelId)) {
     return resolveKernelRuntimeModel(state, kernelId, state.model);
   }
   return String(kernel.providerLabel || kernel.version || "native") || DEFAULT_BRIDGE_MODEL_ID;

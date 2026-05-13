@@ -10,6 +10,7 @@ import {
   KERNEL_COLORS,
   createId,
   memberInitial,
+  normalizeRoomMemberModelForKernel,
   roomMemberFromKernel,
   roomMemberSourceLabel,
   selectableKernelOptions,
@@ -323,7 +324,9 @@ function createDefaultDraft(
     source: "local",
     name: initialMember?.name || "",
     kernel: kernelId,
-    model: initialMember?.model || resolveDefaultModel(kernelId, activeKernel, activeModel, runtimeControls, runtimeControlsByKernel),
+    model: initialMember
+      ? normalizeRoomMemberModelForKernel(kernelId, initialMember.model)
+      : resolveDefaultModel(kernelId, activeKernel, activeModel, runtimeControls, runtimeControlsByKernel),
     role: initialMember?.role || kernel?.description || "员工",
   };
 }
@@ -367,7 +370,7 @@ function createMemberFromDraft(
     id: params.initialMember?.id || createId("employee"),
     name: draft.name.trim(),
     kernel: draft.kernel,
-    model: draft.model.trim() || base?.model || "native",
+    model: normalizeRoomMemberModelForKernel(draft.kernel, draft.model.trim() || base?.model || "native"),
     role: draft.role.trim() || base?.role || "员工",
     status: params.initialMember?.status || "waiting",
     color: base?.color || KERNEL_COLORS[draft.kernel] || "#64748b",
