@@ -1,11 +1,8 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/opengrove-sapling.svg" />
-    <img src="assets/brand/opengrove-sapling.svg" alt="OpenGrove" width="80" />
-  </picture>
+  <img src="assets/brand/opengrove-sapling.svg" alt="OpenGrove sapling mark" width="72" align="absmiddle" />
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/brand/opengrove-wordmark.svg" alt="OpenGrove" width="260" align="absmiddle" />
 </p>
-
-<h1 align="center">OpenGrove</h1>
 
 <h3 align="center">One grove, every agent.</h3>
 
