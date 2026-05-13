@@ -442,7 +442,7 @@ export const CLAUDE_CODE_KERNEL_CONTRACT: KernelAdapterContract = {
       ],
     },
     notes: [
-      "Claude Code is driven through the Claude Agent SDK. The older CLI stream-json runtime remains in the codebase as a diagnostic fallback but is no longer the Claude kernel's primary adapter.",
+      "Claude Code is driven through the Claude Agent SDK, preserving SDK-managed sessions, native tool events, approvals, and Claude Code's own execution model.",
     ],
   },
 };

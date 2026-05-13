@@ -181,9 +181,9 @@ Supported kernel ids:
 | Kimi CLI | ACP over stdio (`kimi acp`) | Kimi owns native config | `OPENGROVE_KIMI_BIN` |
 | Kiro CLI | ACP over stdio (`kiro-cli acp`) | Kiro owns native config | `OPENGROVE_KIRO_CLI_BIN` |
 | DeepSeek TUI | ACP over stdio (`deepseek serve --acp`) | DeepSeek owns native config; provider env can be injected when selected | `OPENGROVE_DEEPSEEK_TUI_BIN` |
-| Gemini CLI | structured one-shot stream JSON | Gemini CLI config/env | `OPENGROVE_GEMINI_CLI_BIN` |
-| Qwen Code | structured one-shot stream JSON | Qwen Code config/env | `OPENGROVE_QWEN_CODE_BIN` |
-| Cursor Agent | structured one-shot stream JSON | Cursor Agent config/env | `OPENGROVE_CURSOR_AGENT_BIN` |
+| Gemini CLI | structured stream JSON CLI | Gemini CLI config/env | `OPENGROVE_GEMINI_CLI_BIN` |
+| Qwen Code | structured stream JSON CLI | Qwen Code config/env | `OPENGROVE_QWEN_CODE_BIN` |
+| Cursor Agent | structured stream JSON CLI | Cursor Agent config/env | `OPENGROVE_CURSOR_AGENT_BIN` |
 
 Codex-specific options:
 
@@ -230,12 +230,12 @@ OpenGrove no longer treats every kernel as "prompt in, stdout out." Kernel integ
 
 | Layer | Purpose |
 | --- | --- |
-| Transport | Owns the wire boundary: `acp`, `stdio-jsonrpc`, `jsonl-rpc`, `http-sse`, `websocket-gateway`, `pty-terminal`, `oneshot-cli`, or `sdk-inprocess`. |
+| Transport | Owns the wire boundary: ACP, stdio JSON-RPC, HTTP/SSE, Gateway WebSocket, PTY terminal, structured stream JSON CLI, or SDK in-process. |
 | Event projector | Converts native events into OpenGrove events such as `assistant.delta`, `tool.started`, `tool.finished`, and `approval.requested`. |
 | Kernel manifest | Records launch command, session strategy, provider binding, approval policy, event mapping, capabilities, and rollout status. |
 | Harness template | Gives each protocol a fake-server test shape so new kernels can be added without guessing at runtime behavior. |
 
-Implemented runtime paths include Codex app-server JSON-RPC, Claude Code SDK/CLI streaming, Hermes ACP, Pi SDK in-process, OpenClaw Gateway WebSocket, OpenCode/Copilot/Kimi/Kiro/DeepSeek ACP, OpenAI-compatible HTTP/SSE for supported HTTP kernels, and structured JSONL paths for CLIs whose deepest public headless surface is still a one-shot command.
+Implemented runtime paths include Codex app-server JSON-RPC, Claude Code SDK/CLI streaming, Hermes ACP, Pi SDK in-process, OpenClaw Gateway WebSocket, OpenCode/Copilot/Kimi/Kiro/DeepSeek ACP, OpenAI-compatible HTTP/SSE for supported HTTP kernels, and structured stream JSON CLI paths for CLIs whose deepest public headless surface is a structured CLI protocol.
 
 ## Providers
 

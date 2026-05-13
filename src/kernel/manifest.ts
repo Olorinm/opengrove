@@ -42,7 +42,7 @@ export interface KernelEventProjectorManifest {
 }
 
 export interface KernelHarnessTemplateManifest {
-  fakeServer?: "acp" | "jsonl-rpc" | "stdio-jsonrpc" | "http-sse" | "websocket-gateway";
+  fakeServer?: "acp" | "stdio-jsonrpc" | "http-sse" | "websocket-gateway";
   smokePrompt?: string;
   expectedEvents?: string[];
   notes?: string[];

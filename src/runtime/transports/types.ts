@@ -1,7 +1,6 @@
 export type KernelTransportKind =
   | "acp"
   | "stdio-jsonrpc"
-  | "jsonl-rpc"
   | "http-sse"
   | "websocket-gateway"
   | "pty-terminal"
@@ -39,16 +38,6 @@ export const KERNEL_TRANSPORT_DESCRIPTORS: Record<KernelTransportKind, KernelTra
     structuredToolEvents: true,
     hostCanAnswerNativeRequests: true,
     notes: ["Generic request/response JSON-RPC over a child process stdio boundary."],
-  },
-  "jsonl-rpc": {
-    kind: "jsonl-rpc",
-    title: "JSONL RPC",
-    sessionful: true,
-    streaming: true,
-    bidirectional: true,
-    structuredToolEvents: true,
-    hostCanAnswerNativeRequests: true,
-    notes: ["Command/event JSON lines without the JSON-RPC envelope. Pi's rpc mode belongs here."],
   },
   "http-sse": {
     kind: "http-sse",
