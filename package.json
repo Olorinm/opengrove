@@ -1,6 +1,6 @@
 {
   "name": "opengrove",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "Local-first workspace where people and agents talk, remember, and collaborate.",
   "license": "Apache-2.0",

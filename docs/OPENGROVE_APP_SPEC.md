@@ -103,9 +103,9 @@ Minimal manifest:
 
 ```json
 {
-  "id": "opengrove-vfs",
-  "title": "VFS",
-  "description": "Private VFS workflows for OpenGrove.",
+  "id": "sample-workbench",
+  "title": "Sample Workbench",
+  "description": "Portable workflow package for OpenGrove.",
   "version": "0.1.0"
 }
 ```
@@ -155,12 +155,12 @@ Apps can explicitly declare business CLIs in the manifest:
   "capabilities": {
     "cli": [
       {
-        "id": "vfs-editing-project",
-        "title": "VFS Editing Project",
-        "command": "./bin/vfs-editing-project",
+        "id": "sample-workflow",
+        "title": "Sample Workflow",
+        "command": "./bin/sample-workflow",
         "doctor": ["doctor"],
         "smoke": ["smoke"],
-        "env": ["VFS_EDITING_PROJECT_ROOT"],
+        "env": ["SAMPLE_WORKFLOW_ROOT"],
         "artifacts": ["workspace/runs/**"],
         "allowNativeBash": true
       }
@@ -182,8 +182,8 @@ Apps with grouped skill collections can declare collection roots explicitly:
 {
   "skills": {
     "roots": [
-      "skills/hyperframes",
-      "skills/maeve-agent"
+      "skills/workflow-tools",
+      "skills/document-tools"
     ]
   }
 }
@@ -191,6 +191,30 @@ Apps with grouped skill collections can declare collection roots explicitly:
 
 Each listed root should contain one or more `<skill-name>/SKILL.md`
 directories.
+
+## Default employees
+
+Apps can declare default room employees in the manifest. OpenGrove reads these
+declarations generically; it does not infer employees from app-specific ids or
+titles.
+
+```json
+{
+  "employees": [
+    {
+      "id": "asset-editor",
+      "name": "Asset Editor",
+      "kernel": "claude-code",
+      "model": "claude-code-default",
+      "role": "Prepare workspace assets and previews.",
+      "defaultSkillIds": ["asset-query", "project-render"]
+    }
+  ]
+}
+```
+
+The same array may also appear at `capabilities.employees`. Employee ids are
+scoped to the App id when OpenGrove creates room members.
 
 ## Runtime environment injection
 

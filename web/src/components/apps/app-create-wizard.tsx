@@ -77,7 +77,7 @@ export function AppCreateWizard(props: {
               <input
                 value={props.title}
                 disabled={disabled}
-                placeholder="VFS"
+                placeholder="Sample Workbench"
                 onChange={(event) => props.onTitleChange(event.target.value)}
               />
             </label>
@@ -188,5 +188,5 @@ function sourcePlaceholder(kind: AppCreateSourceKind): string {
   if (kind === "git") return "https://github.com/org/repo.git";
   if (kind === "archive") return "https://example.com/app.zip";
   if (kind === "project") return "/Users/me/projects/toolkit 或 https://...";
-  return "/Users/me/projects/opengrove-vfs";
+  return "/Users/me/projects/sample-workbench";
 }

@@ -8,6 +8,12 @@ to draft `docs/releases/vX.Y.Z.md`.
 
 No unreleased changes yet.
 
+## v0.3.1 - 2026-05-22
+
+- Remove private App example identifiers from the published package, tests, docs, and UI placeholders.
+- Replace hard-coded mounted-App employee detection with generic manifest-declared employees under `employees`, `rooms.employees`, or `capabilities.employees`.
+- Republish the v0.3 line as a sanitized patch after unpublishing the original v0.3.0 package artifact.
+
 ## v0.3.0 - 2026-05-22
 
 - Add the workspace/app shell: mounted Apps, App workspace files, visual preview workbench, developer sessions, preview annotations, and voice input.

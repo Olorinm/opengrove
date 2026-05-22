@@ -93,64 +93,57 @@ async function main() {
     [],
     "the default room should be bootstrapped without turning kernels into employees",
   );
-  const vfsAppRoot = join(cwd, "opengrove-vfs");
-  mkdirSync(vfsAppRoot, { recursive: true });
+  const editorAppRoot = join(cwd, "sample-editor-app");
+  mkdirSync(editorAppRoot, { recursive: true });
   writeFileSync(
-    join(vfsAppRoot, "opengrove.app.json"),
+    join(editorAppRoot, "opengrove.app.json"),
     JSON.stringify({
-      id: "opengrove-vfs",
-      title: "VFS",
-      description: "Private VFS short-drama supply and editing workflows for OpenGrove.",
+      id: "sample-editor",
+      title: "Sample Editor",
+      description: "Portable editing workflow for OpenGrove.",
+      employees: [{
+        id: "asset-editor",
+        name: "Asset Editor",
+        kernel: "claude-code",
+        model: "claude-code-default",
+        role: "Prepares workspace assets and previews.",
+        defaultSkillIds: ["asset-query", "project-render"],
+      }],
+    }),
+    "utf8",
+  );
+  const directorAppRoot = join(cwd, "sample-director-app");
+  mkdirSync(directorAppRoot, { recursive: true });
+  writeFileSync(
+    join(directorAppRoot, "opengrove.app.json"),
+    JSON.stringify({
+      id: "sample-director",
+      title: "Sample Director",
+      description: "Portable director workflow for OpenGrove.",
       capabilities: {
-        skills: ["supply-drama-query", "auto-edit-project"],
+        employees: [{
+          id: "director",
+          name: "Director",
+          kernel: "opencode",
+          model: "sample-director-model",
+          role: "Coordinates the app workflow.",
+        }],
       },
     }),
     "utf8",
   );
-  const maeveAppRoot = join(cwd, "maeve-agent");
-  mkdirSync(join(maeveAppRoot, "agents"), { recursive: true });
-  writeFileSync(
-    join(maeveAppRoot, "opengrove.app.json"),
-    JSON.stringify({
-      id: "maeve",
-      title: "Maeve",
-      description: "Short drama ad production workbench for OpenGrove.",
-    }),
-    "utf8",
-  );
-  writeFileSync(
-    join(maeveAppRoot, "opencode.jsonc"),
-    [
-      "{",
-      "  \"default_agent\": \"director\",",
-      "  \"agent\": { \"director\": { \"disable\": false } }",
-      "}",
-    ].join("\n"),
-    "utf8",
-  );
-  writeFileSync(
-    join(maeveAppRoot, "agents", "director.md"),
-    [
-      "---",
-      "description: Maeve 主控 agent",
-      "mode: primary",
-      "model: amazon-bedrock/global.anthropic.claude-sonnet-4-6",
-      "---",
-    ].join("\n"),
-    "utf8",
-  );
   state.settings.mountedApps = [
-    { id: "opengrove-vfs", path: vfsAppRoot, enabled: true },
-    { id: "maeve", path: maeveAppRoot, enabled: true },
+    { id: "sample-editor", path: editorAppRoot, enabled: true },
+    { id: "sample-director", path: directorAppRoot, enabled: true },
   ];
   recreateBridgeApp(state);
   const appMembers = state.app.rooms.listMembers();
-  const vfsEmployee = appMembers.find((member) => member.id === "member-app-opengrove-vfs-editing");
-  const maeveEmployee = appMembers.find((member) => member.id === "member-app-maeve-director");
-  assert.equal(vfsEmployee?.kernel, "claude-code", "VFS素材剪辑员工应该默认走 Claude Code");
-  assert.deepEqual(vfsEmployee?.defaultSkillIds, ["supply-drama-query", "auto-edit-project"]);
-  assert.equal(maeveEmployee?.kernel, "opencode", "Maeve director 应该绑定 OpenCode 默认 agent");
-  assert.equal(maeveEmployee?.model, "amazon-bedrock/global.anthropic.claude-sonnet-4-6");
+  const editorEmployee = appMembers.find((member) => member.id === "member-app-sample-editor-asset-editor");
+  const directorEmployee = appMembers.find((member) => member.id === "member-app-sample-director-director");
+  assert.equal(editorEmployee?.kernel, "claude-code", "manifest employee should preserve its kernel");
+  assert.deepEqual(editorEmployee?.defaultSkillIds, ["asset-query", "project-render"]);
+  assert.equal(directorEmployee?.kernel, "opencode", "manifest employee should preserve opencode kernel");
+  assert.equal(directorEmployee?.model, "sample-director-model");
   state.settings.kernel = "hermes";
   const options = getBridgeKernelOptions(state);
   const hermesOption = options.find((option) => option.id === "hermes");

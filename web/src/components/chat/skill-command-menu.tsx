@@ -79,13 +79,12 @@ function formatSkillTitle(skill: SkillRecord): string {
   if (normalized === "browser" && packId.includes("browser-use")) return "Browser Use";
   if (normalized === "imagegen") return "Image Gen";
   if (normalized === "openai-docs") return "OpenAI Docs";
-  if (normalized === "vfs-pm-guard") return "VFS PM Guard";
   return raw
     .split(/[-_:]+/)
     .filter(Boolean)
     .map((part) => {
       const lower = part.toLowerCase();
-      if (lower === "vfs" || lower === "pm" || lower === "api" || lower === "ui") {
+      if (lower === "pm" || lower === "api" || lower === "ui") {
         return lower.toUpperCase();
       }
       return part.toUpperCase() === part ? part : part.slice(0, 1).toUpperCase() + part.slice(1);

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { createOpenGrove } from "../app/create-opengrove.js";
 import { readAppEnv } from "../identity.js";
@@ -149,63 +149,9 @@ function mountedAppDefaultEmployees(settings: BridgeSettings): RoomChannelMember
     const manifest = readAppManifest(appRoot);
     const appId = stringOrUndefined(manifest.id) ?? stringOrUndefined(manifest.name) ?? mountedApp.id ?? basename(appRoot);
     const title = stringOrUndefined(manifest.title) ?? mountedApp.title ?? appId;
-    const haystack = `${appId} ${title} ${stringOrUndefined(manifest.description) ?? ""}`.toLowerCase();
-    if (haystack.includes("opengrove-vfs") || /\bvfs\b/i.test(haystack)) {
-      members.push(vfsEditingEmployee(appRoot, manifest));
-    } else if (haystack.includes("maeve")) {
-      members.push(maeveDirectorEmployee(appRoot));
-    }
+    members.push(...manifestDefaultEmployees(appRoot, appId, title, manifest));
   }
   return dedupeMembers(members);
-}
-
-function vfsEditingEmployee(appRoot: string, manifest: JsonObject): RoomChannelMember {
-  const skillIds = stringArray(record(record(manifest).capabilities).skills);
-  return {
-    id: "member-app-opengrove-vfs-editing",
-    name: "VFS 素材剪辑",
-    kernel: "claude-code",
-    model: "claude-code-default",
-    role: [
-      "VFS App 素材剪辑员工，使用 Claude Code 执行供应查询与自动剪辑工程。",
-      `App root: ${appRoot}`,
-      "默认流程：先用 supply-drama-query 查询/打包短剧物料，再用 auto-edit-project 初始化、检查或产出剪辑工程预览文件。",
-      "所有生成的 Markdown、manifest、预览图、视频片段和工程文件都应写入 VFS App workspace，优先使用 workspace/runs/<run-id>/。",
-    ].join("\n"),
-    status: "idle",
-    color: "#8b5cf6",
-    lastActive: "已配置",
-    defaultSkillIds: skillIds.length ? skillIds : ["supply-drama-query", "auto-edit-project"],
-    appId: "opengrove-vfs",
-    workspaceRoot: appRoot,
-    source: "local",
-    sourceLabel: "VFS App",
-  };
-}
-
-function maeveDirectorEmployee(appRoot: string): RoomChannelMember {
-  const defaultAgent = readOpenCodeDefaultAgent(appRoot) || "director";
-  const model = readAgentModel(appRoot, defaultAgent) || "amazon-bedrock/global.anthropic.claude-sonnet-4-6";
-  return {
-    id: "member-app-maeve-director",
-    name: "Maeve Director",
-    kernel: "opencode",
-    model,
-    role: [
-      `Maeve App 主控员工，使用 OpenCode 默认 agent: ${defaultAgent}。`,
-      `App root: ${appRoot}`,
-      "按 Maeve AGENTS.md 的 director 流程接收 drama_id、strategy_id、target_count，准备剧本与镜头分析，生成 todo.md/ad_spec.md，并驱动 composer/critic 产出广告素材 MP4。",
-      "默认使用 Maeve app 的 CLI：maeve、script-tool、maeve-doctor、maeve-smoke；产物写入 Maeve App workspace/data。",
-    ].join("\n"),
-    status: "idle",
-    color: "#0f766e",
-    lastActive: "已配置",
-    defaultSkillIds: defaultMaeveSkillIds(appRoot),
-    appId: "maeve",
-    workspaceRoot: appRoot,
-    source: "local",
-    sourceLabel: "Maeve App",
-  };
 }
 
 function readAppManifest(appRoot: string): JsonObject {
@@ -221,68 +167,89 @@ function readAppManifest(appRoot: string): JsonObject {
   return {};
 }
 
-function readOpenCodeDefaultAgent(appRoot: string): string | undefined {
-  const path = join(appRoot, "opencode.jsonc");
-  if (!existsSync(path)) return undefined;
-  const match = readFileSync(path, "utf8").match(/["']default_agent["']\s*:\s*["']([^"']+)["']/);
-  return match?.[1]?.trim() || undefined;
+function manifestDefaultEmployees(
+  appRoot: string,
+  appId: string,
+  appTitle: string,
+  manifest: JsonObject,
+): RoomChannelMember[] {
+  return manifestEmployeeInputs(manifest)
+    .map((employee, index) => normalizeManifestEmployee(employee, index, appRoot, appId, appTitle))
+    .filter((member): member is RoomChannelMember => Boolean(member));
 }
 
-function readAgentModel(appRoot: string, agentName: string): string | undefined {
-  const path = join(appRoot, "agents", `${agentName}.md`);
-  if (!existsSync(path)) return undefined;
-  const text = readFileSync(path, "utf8");
-  const frontmatter = text.match(/^---\n([\s\S]*?)\n---/);
-  const model = frontmatter?.[1]?.match(/^model:\s*(.+)$/m)?.[1]?.trim();
-  return model || undefined;
+function manifestEmployeeInputs(manifest: JsonObject): Record<string, unknown>[] {
+  return [
+    ...recordArray(record(manifest).employees),
+    ...recordArray(record(record(manifest).rooms).employees),
+    ...recordArray(record(record(manifest).capabilities).employees),
+  ];
 }
 
-function defaultMaeveSkillIds(appRoot: string): string[] {
-  const documented = ["document-skills-docx", "document-skills-pdf", "hyperframes", "hyperframes-cli", "gsap"];
-  const discovered = new Set(discoverSkillIds(appRoot));
-  const availableDocumented = documented.filter((skillId) => discovered.has(skillId));
-  return availableDocumented.length ? availableDocumented : documented;
+function normalizeManifestEmployee(
+  input: Record<string, unknown>,
+  index: number,
+  appRoot: string,
+  appId: string,
+  appTitle: string,
+): RoomChannelMember | undefined {
+  const appSlug = slug(appId) || "app";
+  const employeeSlug = slug(stringOrUndefined(input.id) ?? stringOrUndefined(input.name) ?? `employee-${index + 1}`);
+  if (!employeeSlug) return undefined;
+  const kernel = stringOrUndefined(input.kernel) ?? "codex";
+  const name = stringOrUndefined(input.name) ?? titleFromSlug(employeeSlug);
+  const description = stringOrUndefined(input.role)
+    ?? stringOrUndefined(input.description)
+    ?? `${name} works inside the ${appTitle} App.`;
+  const role = [
+    description,
+    ...stringArray(input.instructions),
+    `App root: ${appRoot}`,
+  ].join("\n");
+  const declaredDefaultSkillIds = stringArray(input.defaultSkillIds);
+  const defaultSkillIds = declaredDefaultSkillIds.length
+    ? declaredDefaultSkillIds
+    : stringArray(input.skills);
+  return {
+    id: `member-app-${appSlug}-${employeeSlug}`,
+    name,
+    kernel,
+    model: stringOrUndefined(input.model) ?? defaultEmployeeModel(kernel),
+    role,
+    status: "idle",
+    color: stringOrUndefined(input.color) ?? defaultEmployeeColor(index),
+    lastActive: stringOrUndefined(input.lastActive) ?? "已配置",
+    defaultSkillIds,
+    appId,
+    workspaceRoot: appRoot,
+    source: "local",
+    sourceLabel: `${appTitle} App`,
+  };
 }
 
-function discoverSkillIds(appRoot: string): string[] {
-  const skillRoot = join(appRoot, "skills");
-  if (!existsSync(skillRoot)) return [];
-  const output = new Set<string>();
-  walkForSkillManifests(skillRoot, 0, output);
-  return [...output];
+function defaultEmployeeModel(kernel: string): string {
+  if (kernel === "claude-code") return "claude-code-default";
+  if (kernel === "opencode") return "opencode-default";
+  return DEFAULT_BRIDGE_MODEL_ID;
 }
 
-function walkForSkillManifests(dir: string, depth: number, output: Set<string>): void {
-  if (depth > 3) return;
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return;
-  }
-  if (entries.includes("SKILL.md")) {
-    const skillId = readSkillName(join(dir, "SKILL.md")) || basename(dir);
-    if (skillId) output.add(skillId);
-    return;
-  }
-  for (const entry of entries) {
-    if (entry.startsWith(".") || entry === "node_modules" || entry === "workspace") continue;
-    const path = join(dir, entry);
-    try {
-      if (statSync(path).isDirectory()) walkForSkillManifests(path, depth + 1, output);
-    } catch {
-      // Ignore unreadable app-private folders.
-    }
-  }
+function defaultEmployeeColor(index: number): string {
+  const colors = ["#2563eb", "#0f766e", "#7c3aed", "#be123c", "#b45309", "#047857"];
+  return colors[index % colors.length] ?? colors[0];
 }
 
-function readSkillName(path: string): string | undefined {
-  try {
-    const text = readFileSync(path, "utf8");
-    return text.match(/^name:\s*(.+)$/m)?.[1]?.trim();
-  } catch {
-    return undefined;
-  }
+function titleFromSlug(value: string): string {
+  return value
+    .split(/[-_.]+/g)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ") || "App Employee";
+}
+
+function recordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.map((item) => record(item)).filter((item) => Object.keys(item).length > 0)
+    : [];
 }
 
 function dedupeMembers(members: RoomChannelMember[]): RoomChannelMember[] {

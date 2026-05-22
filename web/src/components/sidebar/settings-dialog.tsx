@@ -1296,7 +1296,7 @@ export function SettingsDialog(props: {
                           className="settings-mounted-app-path-input"
                           value={item.path}
                           disabled={props.loading || props.saving}
-                          placeholder="/path/to/opengrove-vfs"
+                          placeholder="/path/to/sample-workbench"
                           onBlur={(event) => updateMountedApp(item.id, { path: event.currentTarget.value.trim() })}
                           onKeyDown={(event) => {
                             if (event.key === "Enter") event.currentTarget.blur();
