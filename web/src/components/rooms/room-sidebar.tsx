@@ -16,6 +16,7 @@ type RoomSidebarProps = {
   onToggleCreateMenu(): void;
   onCreateGroup(): void;
   onRecruitEmployee(): void;
+  onOpenContacts(): void;
   onRoomQueryChange(value: string): void;
   onOpenRoom(roomId: string): void;
   onOpenDirectMember(member: RoomMember): void;
@@ -79,6 +80,15 @@ export function RoomSidebar(props: RoomSidebarProps) {
           ) : null}
         </div>
       </header>
+
+      <nav className="collaboration-switch" aria-label="消息视图">
+        <button type="button" data-active="true">
+          对话
+        </button>
+        <button type="button" onClick={props.onOpenContacts}>
+          通讯录
+        </button>
+      </nav>
 
       <div className="rooms-search-wrap" data-open={hasSearchQuery ? "true" : "false"}>
         <label className="rooms-search">

@@ -204,7 +204,7 @@
 
 .rooms-member-row-title span {
   background: var(--og-section-hover);
-  color: var(--og-green);
+  color: var(--og-success);
   font-weight: var(--fw-medium);
 }
 
@@ -249,14 +249,14 @@
 }
 
 .contacts-message-button.primary {
-  border-color: var(--og-green);
-  background: var(--og-green);
+  border-color: var(--og-interaction);
+  background: var(--og-interaction);
   color: #ffffff;
 }
 
 .contacts-message-button.primary:hover,
 .contacts-message-button.primary:focus-visible {
-  background: color-mix(in srgb, var(--og-green) 88%, black);
+  background: color-mix(in srgb, var(--og-interaction) 88%, black);
   color: #ffffff;
 }
 
@@ -434,4 +434,3 @@
 :root[data-resolved-theme="dark"] .contacts-person-row .rooms-avatar::after {
   border-color: #111111;
 }
-

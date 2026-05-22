@@ -25,23 +25,85 @@
 
 .app-rail-brand {
   display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 5px;
   width: 30px;
   height: 30px;
-  place-items: center;
   margin-bottom: 18px;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   box-shadow: none;
   color: inherit;
   cursor: pointer;
+  overflow: hidden;
   padding: 0;
   justify-self: center;
+  text-align: left;
 }
 
-.app-rail-brand svg {
+.app-rail-brand-icon {
+  display: grid;
+  box-sizing: border-box;
+  grid-column: 1;
+  grid-row: 1;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+.app-rail-brand-logo,
+.app-rail-brand-toggle {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  transition:
+    opacity var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+.app-rail-brand-logo svg {
   width: 23px;
   height: 23px;
+}
+
+.app-rail-brand-toggle {
+  color: var(--og-text-muted);
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+.app-rail-brand-toggle svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.8;
+}
+
+.app-rail-brand:hover .app-rail-brand-icon,
+.app-rail-brand:focus-visible .app-rail-brand-icon {
+  background: rgba(0, 0, 0, 0.045);
+  color: var(--og-text);
+}
+
+.app-rail-brand:hover .app-rail-brand-logo,
+.app-rail-brand:focus-visible .app-rail-brand-logo {
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+.app-rail-brand:hover .app-rail-brand-toggle,
+.app-rail-brand:focus-visible .app-rail-brand-toggle {
+  color: var(--og-text);
+  opacity: 1;
+  transform: scale(1);
 }
 
 .app-rail-brand:focus,
@@ -51,7 +113,6 @@
 }
 
 .app-rail-wordmark,
-.app-rail-collapse,
 .app-rail-button span,
 .app-user-button strong {
   display: none;
@@ -69,32 +130,16 @@
 }
 
 .app-rail-wordmark span {
-  color: var(--og-green);
-}
-
-.app-rail-collapse {
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--og-text-muted);
-  cursor: pointer;
-  padding: 0;
-}
-
-.app-rail-collapse:hover,
-.app-rail-collapse:focus-visible {
-  background: rgba(0, 0, 0, 0.045);
-  color: var(--og-text);
-  outline: 0;
+  color: var(--og-brand);
 }
 
 :root[data-resolved-theme="dark"] .app-rail-brand {
+  box-shadow: none;
+}
+
+:root[data-resolved-theme="dark"] .app-rail-brand-icon {
   border-color: rgba(255, 255, 255, 0.82);
   background: #fbfbfa;
-  box-shadow: none;
 }
 
 .app-rail-nav {
@@ -111,11 +156,73 @@
   gap: 8px;
 }
 
+.app-rail-nav {
+  align-content: start;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  gap: 0;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+}
+
+.app-rail-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.app-rail-section {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.app-rail-section + .app-rail-section {
+  margin-top: 13px;
+}
+
+.app-rail-section-title {
+  display: none;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 6px 2px;
+  color: var(--og-text-muted);
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-rail-section-items {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.app-rail:not([data-expanded="true"]) .app-rail-section + .app-rail-section {
+  margin-top: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--og-border) 78%, transparent);
+  padding-top: 7px;
+}
+
 .app-rail-button {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  justify-content: start;
+  justify-items: stretch;
   width: 38px;
   height: 38px;
   border-radius: 16px;
   color: #6d7278;
+  overflow: hidden;
+  padding: 0;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
 }
 
 .app-rail-button svg,
@@ -124,6 +231,19 @@
 .topbar-icon-button svg,
 .library-ai-icon-button svg {
   stroke-width: 1.8;
+}
+
+.app-rail-button > svg,
+.app-rail-button > .pixel-icon {
+  grid-column: 1;
+  align-self: center;
+  justify-self: center;
+}
+
+.app-rail-brand:active,
+.app-rail-button:active,
+.app-user-button:active {
+  transform: none;
 }
 
 .pixel-icon {
@@ -141,24 +261,34 @@
 }
 
 .pixel-icon__accent {
-  fill: var(--pixel-icon-accent, var(--og-green));
+  fill: var(--pixel-icon-accent, currentColor);
 }
 
 .app-rail-button:hover {
   background: rgba(0, 0, 0, 0.04);
   color: var(--og-text);
-  --pixel-icon-accent: var(--og-green);
+  --pixel-icon-accent: currentColor;
 }
 
 .app-rail-button[data-active="true"] {
-  background: var(--og-surface);
+  background: transparent;
   color: var(--og-text);
-  box-shadow: var(--shadow-sm);
-  --pixel-icon-accent: var(--og-green);
+  box-shadow: none;
+  --pixel-icon-accent: currentColor;
 }
 
 .app-rail-button[data-active="true"]::before {
   display: none;
+}
+
+.app-rail[data-expanded="true"] .app-rail-section,
+.app-rail[data-expanded="true"] .app-rail-section-items {
+  width: 100%;
+}
+
+.app-rail[data-expanded="true"] .app-rail-section-title {
+  display: block;
+  animation: rail-label-in var(--motion-normal) var(--motion-ease-out);
 }
 
 .app-user-button {
@@ -183,10 +313,15 @@
 }
 
 .app-user-button:hover,
-.app-user-button:focus-visible,
-.app-user-button[data-active="true"] {
+.app-user-button:focus-visible {
   outline: 0;
   background: rgba(0, 0, 0, 0.045);
+}
+
+.app-user-button[data-active="true"] {
+  outline: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .app-user-button span,
@@ -978,12 +1113,12 @@
 .mobile-nav-item.active {
   background: var(--og-surface-subtle);
   color: var(--og-text);
-  --pixel-icon-accent: var(--og-green);
+  --pixel-icon-accent: currentColor;
 }
 
 .mobile-nav-item:hover,
 .mobile-nav-item:focus-visible {
-  --pixel-icon-accent: color-mix(in srgb, var(--og-green) 72%, transparent);
+  --pixel-icon-accent: currentColor;
 }
 
 @media (max-width: 900px) {
@@ -993,4 +1128,3 @@
     border-radius: 0;
   }
 }
-

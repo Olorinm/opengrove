@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { AgentEvent, JsonObject, JsonValue, ToolResult, UsageStats } from "../../core.js";
+import type { AgentEvent, JsonObject, JsonValue, UsageStats } from "../../core.js";
 import type { AsyncEventQueue } from "./async-event-queue.js";
 import { isJsonObject, readString } from "./json.js";
 
@@ -9,7 +9,6 @@ export class CodexEventProjector {
   private readonly assistantItemOrder: string[] = [];
   private readonly generatedImages: Array<{ alt: string; src: string }> = [];
   private streamedAssistantText = false;
-  private completed = false;
   private error?: string;
   private tokenUsage?: UsageStats;
 
@@ -122,7 +121,6 @@ export class CodexEventProjector {
           this.rememberGeneratedImage(object as JsonObject & { id: string; type: string });
         }
       }
-      this.completed = true;
       return true;
     }
 

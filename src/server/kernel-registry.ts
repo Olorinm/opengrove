@@ -87,7 +87,11 @@ const KERNEL_DESCRIPTORS: Record<BridgeKernelId, BridgeKernelDescriptor> = {
     thread: { isolateByRuntimeBinding: true, reuseAcrossModelChanges: false },
   },
   "qwen-code": openAiCliDescriptor("qwen-code", "Qwen Code"),
-  opencode: openAiCliDescriptor("opencode", "OpenCode"),
+  opencode: {
+    ...openAiCliDescriptor("opencode", "OpenCode"),
+    externalProtocols: ["openai-compatible", "anthropic-compatible"],
+    externalCredentialKinds: [...API_CREDENTIALS, "aws"],
+  },
   copilot: {
     id: "copilot",
     label: "GitHub Copilot CLI",

@@ -2,7 +2,6 @@ import type { OpenGroveApp } from "../app/create-opengrove.js";
 import type {
   ApprovalRequest,
   ArtifactRecord,
-  JsonObject,
   JsonValue,
   MemoryRecord,
   PolicyDecision,

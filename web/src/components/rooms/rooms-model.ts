@@ -4,6 +4,30 @@ export type MemberStatus = "idle" | "running" | "done" | "waiting" | "offline";
 export type MessageStatus = "sent" | "running" | "done" | "failed" | "interrupted";
 export type RoomMemberSource = "local" | "remote" | "human";
 export type RoomInviteStatus = "none" | "pending" | "accepted" | "revoked" | "expired";
+export type RoomRemoteProvider = "matrix";
+
+export type RoomRemoteActor = {
+  provider: RoomRemoteProvider;
+  accountId: string;
+  ownerId: string;
+  agentId: string;
+};
+
+export type RoomRemoteBinding = {
+  provider: RoomRemoteProvider;
+  accountId: string;
+  remoteRoomId: string;
+  localMemberId?: string;
+  mode: "host" | "guest";
+};
+
+export type RoomRemoteProvenance = {
+  provider: RoomRemoteProvider;
+  accountId: string;
+  remoteRoomId?: string;
+  eventId?: string;
+  turnId?: string;
+};
 
 export type RoomMember = {
   id: string;
@@ -14,13 +38,15 @@ export type RoomMember = {
   status: MemberStatus;
   color: string;
   lastActive: string;
+  defaultSkillIds?: string[];
+  appId?: string;
+  workspaceRoot?: string;
   avatarDataUrl?: string;
   source?: RoomMemberSource;
   sourceLabel?: string;
   inviteStatus?: RoomInviteStatus;
   homeNodeLabel?: string;
-  matrixUserId?: string;
-  matrixAgentId?: string;
+  remote?: RoomRemoteActor;
   disabled?: boolean;
 };
 
@@ -39,8 +65,7 @@ export type RoomMessage = {
   parts?: MessagePart[];
   startedAt?: string;
   finishedAt?: string;
-  matrixEventId?: string;
-  matrixTurnId?: string;
+  remote?: RoomRemoteProvenance;
 };
 
 export type Room = {
@@ -55,14 +80,7 @@ export type Room = {
   messages: RoomMessage[];
   updatedAt: string;
   unread: number;
-  matrix?: RoomMatrixBinding;
-};
-
-export type RoomMatrixBinding = {
-  homeserverUrl: string;
-  roomId: string;
-  localMemberId?: string;
-  mode: "host" | "guest";
+  remote?: RoomRemoteBinding;
 };
 
 export type RoomsState = {

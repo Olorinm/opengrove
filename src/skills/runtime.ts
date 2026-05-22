@@ -40,7 +40,7 @@ export function recordInvokedSkill(
   };
 }
 
-export function clearActiveSkillState(current: WorkingStateRecord, reason: string): Partial<WorkingStateRecord> {
+export function clearActiveSkillState(_current: WorkingStateRecord, reason: string): Partial<WorkingStateRecord> {
   if (reason === "clear-conversation") {
     return {
       activeSkillId: undefined,

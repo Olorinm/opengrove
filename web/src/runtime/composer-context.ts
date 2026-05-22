@@ -60,7 +60,7 @@ function renderArtifactContext(artifacts: ContextArtifactPayload[]): string {
   if (!artifacts.length) {
     return "";
   }
-  const lines = ["用户明确加入的产物："];
+  const lines = ["用户明确加入的上下文："];
   for (const artifact of artifacts) {
     lines.push(`- ${artifact.title} (${artifact.type}, id: ${artifact.id})${artifact.summary ? `：${artifact.summary}` : ""}`);
     if (artifact.imageUri) {

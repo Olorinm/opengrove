@@ -22,7 +22,6 @@ import {
   type ResponseSpeed,
   type RuntimeAccessMode,
   type SkillCatalog,
-  type SkillManifest,
 } from "../core.js";
 import {
   createDefaultContextAssembler,
@@ -107,6 +106,7 @@ export interface AgentTurnOptions {
   accessMode?: RuntimeAccessMode;
   policy?: PolicyRule[];
   signal?: AbortSignal;
+  runtimeEnv?: NodeJS.ProcessEnv;
 }
 
 export interface RecordEventOptions {
@@ -128,6 +128,7 @@ export interface CreateOpenGroveOptions {
   cwd?: string;
   workspaceRoot?: string;
   includeCodexSkills?: boolean;
+  mountedApps?: Array<{ id?: string; path: string; enabled?: boolean; title?: string }>;
 }
 
 export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
@@ -144,6 +145,7 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
     cwd: options.cwd,
     workspaceRoot,
     includeCodexSkills: options.includeCodexSkills === true,
+    mountedApps: options.mountedApps,
   });
   const nativeSkillPublications = options.kernel?.capabilities.knowledge?.nativeSkills
     ? publishNativeSkills({
@@ -393,6 +395,7 @@ export function createOpenGrove(options: CreateOpenGroveOptions): OpenGroveApp {
         skills: availableSkills,
         packs: packs.list(),
         policy: [...(options.policy ?? []), ...(turnOptions.policy ?? []), ...capabilities.policy()],
+        runtimeEnv: turnOptions.runtimeEnv,
       })) {
         workingState.update({
           sessionId,

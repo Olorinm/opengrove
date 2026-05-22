@@ -676,6 +676,7 @@ export interface AgentTurnRequest {
   packs?: PackManifest[];
   capabilities?: CapabilityManifest[];
   policy?: PolicyRule[];
+  runtimeEnv?: NodeJS.ProcessEnv;
 }
 
 export type AgentEvent =

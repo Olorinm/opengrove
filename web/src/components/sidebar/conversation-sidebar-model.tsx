@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { Check, Clock, Plus } from "lucide-react";
 import type { StoredMessage } from "../../bridge";
 import { formatDate, summarize } from "../../format";
@@ -10,11 +11,12 @@ export type SidebarProject = UiProject & { active: boolean; threads: UiThread[] 
 
 export function ConversationSortMenu(props: {
   sortKey: ConversationSortKey;
+  style?: CSSProperties;
   onSortKeyChange(key: ConversationSortKey): void;
 }) {
   const { t } = useI18n();
   return (
-    <div className="conversation-sort-menu" role="menu">
+    <div className="conversation-sort-menu" role="menu" style={props.style}>
       <button type="button" role="menuitem" onClick={() => props.onSortKeyChange("createdAt")}>
         <Plus size={14} />
         <span>{t("conversation.createTime")}</span>

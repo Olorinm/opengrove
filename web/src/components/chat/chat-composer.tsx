@@ -1,12 +1,15 @@
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactNode, RefObject } from "react";
 import {
   ArrowUp,
+  Check,
   ClipboardPlus,
   FileText,
   Image as ImageIcon,
+  Mic,
   Package,
   Plus,
   Shield,
+  Square,
   X,
   Zap,
 } from "lucide-react";
@@ -131,6 +134,12 @@ export interface ChatComposerProps {
   onSetAccessMode(mode: RuntimeAccessMode): void;
   onSubmitOrStop(): void;
   onRemoveSkillInvocation(): void;
+  voiceInput?: {
+    state: "idle" | "recording" | "transcribing";
+    disabled?: boolean;
+    error?: string;
+    onToggle(): void;
+  };
   skillMenu?: ReactNode;
 }
 
@@ -212,6 +221,31 @@ export function ChatComposer(props: ChatComposerProps) {
             </div>
           </div>
           <div className="opengrove-composer-footer-right">
+            {props.voiceInput ? (
+              <button
+                className="opengrove-action opengrove-composer-plus opengrove-composer-mic"
+                data-state={props.voiceInput.state}
+                type="button"
+                disabled={props.voiceInput.disabled || props.voiceInput.state === "transcribing"}
+                onClick={props.voiceInput.onToggle}
+                aria-label={
+                  props.voiceInput.state === "recording"
+                    ? t("composer.voiceStop")
+                    : props.voiceInput.state === "transcribing"
+                      ? t("composer.voiceTranscribing")
+                      : t("composer.voiceStart")
+                }
+                title={props.voiceInput.error || (
+                  props.voiceInput.state === "recording"
+                    ? t("composer.voiceStop")
+                    : props.voiceInput.state === "transcribing"
+                      ? t("composer.voiceTranscribing")
+                      : t("composer.voiceStart")
+                )}
+              >
+                {props.voiceInput.state === "recording" ? <Square size={14} /> : <Mic size={18} />}
+              </button>
+            ) : null}
             <ComposerModelPicker
               model={props.model}
               activeKernel={props.activeKernel}
@@ -267,11 +301,11 @@ function ComposerAttachmentBar(props: {
       {props.contextArtifacts.map((artifact) => (
         <div className="opengrove-attachment" key={artifact.id} data-kind="artifact">
           <span className="opengrove-attachment-icon" aria-hidden="true">
-            {artifact.imageUri ? <ImageIcon size={13} /> : <FileText size={13} />}
+            {artifact.type === "visual_annotation" ? <Square size={13} /> : artifact.imageUri ? <ImageIcon size={13} /> : <FileText size={13} />}
           </span>
           <span className="opengrove-attachment-name">
             {artifact.title}
-            <span className="opengrove-attachment-meta"> · {t("composer.artifact")}</span>
+            <span className="opengrove-attachment-meta"> · {artifact.type === "visual_annotation" ? "标注" : t("composer.artifact")}</span>
           </span>
           <button
             className="opengrove-action opengrove-icon opengrove-attachment-remove"
@@ -373,7 +407,9 @@ function ComposerAccessPicker(props: {
             onClick={() => props.onSetAccessMode(item.id)}
           >
             <span className="opengrove-model-option-name">{t(item.labelKey)}</span>
-            <span className="opengrove-model-option-check" aria-hidden="true"></span>
+            <span className="opengrove-model-option-check" aria-hidden="true">
+              {item.id === activePreset.id ? <Check size={14} strokeWidth={2.1} /> : null}
+            </span>
           </button>
         ))}
       </div>
@@ -442,7 +478,9 @@ function ComposerModelPicker(props: {
                 onClick={() => props.onSetEffort(item.id)}
               >
                 <span className="opengrove-model-option-name">{item.label}</span>
-                <span className="opengrove-model-option-check" aria-hidden="true"></span>
+                <span className="opengrove-model-option-check" aria-hidden="true">
+                  {item.id === props.effort ? <Check size={14} strokeWidth={2.1} /> : null}
+                </span>
               </button>
             ))}
           </>
@@ -459,7 +497,9 @@ function ComposerModelPicker(props: {
             onClick={() => props.onSetModel(item.id as ModelId)}
           >
             <span className="opengrove-model-option-name">{modelLabel(item)}</span>
-            <span className="opengrove-model-option-check" aria-hidden="true"></span>
+            <span className="opengrove-model-option-check" aria-hidden="true">
+              {item.id === selectedModel.id ? <Check size={14} strokeWidth={2.1} /> : null}
+            </span>
           </button>
         ))}
         {speedEnabled ? (
@@ -477,7 +517,9 @@ function ComposerModelPicker(props: {
                   {item.label}
                   <span className="opengrove-model-option-description">{item.description}</span>
                 </span>
-                <span className="opengrove-model-option-check" aria-hidden="true"></span>
+                <span className="opengrove-model-option-check" aria-hidden="true">
+                  {item.id === props.responseSpeed ? <Check size={14} strokeWidth={2.1} /> : null}
+                </span>
               </button>
             ))}
           </>

@@ -67,7 +67,8 @@
   grid-column: 1 / -1;
 }
 
-.settings-form-grid input {
+.settings-form-grid input,
+.settings-form-grid textarea {
   min-width: 0;
   min-height: 30px;
   border: 1px solid rgba(0, 0, 0, 0.075);
@@ -80,7 +81,15 @@
   font-weight: var(--fw-medium);
 }
 
-.settings-form-grid input:focus {
+.settings-form-grid textarea {
+  min-height: 112px;
+  resize: vertical;
+  line-height: 1.5;
+  padding: 8px;
+}
+
+.settings-form-grid input:focus,
+.settings-form-grid textarea:focus {
   border-color: rgba(52, 54, 48, 0.28);
   background: var(--c-bg);
   outline: 0;
@@ -88,6 +97,34 @@
 
 .settings-form-grid input[readonly] {
   color: var(--text-2);
+}
+
+.settings-field-label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+}
+
+.settings-secret-visibility-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.settings-secret-visibility-button:hover,
+.settings-secret-visibility-button:focus-visible {
+  background: var(--c-surface-hover);
+  color: var(--text);
+  outline: 0;
 }
 
 .settings-segmented {
@@ -311,8 +348,8 @@
   }
 
   .settings-screen-content {
-    width: calc(100% - 28px);
-    padding-top: 28px;
+    width: 100%;
+    padding: 28px 14px 72px;
   }
 
   .settings-choice-grid {
@@ -328,4 +365,3 @@
   }
 
 }
-

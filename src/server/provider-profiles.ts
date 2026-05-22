@@ -16,6 +16,7 @@ import {
   providerHasTransferableCredential,
   usesNativeProviderConfig,
 } from "./provider-binding.js";
+import { opencodeProviderConfigContent } from "./opencode-provider-config.js";
 
 export const VOLC_CODING_PROVIDER_ID = "volc-coding-plan";
 
@@ -83,10 +84,10 @@ export function getBridgeProviderProfiles(): BridgeProviderProfile[] {
       id: "aws-bedrock-api-key",
       name: "AWS Bedrock (API Key)",
       protocol: "anthropic-compatible",
-      description: "Claude Code 可通过 Bedrock 原生配置使用。OpenGrove 不保存 AWS 凭证。",
+      description: "Claude Code / OpenCode 可通过 Bedrock bearer token 或 AWS 原生配置使用。",
       credentialKind: "aws",
       models: [],
-      recommendedFor: ["claude-code"],
+      recommendedFor: ["claude-code", "opencode"],
       websiteUrl: "https://aws.amazon.com/bedrock/",
     },
     {
@@ -101,9 +102,9 @@ export function getBridgeProviderProfiles(): BridgeProviderProfile[] {
     },
     {
       id: "gemini",
-      name: "Google Gemini",
+      name: "Google AI Studio (Gemini API Key)",
       protocol: "gemini-compatible",
-      description: "Gemini API / Gemini CLI 常用提供方。",
+      description: "Google AI Studio 创建和管理的 Gemini API key。",
       geminiBaseUrl: "https://generativelanguage.googleapis.com",
       apiKeyEnv: "GEMINI_API_KEY",
       credentialKind: "env-key",
@@ -146,6 +147,22 @@ export function getBridgeProviderProfiles(): BridgeProviderProfile[] {
       models: [],
       recommendedFor: ["claude-code", "hermes", "pi", "opencode", "qwen-code"],
       websiteUrl: "https://platform.moonshot.cn",
+    },
+    {
+      id: "xiaomi-mimo",
+      name: "Xiaomi MiMo",
+      protocol: "openai-compatible",
+      description: "Xiaomi MiMo OpenAI-compatible / Anthropic-compatible API。",
+      openaiBaseUrl: "https://api.xiaomimimo.com/v1",
+      anthropicBaseUrl: "https://api.xiaomimimo.com/anthropic",
+      apiKeyEnv: appEnvName("XIAOMI_API_KEY"),
+      credentialKind: "env-key",
+      models: [
+        { id: "xiaomi/mimo-v2-pro", label: "MiMo-V2-Pro" },
+        { id: "xiaomi/mimo-v2-flash", label: "MiMo-V2-Flash" },
+      ],
+      recommendedFor: ["claude-code", "hermes", "pi", "opencode", "qwen-code"],
+      websiteUrl: "https://platform.xiaomimimo.com",
     },
     {
       id: "bailian",
@@ -320,7 +337,7 @@ export function resolveProviderForKernel(
 }
 
 export function providerKeyPresent(profile: BridgeProviderProfile): boolean {
-  return Boolean(profile.authConfigured || providerApiKey(profile));
+  return Boolean(resolveProviderApiKey(profile));
 }
 
 export function serializeProviderBindings(
@@ -367,6 +384,8 @@ function normalizeCustomProviderProfile(input: unknown): BridgeProviderProfile |
   const protocol = normalizeProviderProtocol(source.protocol);
   const models = normalizeProviderModels(source.models);
   const deleted = source.deleted === true;
+  const credentialKind = normalizeProfileCredentialKind(id, normalizeCredentialKind(source.credentialKind));
+  const apiKey = normalizeProfileApiKey(id, credentialKind, normalizeApiKey(source.apiKey, source.apiKeyEnv));
   return {
     id,
     name,
@@ -383,9 +402,9 @@ function normalizeCustomProviderProfile(input: unknown): BridgeProviderProfile |
     openaiBaseUrl: stringOrUndefined(source.openaiBaseUrl),
     anthropicBaseUrl: stringOrUndefined(source.anthropicBaseUrl),
     geminiBaseUrl: stringOrUndefined(source.geminiBaseUrl),
-    apiKey: normalizeApiKey(source.apiKey, source.apiKeyEnv),
+    apiKey,
     apiKeyEnv: normalizeApiKeyEnv(source.apiKeyEnv),
-    credentialKind: normalizeCredentialKind(source.credentialKind),
+    credentialKind,
     codexWireApi: normalizeCodexWireApi(source.codexWireApi),
     models,
     recommendedFor: normalizeRecommendedKernels(source.recommendedFor),
@@ -421,6 +440,19 @@ function normalizeCredentialKind(value: unknown): BridgeProviderCredentialKind |
     value === "kernel-native"
     ? value
     : undefined;
+}
+
+function normalizeProfileCredentialKind(
+  providerId: string,
+  credentialKind: BridgeProviderCredentialKind | undefined,
+): BridgeProviderCredentialKind | undefined {
+  return isAwsBedrockProviderId(providerId) ? "aws" : credentialKind;
+}
+
+function isAwsBedrockProviderId(providerId: string): boolean {
+  return providerId === "aws-bedrock" ||
+    providerId === "aws-bedrock-api-key" ||
+    providerId === "amazon-bedrock";
 }
 
 function normalizeStringArray(input: unknown): string[] | undefined {
@@ -462,9 +494,40 @@ function stringOrUndefined(value: unknown): string | undefined {
 
 function normalizeApiKey(input: unknown, legacyApiKeyEnv: unknown): string | undefined {
   const explicit = stringOrUndefined(input);
-  if (explicit) return explicit;
+  if (explicit) return normalizeInlineApiKey(explicit);
   const legacy = stringOrUndefined(legacyApiKeyEnv);
-  return legacy && !isEnvironmentVariableName(legacy) ? legacy : undefined;
+  return legacy && !isEnvironmentVariableName(legacy) ? normalizeInlineApiKey(legacy) : undefined;
+}
+
+function normalizeInlineApiKey(value: string): string | undefined {
+  const trimmed = value.trim();
+  const assignment = trimmed.match(/^(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*(.+)$/);
+  const normalized = stripShellValue(assignment?.[1] ?? trimmed);
+  return normalized || undefined;
+}
+
+function stripShellValue(value: string): string {
+  let next = value.trim();
+  if (next.endsWith(";")) next = next.slice(0, -1).trim();
+  if ((next.startsWith("\"") && next.endsWith("\"")) || (next.startsWith("'") && next.endsWith("'"))) {
+    next = next.slice(1, -1).trim();
+  }
+  return next;
+}
+
+function normalizeProfileApiKey(
+  providerId: string,
+  credentialKind: BridgeProviderCredentialKind | undefined,
+  apiKey: string | undefined,
+): string | undefined {
+  if (!apiKey) return undefined;
+  if (providerId === "aws-bedrock-api-key") {
+    return apiKey.startsWith("ABSK") ? apiKey : undefined;
+  }
+  if (credentialKind === "aws" && apiKey.startsWith("ark-")) {
+    return undefined;
+  }
+  return apiKey;
 }
 
 function normalizeApiKeyEnv(input: unknown): string | undefined {
@@ -503,23 +566,35 @@ export function providerEnvForKernel(
   const plan = planProviderBinding(kernelId, profile);
   if (!plan.supported) return undefined;
   const selectedModel = model?.trim() || profile.models[0]?.id;
-  if (
-    kernelId === "claude-code" &&
-    profile.anthropicBaseUrl &&
-    (plan.credentialKind === "aws" || plan.credentialKind === "google-adc")
-  ) {
+  if (kernelId === "claude-code" && profile.anthropicBaseUrl && plan.credentialKind === "aws") {
+    const apiKey = resolveProviderApiKey(profile);
     const env: NodeJS.ProcessEnv = {
-      ANTHROPIC_BASE_URL: profile.anthropicBaseUrl,
+      CLAUDE_CODE_USE_BEDROCK: "1",
+      ANTHROPIC_BEDROCK_BASE_URL: profile.anthropicBaseUrl,
     };
-    if (selectedModel) {
-      env.ANTHROPIC_MODEL = selectedModel;
-      env.ANTHROPIC_DEFAULT_OPUS_MODEL = selectedModel;
-      env.ANTHROPIC_DEFAULT_SONNET_MODEL = selectedModel;
-      env.ANTHROPIC_DEFAULT_HAIKU_MODEL = selectedModel;
-    }
+    const region = awsRegionFromBedrockEndpoint(profile.anthropicBaseUrl);
+    if (region) env.AWS_REGION = region;
+    if (apiKey) env.AWS_BEARER_TOKEN_BEDROCK = apiKey;
+    applyClaudeModelEnv(env, selectedModel);
     return env;
   }
-  const apiKey = providerApiKey(profile);
+  if (kernelId === "claude-code" && profile.anthropicBaseUrl && plan.credentialKind === "google-adc") {
+    const env: NodeJS.ProcessEnv = {
+      CLAUDE_CODE_USE_VERTEX: "1",
+      ANTHROPIC_VERTEX_BASE_URL: profile.anthropicBaseUrl,
+    };
+    applyClaudeModelEnv(env, selectedModel);
+    return env;
+  }
+  if (kernelId === "opencode" && isAwsBedrockProviderId(profile.id) && profile.anthropicBaseUrl) {
+    const apiKey = resolveProviderApiKey(profile);
+    const env: NodeJS.ProcessEnv = {};
+    if (apiKey) env.AWS_BEARER_TOKEN_BEDROCK = apiKey;
+    const configContent = opencodeProviderConfigContent(profile, apiKey, selectedModel);
+    if (configContent) env.OPENCODE_CONFIG_CONTENT = configContent;
+    return Object.keys(env).length ? env : undefined;
+  }
+  const apiKey = resolveProviderApiKey(profile);
   if (!apiKey) return undefined;
   const env: NodeJS.ProcessEnv = {};
 
@@ -540,12 +615,7 @@ export function providerEnvForKernel(
     if (!profile.anthropicBaseUrl) return undefined;
     env.ANTHROPIC_BASE_URL = profile.anthropicBaseUrl;
     env.ANTHROPIC_AUTH_TOKEN = apiKey;
-    if (selectedModel) {
-      env.ANTHROPIC_MODEL = selectedModel;
-      env.ANTHROPIC_DEFAULT_OPUS_MODEL = selectedModel;
-      env.ANTHROPIC_DEFAULT_SONNET_MODEL = selectedModel;
-      env.ANTHROPIC_DEFAULT_HAIKU_MODEL = selectedModel;
-    }
+    applyClaudeModelEnv(env, selectedModel);
     return env;
   }
 
@@ -565,6 +635,10 @@ export function providerEnvForKernel(
     env.OPENAI_API_KEY = apiKey;
     env.MODEL_BASE_URL = profile.openaiBaseUrl;
     env.MODEL_API_KEY = apiKey;
+    if (kernelId === "opencode") {
+      const configContent = opencodeProviderConfigContent(profile, apiKey, selectedModel);
+      if (configContent) env.OPENCODE_CONFIG_CONTENT = configContent;
+    }
     if (selectedModel) {
       env.OPENAI_MODEL = selectedModel;
       env.DEFAULT_MODEL = selectedModel;
@@ -582,6 +656,7 @@ export function providerEnvForKernel(
     if (profile.geminiBaseUrl) {
       env.GEMINI_BASE_URL = profile.geminiBaseUrl;
       env.GEMINI_API_KEY = apiKey;
+      env.GOOGLE_API_KEY = apiKey;
     }
     if (selectedModel) env.PI_MODEL = selectedModel;
   }
@@ -594,9 +669,22 @@ export function providerEnvForKernel(
   if (kernelId === "gemini-cli" && profile.geminiBaseUrl) {
     env.GEMINI_BASE_URL = profile.geminiBaseUrl;
     env.GEMINI_API_KEY = apiKey;
+    env.GOOGLE_API_KEY = apiKey;
     if (selectedModel) env.GEMINI_MODEL = selectedModel;
   }
   return Object.keys(env).length ? env : undefined;
+}
+
+function applyClaudeModelEnv(env: NodeJS.ProcessEnv, selectedModel: string | undefined): void {
+  if (!selectedModel) return;
+  env.ANTHROPIC_MODEL = selectedModel;
+  env.ANTHROPIC_DEFAULT_OPUS_MODEL = selectedModel;
+  env.ANTHROPIC_DEFAULT_SONNET_MODEL = selectedModel;
+  env.ANTHROPIC_DEFAULT_HAIKU_MODEL = selectedModel;
+}
+
+function awsRegionFromBedrockEndpoint(endpoint: string): string | undefined {
+  return endpoint.match(/bedrock-runtime[.-]([a-z0-9-]+)\.amazonaws\.com/i)?.[1];
 }
 
 export function providerModelsForKernel(
@@ -647,7 +735,7 @@ export function codexProviderNeedsResponsesChatProxy(
   return profile.codexWireApi === "chat" || profile.id === VOLC_CODING_PROVIDER_ID;
 }
 
-function providerApiKey(profile: BridgeProviderProfile): string | undefined {
+export function resolveProviderApiKey(profile: BridgeProviderProfile): string | undefined {
   return profile.apiKey?.trim() || (profile.apiKeyEnv ? process.env[profile.apiKeyEnv]?.trim() : undefined);
 }
 

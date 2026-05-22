@@ -1,9 +1,8 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { APP_LOCAL_BRIDGE_NAME, readAppEnv } from "../identity.js";
 import { pathToFileURL } from "node:url";
 import type { JsonValue } from "../core.js";
-import { normalizeComputerSnapshot } from "../environment/computer-adapter.js";
 import {
   createRoutineDraftFromEvents,
   runRoutine,
@@ -28,11 +27,16 @@ import { buildProviderHttpCaptureDiagnostics } from "./provider-http-captures.js
 import { listKnowledgeInventoryDocuments, listKnowledgeVaultFolders, resolveKnowledgeVaultFilePath, syncKnowledgeVaultFiles } from "./knowledge-files.js";
 import { serveStaticRoute } from "./routes/static.js";
 import { handleKnowledgeRoute } from "./routes/knowledge.js";
-import { handleMatrixRoomRoute } from "./routes/matrix-rooms.js";
+import { handleExtensionsRoute } from "./routes/extensions.js";
+import { handleAppsRoute } from "./routes/apps.js";
+import { handleRemoteMatrixRoute } from "./routes/remote-matrix.js";
 import { handleRemoteInviteRoute } from "./routes/remote-invites.js";
 import { handleRoomsRoute } from "./routes/rooms.js";
-import { startRoomMatrixSync } from "./room-matrix-sync.js";
+import { startRemoteRuntime } from "./remote/runtime-manager.js";
 import { handleSettingsRoute } from "./routes/settings.js";
+import { handleVoiceRoute } from "./routes/voice.js";
+import { handleDeveloperSessionRoute } from "./routes/developer-sessions.js";
+import { stopAllVisualPreviewServices } from "./visual/preview-service.js";
 import { handleWorkspaceRoute } from "./routes/workspace.js";
 import {
   applyCors,
@@ -67,6 +71,7 @@ import {
 import { resolveApproval } from "./approval-actions.js";
 import { createAnnotationArtifact, createComputerSnapshotArtifact } from "./artifact-actions.js";
 import { syncBridgeWorkingState } from "./bridge-working-state.js";
+import { scanExtensionInventory } from "../extensions/scanner.js";
 
 export function startOpenGroveServer(options: LocalBridgeServerOptions = {}) {
   loadLocalEnvFile();
@@ -74,7 +79,7 @@ export function startOpenGroveServer(options: LocalBridgeServerOptions = {}) {
   const port = options.port ?? Number(readAppEnv("BRIDGE_PORT") ?? 37371);
   const state = createBridgeState(options);
   const security = createBridgeSecurity(options);
-  const stopRoomMatrixSync = startRoomMatrixSync(state);
+  const stopRemoteRuntime = startRemoteRuntime(state);
 
   const server = createServer(async (request, response) => {
     applyCors(response, request, security);
@@ -150,6 +155,14 @@ export function startOpenGroveServer(options: LocalBridgeServerOptions = {}) {
         return;
       }
 
+      if (await handleVoiceRoute({ request, response, url: routeUrl, state, sendJson, readJsonBody })) {
+        return;
+      }
+
+      if (await handleDeveloperSessionRoute({ request, response, url: routeUrl, state, sendJson, readJsonBody })) {
+        return;
+      }
+
       if (await handleWorkspaceRoute({ request, response, url: routeUrl, sendJson })) {
         return;
       }
@@ -180,6 +193,14 @@ export function startOpenGroveServer(options: LocalBridgeServerOptions = {}) {
       }
 
       if (await handleKnowledgeRoute({ request, response, url: routeUrl, state, sendJson, readJsonBody })) {
+        return;
+      }
+
+      if (await handleExtensionsRoute({ request, response, url: routeUrl, state, sendJson, readJsonBody })) {
+        return;
+      }
+
+      if (await handleAppsRoute({ request, response, url: routeUrl, state, sendJson, readJsonBody })) {
         return;
       }
 
@@ -267,12 +288,13 @@ export function startOpenGroveServer(options: LocalBridgeServerOptions = {}) {
           artifacts: state.app.artifacts.list(),
           workingState: state.app.workingState.get(),
           computerState: state.computerSnapshot,
-          sessions: state.app.sessions.list({ limit: 12 }),
-          runs: state.app.sessions.listRuns({ limit: 24 }),
-          executions: state.app.executions.list({ limit: 40 }),
+          sessions: state.app.sessions.list(),
+          runs: state.app.sessions.listRuns(),
+          executions: state.app.executions.list(),
           skills: state.app.skills.list(),
           packs: state.app.packs.list(),
           tools: state.app.tools.specs(),
+          extensions: scanExtensionInventory(state),
           capabilities: state.app.capabilities.list(),
         });
         return;
@@ -397,7 +419,7 @@ export function startOpenGroveServer(options: LocalBridgeServerOptions = {}) {
         return;
       }
 
-      if (await handleMatrixRoomRoute({ request, response, url: routeUrl, state, sendJson, readJsonBody })) {
+      if (await handleRemoteMatrixRoute({ request, response, url: routeUrl, state, sendJson, readJsonBody })) {
         return;
       }
 
@@ -491,7 +513,8 @@ export function startOpenGroveServer(options: LocalBridgeServerOptions = {}) {
       });
     }
   });
-  server.on("close", stopRoomMatrixSync);
+  server.on("close", stopRemoteRuntime);
+  server.on("close", () => stopAllVisualPreviewServices(state));
 
   server.listen(port, host, () => {
     const address = server.address();

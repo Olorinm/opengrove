@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createOpenGrove } from "../app/create-opengrove.js";
 import type { AgentContext, AgentEvent } from "../core.js";
 import {
@@ -195,6 +196,127 @@ async function main() {
     ["/compact", "/model", "/status"],
   );
 
+  const transcriptCwd = mkdtempSync(join(tmpdir(), "opengrove-claude-sdk-transcript-"));
+  const transcriptConfigDir = join(transcriptCwd, "claude-home");
+  const transcriptContext = { ...context, sessionId: "claude-sdk-transcript-harness" };
+  const transcriptFingerprint = claudeRuntimeBindingFingerprint("native", transcriptCwd);
+  const transcriptSessionId = stableClaudeSessionId(`${transcriptContext.sessionId}:${transcriptFingerprint}`);
+  mkdirSync(join(transcriptConfigDir, "projects", claudeProjectKey(transcriptCwd)), { recursive: true });
+  writeFileSync(
+    join(transcriptConfigDir, "projects", claudeProjectKey(transcriptCwd), `${transcriptSessionId}.jsonl`),
+    "",
+  );
+  let capturedResume = "";
+  let capturedSessionId = "";
+  const transcriptRuntime = new ClaudeAgentSdkRuntime({
+    cwd: transcriptCwd,
+    permissionMode: "default",
+    configuredModel: "opus",
+    env: { CLAUDE_CONFIG_DIR: transcriptConfigDir },
+    query: ((params) => {
+      capturedResume = params.options?.resume ?? "";
+      capturedSessionId = params.options?.sessionId ?? "";
+      async function* messages() {
+        yield {
+          type: "system",
+          subtype: "init",
+          apiKeySource: "user",
+          claude_code_version: "2.1.fake",
+          cwd: transcriptCwd,
+          tools: [],
+          mcp_servers: [],
+          model: "claude-test",
+          permissionMode: "default",
+          slash_commands: [],
+          output_style: "default",
+          skills: [],
+          plugins: [],
+          uuid: "00000000-0000-5000-8000-000000000301",
+          session_id: transcriptSessionId,
+        };
+        yield {
+          type: "result",
+          subtype: "success",
+          duration_ms: 10,
+          duration_api_ms: 5,
+          is_error: false,
+          num_turns: 1,
+          result: "resumed transcript",
+          stop_reason: "end_turn",
+          total_cost_usd: 0,
+          usage: {},
+          modelUsage: {},
+          permission_denials: [],
+          uuid: "00000000-0000-5000-8000-000000000302",
+          session_id: transcriptSessionId,
+        };
+      }
+      const iterator = messages();
+      return Object.assign(iterator, {
+        close() {},
+        interrupt: async () => {},
+        setPermissionMode: async () => {},
+        setModel: async () => {},
+        setMaxThinkingTokens: async () => {},
+        setMcpServers: async () => ({ added: [], removed: [], errors: {} }),
+        reloadPlugins: async () => ({ commands: [], agents: [], plugins: [], mcpServers: [] }),
+        getSettings: async () => ({}),
+      }) as unknown;
+    }) as ClaudeAgentSdkQueryFunction,
+  });
+  for await (const event of transcriptRuntime.runTurn({
+    input: "hello transcript sdk",
+    context: transcriptContext,
+    tools: app.tools.list(),
+    requestedModelId: "opus",
+    skills: app.skills.list(),
+    packs: app.packs.list(),
+    capabilities: app.capabilities.list(),
+  })) {
+    events.push(event);
+  }
+  assert.equal(capturedResume, transcriptSessionId);
+  assert.equal(capturedSessionId, "");
+
+  const failingRuntime = new ClaudeAgentSdkRuntime({
+    cwd,
+    permissionMode: "default",
+    configuredModel: "opus",
+    query: ((params) => {
+      async function* messages() {
+        params.options?.stderr?.("Error: Session ID demo-session is already in use.\n");
+        throw new Error("Claude Code process exited with code 1");
+      }
+      const iterator = messages();
+      return Object.assign(iterator, {
+        close() {},
+        interrupt: async () => {},
+        setPermissionMode: async () => {},
+        setModel: async () => {},
+        setMaxThinkingTokens: async () => {},
+        setMcpServers: async () => ({ added: [], removed: [], errors: {} }),
+        reloadPlugins: async () => ({ commands: [], agents: [], plugins: [], mcpServers: [] }),
+        getSettings: async () => ({}),
+      }) as unknown;
+    }) as ClaudeAgentSdkQueryFunction,
+  });
+  const failureEvents: AgentEvent[] = [];
+  for await (const event of failingRuntime.runTurn({
+    input: "hello failing sdk",
+    context: { ...context, sessionId: "claude-sdk-failure-harness" },
+    tools: app.tools.list(),
+    requestedModelId: "opus",
+    skills: app.skills.list(),
+    packs: app.packs.list(),
+    capabilities: app.capabilities.list(),
+  })) {
+    failureEvents.push(event);
+  }
+  const failure = failureEvents.find((event): event is Extract<AgentEvent, { type: "error" }> => event.type === "error");
+  assert.ok(failure?.message.includes("Claude Code process exited with code 1"));
+  assert.ok(failure?.message.includes("Session ID demo-session is already in use"));
+  assert.ok(failureEvents.some((event) => event.type === "turn.finished"));
+
   let activeQueries = 0;
   let maxActiveQueries = 0;
   const lockingRuntime = new ClaudeAgentSdkRuntime({
@@ -277,3 +399,30 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+
+function stableClaudeSessionId(input: string): string {
+  const hash = createHash("sha1").update(input).digest("hex");
+  return [
+    hash.slice(0, 8),
+    hash.slice(8, 12),
+    `5${hash.slice(13, 16)}`,
+    `8${hash.slice(17, 20)}`,
+    hash.slice(20, 32),
+  ].join("-");
+}
+
+function claudeRuntimeBindingFingerprint(base: string | undefined, cwd: string): string {
+  return createHash("sha1")
+    .update([
+      base || "native",
+      cwd,
+    ].join("\n"))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+function claudeProjectKey(cwd: string): string {
+  return resolve(cwd || process.cwd())
+    .normalize("NFC")
+    .replace(/[^A-Za-z0-9._-]/g, "-");
+}

@@ -143,5 +143,5 @@
 }
 
 :root[data-resolved-theme="dark"] .md-editor-status {
-  background: rgba(41, 41, 39, 0.92);
+  background: transparent;
 }

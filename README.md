@@ -2,7 +2,7 @@
   <img src="assets/brand/opengrove-readme-lockup.svg" alt="OpenGrove" width="360" />
 </p>
 
-<h3 align="center">One grove, every agent.</h3>
+<h3 align="center">Multi-agent work, local knowledge, remote rooms.</h3>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/opengrove"><img alt="npm" src="https://img.shields.io/npm/v/opengrove?style=flat-square&color=0b8ec2" /></a>
@@ -25,7 +25,7 @@
 
 ---
 
-OpenGrove is the **local-first workspace** that hosts your coding agents — Codex, Claude Code, Hermes, OpenCode, Copilot, and more — under one roof. Each agent keeps its native power; OpenGrove adds shared rooms, persistent memory, approvals, artifacts, and a calm UI on top.
+OpenGrove is the **local-first workspace** that hosts your coding agents — Codex, Claude Code, Hermes, OpenCode, Copilot, and more — under one roof. Each agent keeps its native power; OpenGrove adds multi-agent rooms, a local knowledge base, optional remote collaboration, approvals, artifacts, and a calm UI on top.
 
 It doesn't replace your agents. It gives them a home.
 
@@ -54,7 +54,7 @@ npm run bridge
 
 - **Multi-kernel** — switch between Codex, Claude Code, Hermes, Pi, OpenClaw, OpenCode, Copilot, Kimi, Kiro, DeepSeek, Gemini CLI, Qwen Code, and Cursor Agent from one UI
 - **Rooms** — direct chats, group conversations, `@` mentions that route to specific agents
-- **Remote agents** — invite agents from other machines via Matrix/Tuwunel shared rooms
+- **Remote agents** — optionally invite agents from other machines through your own Matrix/Tuwunel homeserver
 - **Persistent memory** — knowledge, artifacts, sessions, and run traces stay in local files you own
 - **Approvals** — file changes, shell commands, and risky actions require explicit sign-off
 - **Browser extension** — send page context and selections straight into a conversation
@@ -93,22 +93,18 @@ OPENGROVE_KERNEL=claude-code opengrove start
                │
 ┌──────────────▼──────────────┐
 │  Local Bridge (127.0.0.1)   │
-│  ─ rooms, memory, artifacts │
-│  ─ approvals & policy       │
-│  ─ knowledge vault          │
-└──────────────┬──────────────┘
-               │
-┌──────────────▼──────────────┐
-│  Kernel Adapters            │
-│  ─ Codex, Claude Code, ...  │
-└──────────────┬──────────────┘
-               │
-┌──────────────▼──────────────┐
-│  Native Agent Runtime       │
-└─────────────────────────────┘
+│  ─ rooms & ledger           │
+│  ─ local knowledge vault    │
+│  ─ approvals & artifacts    │
+└───────┬─────────────────────┘
+        │
+        ├── Kernel Adapters ── Native Agent Runtime
+        │   Codex, Claude Code, Hermes, ...
+        │
+        └── Optional Remote Adapters ── Matrix / Tuwunel
 ```
 
-Each kernel keeps its own model loop, tools, and prompting rules. OpenGrove only translates native events into shared workspace state.
+Each kernel keeps its own model loop, tools, and prompting rules. Rooms and knowledge stay local by default. Remote rooms are opt-in: enable Matrix/Tuwunel in Settings and point OpenGrove at a homeserver you deploy or trust.
 
 ## Configuration
 
@@ -136,7 +132,7 @@ PRs welcome. Please run `npm run check:secrets` before committing.
 
 - [Technical Reference](docs/TECHNICAL_REFERENCE.md) — kernels, providers, Bridge API, rooms & ledger, data paths, troubleshooting
 - [Release Process](docs/RELEASE_PROCESS.md) — versioning, release notes, GitHub Release, and npm publish checklist
-- [Product Overview](PROJECT_OVERVIEW.md) — longer product notes and roadmap context
+- [Product Overview](PROJECT_OVERVIEW.md) — current product boundaries and repository map
 - [产品概览 (中文)](PROJECT_OVERVIEW.zh-CN.md)
 
 ## License

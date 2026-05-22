@@ -2,7 +2,7 @@
   <img src="assets/brand/opengrove-readme-lockup.svg" alt="OpenGrove" width="360" />
 </p>
 
-<h3 align="center">One grove, every agent.</h3>
+<h3 align="center">多智能体协作，本地知识库，远程房间。</h3>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/opengrove"><img alt="npm" src="https://img.shields.io/npm/v/opengrove?style=flat-square&color=0b8ec2" /></a>
@@ -25,7 +25,7 @@
 
 ---
 
-OpenGrove 是一个**本地优先的工作空间**，把你的编程 agent —— Codex、Claude Code、Hermes、OpenCode、Copilot 等 —— 统一收纳在一个屋檐下。每个 agent 保留自己的原生能力；OpenGrove 在上层添加共享房间、持久记忆、审批机制、产物管理和一个安静的 UI。
+OpenGrove 是一个**本地优先的工作空间**，把你的编程 agent —— Codex、Claude Code、Hermes、OpenCode、Copilot 等 —— 统一收纳在一个屋檐下。每个 agent 保留自己的原生能力；OpenGrove 在上层添加多智能体房间、本地知识库、可选远程协作、审批机制、产物管理和一个安静的 UI。
 
 它不替代你的 agent，它给它们一个家。
 
@@ -54,7 +54,7 @@ npm run bridge
 
 - **多内核切换** — 在一个界面中切换 Codex、Claude Code、Hermes、Pi、OpenClaw、OpenCode、Copilot、Kimi、Kiro、DeepSeek、Gemini CLI、Qwen Code、Cursor Agent
 - **Rooms** — 私聊、群组对话、用 `@` 将消息路由到指定 agent
-- **远程 Agent** — 通过 Matrix/Tuwunel 共享房间邀请其他机器上的 agent 加入协作
+- **远程 Agent** — 可选地通过你自己部署或信任的 Matrix/Tuwunel homeserver 邀请其他机器上的 agent
 - **持久记忆** — 知识、产物、会话、执行轨迹保存在你自己控制的本地文件中
 - **审批机制** — 文件修改、Shell 命令、高风险操作需要显式确认
 - **浏览器扩展** — 将网页上下文和选区直接发送到对话中
@@ -93,22 +93,18 @@ OPENGROVE_KERNEL=claude-code opengrove start
                │
 ┌──────────────▼──────────────┐
 │  Local Bridge (127.0.0.1)   │
-│  ─ rooms、记忆、产物         │
-│  ─ 审批 & 策略              │
-│  ─ 知识库                   │
-└──────────────┬──────────────┘
-               │
-┌──────────────▼──────────────┐
-│  内核适配器                  │
-│  ─ Codex, Claude Code, ...  │
-└──────────────┬──────────────┘
-               │
-┌──────────────▼──────────────┐
-│  原生 Agent 运行时           │
-└─────────────────────────────┘
+│  ─ rooms & ledger           │
+│  ─ 本地知识库               │
+│  ─ 审批 & 产物              │
+└───────┬─────────────────────┘
+        │
+        ├── 内核适配器 ── 原生 Agent 运行时
+        │   Codex, Claude Code, Hermes, ...
+        │
+        └── 可选远端适配器 ── Matrix / Tuwunel
 ```
 
-每个内核保留自己的模型循环、工具和提示词规则。OpenGrove 只负责将原生事件翻译为共享工作空间状态。
+每个内核保留自己的模型循环、工具和提示词规则。Rooms 和知识库默认留在本机。远程房间是可选能力：在设置里启用 Matrix/Tuwunel，并填写你自己部署或信任的 homeserver。
 
 ## 配置
 
@@ -136,7 +132,7 @@ npm run test:harness
 
 - [技术参考](docs/TECHNICAL_REFERENCE.md) — 内核、Provider、Bridge API、Rooms & 账本、数据路径、故障排查
 - [发布流程](docs/RELEASE_PROCESS.md) — 版本号、release notes、GitHub Release 和 npm publish checklist
-- [产品概览](PROJECT_OVERVIEW.md)
+- [产品概览](PROJECT_OVERVIEW.md) — 当前产品边界和仓库结构
 - [产品概览 (中文)](PROJECT_OVERVIEW.zh-CN.md)
 
 ## 许可

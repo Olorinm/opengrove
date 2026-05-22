@@ -1,4 +1,4 @@
-/* Quiet white conversation workspace. */
+/* Room modules own their own surface; the app shell stays as the gray canvas. */
 .room-main-panel,
 .room-header,
 .room-message-stream,
@@ -7,7 +7,7 @@
 }
 
 .room-main-panel {
-  border-right-color: var(--og-section-border);
+  border-right-color: var(--og-border);
 }
 
 .room-header {
@@ -123,4 +123,3 @@
   background: #111111;
   box-shadow: none;
 }
-

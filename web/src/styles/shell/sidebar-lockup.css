@@ -1,6 +1,8 @@
 /* Sidebar lockup correction: keep the app as a true left/right split. */
 .app-rail {
   grid-template-rows: auto auto minmax(0, 1fr) auto;
+  border-right: 0;
+  background: transparent;
   padding: 14px 7px;
 }
 
@@ -59,20 +61,35 @@
 }
 
 .sidebar-brand-word span {
-  color: var(--og-green);
+  color: var(--og-brand);
 }
 
 .nav-list {
   min-height: 0;
 }
 
-.workspace,
+.workspace {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell[data-view="chat"] .workspace {
+  box-sizing: border-box;
+  margin: 10px 10px 10px 10px;
+  border: 1px solid var(--og-border);
+  border-radius: var(--r-lg);
+  background: var(--og-surface);
+  box-shadow: none;
+}
+
 .app-shell[data-view="settings"] .workspace {
   margin: 0;
   border: 0;
-  border-left: 1px solid var(--og-border);
   border-radius: 0;
-  background: var(--og-surface);
+  background: transparent;
   box-shadow: none;
 }
 
@@ -86,4 +103,3 @@
     padding-top: 0;
   }
 }
-

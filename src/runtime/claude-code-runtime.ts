@@ -1,7 +1,7 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readAppEnv } from "../identity.js";
@@ -66,9 +66,10 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     const systemPrompt = buildClaudeSystemPrompt(request);
     const permissionMode = resolveClaudePermissionMode(request.accessMode, this.options.permissionMode);
     const capture = createClaudeCodeStreamCaptureRecorder(this.options.streamCapture);
+    const runtimeEnv = mergeRuntimeEnv(this.options.env, request.runtimeEnv);
     const providerCapture = resolveProviderHttpCaptureOptions(
       this.options.providerHttpCapture,
-      this.options.env,
+      runtimeEnv,
     );
     const sessionTrace: AgentSessionTrace = {
       provider: "claude-code",
@@ -120,7 +121,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       },
     };
 
-    const launch = this.prepareLaunchConfig(requestedModel, providerCapture);
+    const launch = this.prepareLaunchConfig(requestedModel, providerCapture, runtimeEnv);
     const launchCommand = resolveClaudeLaunchCommand(this.options);
     const args = [
       "-p",
@@ -313,11 +314,12 @@ export class ClaudeCodeRuntime implements AgentRuntime {
   private prepareLaunchConfig(
     requestedModel: string | undefined,
     providerCapture: ResolvedProviderHttpCaptureOptions,
+    runtimeEnv: NodeJS.ProcessEnv | undefined,
   ): { env: NodeJS.ProcessEnv } {
     const configuredBaseUrl = this.options.configuredBaseUrl?.trim() || "";
     const configuredAuthToken = this.options.configuredAuthToken?.trim() || "";
     const configuredModel = normalizeClaudeModelId(requestedModel ?? this.options.configuredModel);
-    const env: NodeJS.ProcessEnv = { ...process.env, ...this.options.env };
+    const env: NodeJS.ProcessEnv = { ...process.env, ...runtimeEnv };
 
     if (!configuredBaseUrl && !configuredAuthToken) {
       return { env: applyProviderHttpCaptureEnv(env, providerCapture) };
@@ -344,6 +346,17 @@ export class ClaudeCodeRuntime implements AgentRuntime {
   private ensureIsolatedHome(): string {
     return mkdtempSync(join(tmpdir(), "opengrove-claude-"));
   }
+}
+
+function mergeRuntimeEnv(
+  base: NodeJS.ProcessEnv | undefined,
+  override: NodeJS.ProcessEnv | undefined,
+): NodeJS.ProcessEnv | undefined {
+  const merged = { ...(base ?? {}), ...(override ?? {}) };
+  for (const [key, value] of Object.entries(merged)) {
+    if (value === undefined) delete merged[key];
+  }
+  return Object.keys(merged).length ? merged : undefined;
 }
 
 function parseClaudeStreamEvent(line: string): ClaudeStreamEvent | undefined {

@@ -7,7 +7,9 @@ import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { KernelIcon } from "../ui/entity-icons";
 import { EmployeeDialog } from "./employee-dialog";
 import { RoomMemberAvatar } from "./member-avatar";
-import { RoomComposer, type MentionOption } from "./room-composer";
+import type { MentionOption } from "./room-composer";
+import { RoomChatSurface } from "./room-chat-surface";
+import { canSendRoomDraft, findMentionContext, resolveRoomTargets, type MentionMenuState } from "./room-chat-utils";
 import { RoomGroupAvatar } from "./room-group-avatar";
 import { RemoteInviteDialog } from "./remote-invite-dialog";
 import {
@@ -25,7 +27,6 @@ import {
   type RemoteRoomInvitePayload,
   type RemoteRoomInviteResult,
 } from "./room-invites";
-import { RoomMessageStream } from "./room-message-stream";
 import { acceptMatrixInvite } from "./room-matrix";
 import { RoomSettingsPanel } from "./room-settings-panel";
 import { RoomSidebar } from "./room-sidebar";
@@ -57,14 +58,6 @@ import {
   type RoomMember,
   type RoomMessage,
 } from "./rooms-model";
-
-type MentionMenuState = {
-  open: boolean;
-  query: string;
-  start: number;
-  end: number;
-  activeIndex: number;
-};
 
 function runRecordId(run: RunRecord | undefined): string {
   return String(run?.id || run?.runId || "");
@@ -144,25 +137,6 @@ function runRecordFinalAnswer(run: RunRecord | undefined): string {
   return summary && summary !== input ? summary : "";
 }
 
-function resolveTargets(text: string, members: RoomMember[]): RoomMember[] {
-  const normalized = text.toLowerCase();
-  if (/@all\b/i.test(text) || /@全部|@所有人/.test(text)) {
-    return members.filter((member) => !member.disabled && member.status !== "offline");
-  }
-  return members.filter((member) => {
-    if (member.disabled) return false;
-    const aliases = [member.name, member.id, member.kernel].map((value) => `@${value.toLowerCase()}`);
-    return aliases.some((alias) => normalized.includes(alias));
-  });
-}
-
-function canSendRoomDraft(rawText: string, attachmentCount: number): boolean {
-  if (attachmentCount > 0) return true;
-  const text = rawText.trim();
-  if (!text) return false;
-  return !/^@\S*$/.test(text);
-}
-
 function removedMemberForRoom(member: RoomMember, deletedMemberIds: Set<string>): RoomMember {
   if (!member.disabled && !deletedMemberIds.has(member.id)) return member;
   return {
@@ -170,18 +144,6 @@ function removedMemberForRoom(member: RoomMember, deletedMemberIds: Set<string>)
     disabled: true,
     status: "offline",
     lastActive: "已移除",
-  };
-}
-
-function findMentionContext(value: string, cursor: number): Pick<MentionMenuState, "query" | "start" | "end"> | null {
-  const beforeCursor = value.slice(0, cursor);
-  const match = beforeCursor.match(/(^|\s)@([^\s@]*)$/);
-  if (!match) return null;
-  const query = match[2] ?? "";
-  return {
-    query,
-    start: beforeCursor.length - query.length - 1,
-    end: cursor,
   };
 }
 
@@ -194,11 +156,13 @@ export function RoomsView(props: {
   runtimeControlsByKernel?: Record<string, RuntimeControls>;
   runtimeEvents?: AgentEventRecord[];
   runs?: RunRecord[];
+  focusRoomId?: string;
   pendingApprovalCount: number;
   onResolveApproval?(approvalId: string, action: "approve" | "reject", response?: unknown): Promise<unknown> | void;
+  onOpenContacts(): void;
   onOpenSettings(): void;
 }) {
-  const streamRef = useRef<HTMLDivElement | null>(null);
+  const streamRef = useRef<HTMLElement | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const createMenuRef = useRef<HTMLDivElement | null>(null);
@@ -208,6 +172,7 @@ export function RoomsView(props: {
   const roomsRef = useRef<Room[]>([]);
   const membersRef = useRef<RoomMember[]>([]);
   const deletedMemberIdsRef = useRef<string[]>([]);
+  const appliedFocusRoomIdRef = useRef("");
   const serverRoomsEventSeqRef = useRef(0);
   const serverRoomsPollingRef = useRef(false);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -254,6 +219,13 @@ export function RoomsView(props: {
   useEffect(() => {
     membersRef.current = members.map((member) => removedMemberForRoom(member, deletedMemberIdSet));
   }, [deletedMemberIdSet, members]);
+
+  useEffect(() => {
+    if (!props.focusRoomId || props.focusRoomId === appliedFocusRoomIdRef.current) return;
+    if (!rooms.some((room) => room.id === props.focusRoomId)) return;
+    appliedFocusRoomIdRef.current = props.focusRoomId;
+    openRoom(props.focusRoomId);
+  }, [props.focusRoomId, rooms]);
 
   useEffect(() => {
     let cancelled = false;
@@ -759,9 +731,10 @@ export function RoomsView(props: {
       updateRoom(activeRoom.id, (room) => ({
         ...room,
         badge: "Matrix",
-        matrix: {
-          homeserverUrl: result.invite.matrixHomeserverUrl!,
-          roomId: result.invite.matrixRoomId!,
+        remote: {
+          provider: "matrix",
+          accountId: "default",
+          remoteRoomId: result.invite.matrixRoomId!,
           mode: "host",
         },
       }));
@@ -1148,7 +1121,7 @@ export function RoomsView(props: {
     const text = rawText.trim() || (outgoingAttachments.length ? "发送了附件" : "");
     if (!canSendRoomDraft(text, outgoingAttachments.length)) return false;
     const createdAt = nowIso();
-    const explicitTargets = resolveTargets(text, roomMembers);
+    const explicitTargets = resolveRoomTargets(text, roomMembers);
     const directTarget = activeRoom.kind === "direct"
       ? roomMembers.find((member) => member.id === activeRoom.directMemberId && !member.disabled) ?? roomMembers.find((member) => !member.disabled)
       : undefined;
@@ -1227,6 +1200,7 @@ export function RoomsView(props: {
         onToggleCreateMenu={() => setCreateMenuOpen((open) => !open)}
         onCreateGroup={openCreateGroupDialog}
         onRecruitEmployee={openRecruitEmployeeDialog}
+        onOpenContacts={props.onOpenContacts}
         onRoomQueryChange={setRoomQuery}
         onOpenRoom={openRoom}
         onOpenDirectMember={openDirectMember}
@@ -1287,29 +1261,25 @@ export function RoomsView(props: {
           </div>
         </header>
 
-        <section ref={streamRef} className="room-message-stream chat-thread-scroll" aria-live="polite">
-          <RoomMessageStream
-            messages={activeRoom.messages}
-            members={members}
-            runtimeEventsByRunId={activeRoomRuntimeEventsByRunId}
-            onResolveApproval={(approvalId, action, response) => {
-              void resolveRoomApproval(approvalId, action, response);
-            }}
-            onInsertPrompt={insertPrompt}
-            onSubmitPrompt={submitPromptFromActivity}
-          />
-        </section>
-
-        <RoomComposer
-          inputRef={composerInputRef}
+        <RoomChatSurface
+          streamRef={streamRef}
+          composerInputRef={composerInputRef}
           fileInputRef={fileInputRef}
           roomTitle={activeRoom.title}
+          messages={activeRoom.messages}
+          members={members}
+          runtimeEventsByRunId={activeRoomRuntimeEventsByRunId}
           draft={draft}
           attachments={attachments}
           canSend={canSendRoomDraft(draft, attachments.length)}
           mentionOpen={mentionMenu.open}
           mentionOptions={mentionOptions}
           activeMentionIndex={mentionMenu.activeIndex}
+          onResolveApproval={(approvalId, action, response) => {
+            void resolveRoomApproval(approvalId, action, response);
+          }}
+          onInsertPrompt={insertPrompt}
+          onSubmitPrompt={submitPromptFromActivity}
           onDraftChange={handleDraftChange}
           onAttachmentInputChange={handleAttachmentInputChange}
           onOpenAttachmentPicker={openAttachmentPicker}

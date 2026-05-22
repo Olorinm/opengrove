@@ -5,9 +5,9 @@
   max-width: 100%;
   min-height: calc(100vh - 230px);
   overflow-x: hidden;
-  color: #252821;
-  font-size: 15px;
-  line-height: 1.75;
+  color: var(--og-text);
+  font-size: 16px;
+  line-height: 1.82;
   overflow-wrap: break-word;
   word-break: normal;
   white-space: normal;
@@ -169,39 +169,42 @@
 }
 
 .md-editor-status {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
-  display: flex;
+  position: static;
+  justify-self: end;
+  display: inline-flex;
   align-items: center;
   justify-content: flex-end;
   gap: 0;
-  min-height: 28px;
-  margin: 24px -20px -32px;
-  border-top: 1px solid rgba(231, 227, 218, 0.78);
-  background: color-mix(in srgb, var(--c-bg) 92%, transparent);
-  color: var(--c-muted);
-  font-size: 11px;
+  width: max-content;
+  max-width: 100%;
+  min-height: 18px;
+  margin: 28px 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--c-muted) 82%, transparent);
+  font-size: 10.5px;
   font-weight: var(--fw-medium);
   line-height: 1.35;
-  backdrop-filter: blur(14px);
+  pointer-events: none;
+  backdrop-filter: none;
 }
 
 .md-editor-status span {
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
-  padding: 0 8px;
+  min-height: 18px;
+  padding: 0 4px;
   white-space: nowrap;
 }
 
 .md-editor-status span + span::before {
   content: "";
-  width: 3px;
-  height: 3px;
-  margin-right: 8px;
+  width: 2px;
+  height: 2px;
+  margin-right: 7px;
   border-radius: var(--r-pill);
-  background: #c5c2b8;
+  background: currentColor;
+  opacity: 0.55;
 }
 
 .markdown-preview h1,
@@ -239,8 +242,8 @@
 .markdown-preview ol,
 .markdown-preview blockquote,
 .markdown-preview pre {
-  max-width: 100%;
-  margin: 0 0 14px;
+  max-width: min(74ch, 100%);
+  margin: 0 0 16px;
   overflow-wrap: break-word;
   word-break: normal;
 }
@@ -274,11 +277,14 @@
 .markdown-code-block,
 .markdown-preview-code {
   overflow: auto;
+  max-width: 100%;
   border: 1px solid var(--c-border);
   border-radius: var(--r-md);
   background: var(--c-surface);
   padding: 12px;
   color: #30332d;
+  font-size: 13.5px;
+  line-height: 1.58;
 }
 
 .markdown-code-block code,
@@ -405,3 +411,14 @@
   text-decoration: underline;
 }
 
+@media (max-width: 760px) {
+  .knowledge-page-editor {
+    width: 100%;
+    padding: 42px 22px 40px;
+  }
+
+  .markdown-preview {
+    font-size: 15.5px;
+    line-height: 1.78;
+  }
+}

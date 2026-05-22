@@ -128,6 +128,7 @@ export interface BridgeRuntimeControls {
 
 export const KNOWLEDGE_INVENTORY_LIMIT = 5_000;
 export const KNOWLEDGE_FILE_SIZE_LIMIT = 2_000_000;
+export const APP_FILE_TEXT_SIZE_LIMIT = 2_000_000;
 export const GENERATED_ASSET_ROUTE = "/generated/";
 export const VAULT_FILE_ROUTE = "/vault-file/";
 
@@ -154,6 +155,7 @@ export interface BridgeAskPayload {
   responseSpeed?: ResponseSpeed;
   accessMode?: RuntimeAccessMode;
   threadId: string;
+  appId?: string;
   snapshot: BrowserPageSnapshot;
   computerSnapshot: ComputerStateSnapshot;
   allowMemory: boolean;
@@ -239,23 +241,84 @@ export interface BridgeProviderHttpCaptureFlow {
   };
 }
 
+export const BRIDGE_STT_PROVIDER_IDS = [
+  "openai",
+  "groq",
+  "local-whisper",
+  "browser",
+] as const;
+
+export type BridgeSttProviderId = (typeof BRIDGE_STT_PROVIDER_IDS)[number];
+
+export interface BridgeVoiceSettings {
+  stt: BridgeSttSettings;
+}
+
+export interface BridgeSttSettings {
+  provider: BridgeSttProviderId;
+  language: string;
+  openai: BridgeCloudSttProviderSettings;
+  groq: BridgeCloudSttProviderSettings;
+  localWhisper: BridgeLocalWhisperSettings;
+  browser: BridgeBrowserSttSettings;
+}
+
+export interface BridgeCloudSttProviderSettings {
+  model: string;
+  baseUrl: string;
+  apiKey?: string;
+  apiKeyEnv: string;
+}
+
+export interface BridgeLocalWhisperSettings {
+  model: string;
+  command?: string;
+  language: string;
+}
+
+export interface BridgeBrowserSttSettings {
+  language: string;
+}
+
+export interface BridgeSttProviderInfo {
+  id: BridgeSttProviderId;
+  label: string;
+  mode: "browser" | "recorded-upload" | "local-command";
+  configured: boolean;
+  defaultModel?: string;
+  notes?: string[];
+}
+
 export interface BridgeSettings {
   kernel: BridgeKernelPreference;
   workspaceRoot?: string;
   providerSetupVersion?: number;
   providerHttpCaptureEnabled: boolean;
   codexRawEventCaptureEnabled: boolean;
+  mountedApps: BridgeMountedAppSettings[];
   kernelProxy: BridgeKernelProxySettings;
   inviteLanding: BridgeInviteLandingSettings;
-  matrix: BridgeMatrixSettings;
+  remote: BridgeRemoteSettings;
+  voice: BridgeVoiceSettings;
   kernelPathOverrides: Record<string, BridgeKernelPathOverride>;
   kernelKnowledgeSourceEnabled: Record<string, Record<string, boolean>>;
   kernelProviderBindings: Record<string, string>;
   customProviders: BridgeProviderProfile[];
 }
 
+export interface BridgeMountedAppSettings {
+  id: string;
+  path: string;
+  enabled: boolean;
+  title?: string;
+}
+
 export interface BridgeInviteLandingSettings {
   baseUrl: string;
+}
+
+export interface BridgeRemoteSettings {
+  matrix: BridgeMatrixSettings;
 }
 
 export interface BridgeMatrixSettings {
@@ -263,15 +326,18 @@ export interface BridgeMatrixSettings {
   homeserverUrl: string;
   userId: string;
   accessToken?: string;
-  roomBindings: Record<string, BridgeMatrixRoomBinding>;
+  bindings: Record<string, BridgeRemoteRoomBinding>;
 }
 
-export interface BridgeMatrixRoomBinding {
-  matrixRoomId: string;
+export interface BridgeRemoteRoomBinding {
+  provider: "matrix";
+  accountId: string;
+  remoteRoomId: string;
   homeserverUrl: string;
   title: string;
   createdAt: string;
-  syncToken?: string;
+  syncCursor?: string;
+  enabled: boolean;
 }
 
 export interface BridgeKernelPathOverride {

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import clsx from "clsx";
-import { FileText, LoaderCircle, Pencil, Search, Sparkles, Terminal, Wrench } from "lucide-react";
+import { Box, FileText, Pencil, Search, Sparkles, Terminal, Wrench } from "lucide-react";
 import { Button } from "../ui/button";
 import {
   activityItemDetailDisplay,
@@ -42,7 +42,7 @@ export function AssistantProcessBlock(props: {
     ["blocked", "incomplete", "rejected", "failed", "error"].includes(activityItemStatus(item)),
   );
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
-  const shouldOpenByDefault = hasPendingApproval || hasActiveChoiceForm;
+  const shouldOpenByDefault = hasPendingApproval || hasActiveChoiceForm || hasRunningItem;
   const detailsOpen = userOpen ?? shouldOpenByDefault;
   const summary = summarizeActivityItems(items, {
     active: hasRunningItem,
@@ -64,7 +64,7 @@ export function AssistantProcessBlock(props: {
     >
       <summary>
         <span className="thread-activity-summary">
-          <ActivitySummaryIcon kind={summaryKind} active={hasRunningItem} />
+          <ActivitySummaryIcon kind={summaryKind} />
           {summary}
         </span>
       </summary>
@@ -111,7 +111,9 @@ function ActivityItemRow(props: {
 
   return (
     <div className={clsx("thread-activity-row", `status-${status}`)}>
-      <span className="thread-activity-dot" aria-hidden="true" />
+      <span className="thread-activity-row-icon" aria-hidden="true">
+        <ActivitySummaryIcon kind={activityItemKind(props.item)} />
+      </span>
       <div className="thread-activity-row-body">
         {editInfo ? (
           <div className="thread-activity-edit" title={editInfo.fullPaths.join("\n") || editInfo.label}>
@@ -226,10 +228,7 @@ function ChoiceFormBlock(props: { form: ChoiceForm; disabled?: boolean; onInsert
   );
 }
 
-function ActivitySummaryIcon(props: { kind: string; active?: boolean }) {
-  if (props.active) {
-    return <LoaderCircle size={14} className="spin" />;
-  }
+function ActivitySummaryIcon(props: { kind: string }) {
   if (props.kind === "search") {
     return <Search size={14} />;
   }
@@ -244,6 +243,9 @@ function ActivitySummaryIcon(props: { kind: string; active?: boolean }) {
   }
   if (props.kind === "skill") {
     return <Sparkles size={14} />;
+  }
+  if (props.kind === "artifact" || props.kind === "memory") {
+    return <Box size={14} />;
   }
   return <Wrench size={14} />;
 }

@@ -637,7 +637,7 @@ function normalizeNativeToolResult(result: unknown, isError: boolean): ToolResul
   };
 }
 
-function enrichApprovalInput(toolId: string, args: unknown, agent: AgentContext): JsonValue {
+function enrichApprovalInput(_toolId: string, args: unknown, _agent: AgentContext): JsonValue {
   const input = asJsonObject(args);
   return input;
 }
@@ -802,10 +802,6 @@ function asJsonValue(value: unknown): JsonValue {
 
 function asJsonObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : {};
-}
-
-function readString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function createSkillSteeringMessage(invocation: InvokedSkillRecord): UserMessage {

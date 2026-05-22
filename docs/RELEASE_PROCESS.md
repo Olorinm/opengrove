@@ -38,7 +38,13 @@ Check the current package version:
 ```bash
 node -p "require('./package.json').version"
 npm view opengrove version dist-tags --json
+npm run check:release-notes
 ```
+
+`npm run check:release-notes` prints the commit list since the latest Git tag and
+verifies that `CHANGELOG.md` has a non-empty `Unreleased` section. Use that as
+the running buffer for release-worthy changes; commits do not need one entry
+each, but user-visible changes should be represented before release prep starts.
 
 ## Write Release Notes
 
@@ -48,6 +54,9 @@ Create a release note file before tagging:
 mkdir -p docs/releases
 $EDITOR docs/releases/vX.Y.Z.md
 ```
+
+Draft this file from `CHANGELOG.md#Unreleased`, then compare it with the commit
+list printed by `npm run check:release-notes`.
 
 Use this shape:
 
@@ -81,7 +90,7 @@ npm version X.Y.Z --no-git-tag-version
 Review the diff:
 
 ```bash
-git diff -- package.json package-lock.json docs/releases/vX.Y.Z.md
+git diff -- package.json package-lock.json CHANGELOG.md docs/releases/vX.Y.Z.md
 ```
 
 ## Verify
@@ -89,18 +98,19 @@ git diff -- package.json package-lock.json docs/releases/vX.Y.Z.md
 Run the full release checks:
 
 ```bash
-npm run check
-npm run test:harness
-npm run build:web
-npm pack --dry-run
+npm run release:check
 ```
 
-For docs-only patch releases, `npm run check` and `npm pack --dry-run` are the minimum. For code changes, run the full list.
+`npm run release:check` requires `docs/releases/vX.Y.Z.md` to exist for the
+current package version and have at least one meaningful bullet. For docs-only
+patch releases, `npm run check:release-notes`, `npm run check`, and
+`npm pack --dry-run` are the minimum. For code changes, run the full release
+check.
 
 ## Commit, Tag, Push
 
 ```bash
-git add package.json package-lock.json docs/releases/vX.Y.Z.md
+git add package.json package-lock.json CHANGELOG.md docs/releases/vX.Y.Z.md
 git commit -m "chore: release vX.Y.Z"
 git tag -a vX.Y.Z -F docs/releases/vX.Y.Z.md
 git push origin main vX.Y.Z
@@ -195,4 +205,3 @@ Release is done when:
 - If npm publish succeeds, never reuse the same version number. Bump to the next patch for fixes.
 - If a token is pasted into chat, terminal, or logs, revoke it immediately after use.
 - If the GitHub Release is missing but the tag exists, create the release from the existing tag. Do not retag unless the tag points at the wrong commit and no package has been published.
-

@@ -3,6 +3,7 @@ import type {
   BridgeProviderProfile,
   BridgeRuntimeControlOption,
 } from "./bridge-types.js";
+import { opencodeModelIdForProvider, opencodeSupportsProvider } from "./opencode-provider-config.js";
 import { usesNativeProviderConfig } from "./provider-binding.js";
 
 export type KernelModelAliasMap = Record<string, string>;
@@ -32,7 +33,17 @@ export function kernelModelForProviderSelection(
 ): string | undefined {
   const model = selectedModel?.trim();
   if (!model) return undefined;
-  return resolveKernelModelAlias(model, kernelModelAliasesForProvider(kernelId, profile)) ?? model;
+  const alias = resolveKernelModelAlias(model, kernelModelAliasesForProvider(kernelId, profile));
+  if (alias) return alias;
+  if (
+    kernelId === "opencode" &&
+    profile &&
+    opencodeSupportsProvider(profile) &&
+    !usesNativeProviderConfig(kernelId, profile)
+  ) {
+    return opencodeModelIdForProvider(profile.id, model);
+  }
+  return model;
 }
 
 function resolveKernelModelAlias(

@@ -117,7 +117,7 @@ export function readKernelNativeProviderProfile(
   if (kernel === "codex") return readCodexNativeProfile(options.configHome);
   if (kernel === "hermes") return readHermesNativeProfile(options.configHome);
   if (kernel === "deepseek-tui") return readSimpleHomeConfigProfile(kernel, "DeepSeek TUI", resolve(configHome(options.configHome, ".deepseek"), "config.toml"));
-  if (kernel === "gemini-cli") return readSimpleHomeConfigProfile(kernel, "Google Gemini", resolve(configHome(options.configHome, ".gemini"), "settings.json"));
+  if (kernel === "gemini-cli") return readGeminiCliNativeProfile(configHome(options.configHome, ".gemini"));
   if (kernel === "qwen-code") return readSimpleHomeConfigProfile(kernel, "Qwen Code", resolve(configHome(options.configHome, ".qwen"), "settings.json"));
   if (kernel === "pi") return readSimpleHomeConfigProfile(kernel, "Pi", resolve(configHome(options.configHome, ".pi"), "agent", "auth.json"));
   if (kernel === "openclaw") return readSimpleHomeConfigProfile(kernel, "OpenClaw", resolve(configHome(options.configHome, ".openclaw"), "providers"));
@@ -162,7 +162,7 @@ function readClaudeCodeNativeProfile(options: KernelNativeProfileReadOptions): K
   const baseUrl = readClaudeBaseUrlFromEnv(env);
   const provider = detectClaudeProvider(env, baseUrl);
   const models = buildClaudeModelOptions(settings, env);
-  const defaultModel = resolveClaudeDefaultModel(settingsModel, env, models);
+  const defaultModel = resolveClaudeDefaultModel(settingsModel, models);
   const sourcePaths = paths.length ? paths : [resolve(home, "settings.json")];
 
   return {
@@ -283,6 +283,68 @@ function readSimpleHomeConfigProfile(
     authConfigured: existsSync(configPath),
     models: [],
   };
+}
+
+function readGeminiCliNativeProfile(geminiHome: string): KernelNativeProviderProfile {
+  const settingsPath = resolve(geminiHome, "settings.json");
+  const envPath = resolve(geminiHome, ".env");
+  const settings = readJsonObject(settingsPath);
+  const authType = readGeminiAuthType(settings);
+  const env = readSelectedProcessEnv([
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GENAI_USE_VERTEXAI",
+    "GOOGLE_CLOUD_PROJECT",
+    "GOOGLE_CLOUD_LOCATION",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+  ]);
+  const bridgeVisibleGeminiApiKeyEnv = env.GOOGLE_API_KEY ? "GOOGLE_API_KEY" : env.GEMINI_API_KEY ? "GEMINI_API_KEY" : undefined;
+
+  if (authType === "gemini-api-key") {
+    return {
+      kernel: "gemini-cli",
+      source: existsSync(settingsPath) ? settingsPath : "gemini-cli-defaults",
+      sourcePaths: [settingsPath, envPath],
+      env,
+      providerId: "gemini-cli-native",
+      providerLabel: "Google Gemini (Gemini CLI)",
+      protocol: "gemini-compatible",
+      baseUrl: "https://generativelanguage.googleapis.com",
+      apiKeyEnv: bridgeVisibleGeminiApiKeyEnv,
+      authConfigured: existsSync(settingsPath),
+      models: [],
+      settingsModel: readNestedString(settings, ["model", "name"]),
+    };
+  }
+
+  return {
+    kernel: "gemini-cli",
+    source: existsSync(settingsPath) ? settingsPath : "gemini-cli-defaults",
+    sourcePaths: [settingsPath, envPath],
+    env,
+    providerId: "gemini-cli-native",
+    providerLabel: "Google Gemini",
+    authConfigured: existsSync(settingsPath),
+    models: [],
+    settingsModel: readNestedString(settings, ["model", "name"]),
+  };
+}
+
+function readGeminiAuthType(settings: Record<string, unknown>): string | undefined {
+  return readNestedString(settings, ["security", "auth", "selectedType"])
+    || stringValue(settings.selectedAuthType)
+    || stringValue(settings.authType);
+}
+
+function readNestedString(source: Record<string, unknown>, path: string[]): string | undefined {
+  let current: unknown = source;
+  for (const key of path) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[key];
+  }
+  return stringValue(current);
 }
 
 function readMergedClaudeSettings(cwd: string, claudeHome: string): { settings: Record<string, unknown>; paths: string[] } {
@@ -689,7 +751,6 @@ function buildClaudeModelOptions(
 
 function resolveClaudeDefaultModel(
   requested: string | undefined,
-  env: Record<string, string>,
   models: BridgeRuntimeControlOption[],
 ): string | undefined {
   const model = requested?.trim();

@@ -112,6 +112,7 @@ export function planProviderBinding(
 }
 
 export function providerCredentialKind(profile: BridgeProviderProfile): BridgeProviderCredentialKind {
+  if (isAwsBedrockProviderId(profile.id)) return "aws";
   if (profile.credentialKind) return profile.credentialKind;
   if (profile.protocol === "native-oauth") return "native-login";
   if (profile.apiKey) return "api-key";
@@ -165,6 +166,10 @@ function providerProtocolForKernel(
   kernelId: BridgeKernelId,
   profile: BridgeProviderProfile,
 ): BridgeProviderProtocol | undefined {
+  if (kernelId === "opencode") {
+    if (profile.openaiBaseUrl) return "openai-compatible";
+    return isAwsBedrockProviderId(profile.id) && profile.anthropicBaseUrl ? "anthropic-compatible" : undefined;
+  }
   const descriptor = getBridgeKernelDescriptor(kernelId);
   for (const protocol of descriptor.externalProtocols) {
     if (providerHasProtocolUrl(profile, protocol)) {
@@ -180,6 +185,12 @@ function providerHasProtocolUrl(profile: BridgeProviderProfile, protocol: Bridge
   if (protocol === "gemini-compatible") return Boolean(profile.geminiBaseUrl);
   if (protocol === "native-oauth") return profile.protocol === "native-oauth";
   return false;
+}
+
+function isAwsBedrockProviderId(providerId: string): boolean {
+  return providerId === "aws-bedrock" ||
+    providerId === "aws-bedrock-api-key" ||
+    providerId === "amazon-bedrock";
 }
 
 function unsupportedPlan(

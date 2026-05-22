@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type {
@@ -68,7 +69,7 @@ export type {
 } from "./codex/types.js";
 
 export class CodexRuntime implements AgentRuntime {
-  private client?: CodexAppServerClient;
+  private readonly clients = new Map<string, CodexAppServerClient>();
   private readonly bindings = new Map<string, CodexThreadBinding>();
   private bindingsLoaded = false;
 
@@ -88,6 +89,8 @@ export class CodexRuntime implements AgentRuntime {
     const serviceTier = this.options.allowServiceTier === false
       ? undefined
       : resolveCodexServiceTier(request.responseSpeed, this.options.serviceTier);
+    const runtimeEnv = mergeRuntimeEnv(this.options.env, request.runtimeEnv);
+    const runtimeEnvFingerprint = envFingerprint(runtimeEnv);
     const threadConfig = codexThreadConfig(this.options.providerConfig);
     const developerInstructions = buildCodexDeveloperInstructions();
     const turnInput = buildCodexTurnInput(request);
@@ -99,7 +102,7 @@ export class CodexRuntime implements AgentRuntime {
     );
     const providerCapture = resolveProviderHttpCaptureOptions(
       this.options.providerHttpCapture,
-      this.options.env,
+      runtimeEnv,
     );
     const rawEventCapture = Boolean(this.options.rawEventCapture && providerCapture.enabled && providerCapture.injected);
 
@@ -115,7 +118,7 @@ export class CodexRuntime implements AgentRuntime {
       data: providerHttpCaptureSummary(providerCapture),
     };
 
-    const client = await this.ensureClient(providerCapture);
+    const client = await this.ensureClient(providerCapture, runtimeEnv);
     await refreshCodexNativeSkillList(client, cwd, request);
     const thread = await this.startOrResumeThread(client, request, {
       cwd,
@@ -128,6 +131,7 @@ export class CodexRuntime implements AgentRuntime {
         dynamicToolsFingerprint: toolBridge.fingerprint,
         cwd,
         rawEventCapture,
+        runtimeEnvFingerprint,
       }),
       sandbox,
       developerInstructions,
@@ -202,7 +206,7 @@ export class CodexRuntime implements AgentRuntime {
     const notificationCleanup = client.addNotificationHandler(handleNotification);
     const requestCleanup = client.addRequestHandler(async (serverRequest) => {
       if (serverRequest.method === "account/chatgptAuthTokens/refresh") {
-        return readCodexAuthRefreshResponse(this.options.env);
+        return readCodexAuthRefreshResponse(runtimeEnv);
       }
       if (isCodexApprovalRequest(serverRequest.method)) {
         return await handleCodexApprovalRequest(serverRequest, {
@@ -317,20 +321,26 @@ export class CodexRuntime implements AgentRuntime {
 
   private async ensureClient(
     providerCapture?: ResolvedProviderHttpCaptureOptions,
+    runtimeEnv?: NodeJS.ProcessEnv,
   ): Promise<CodexAppServerClient> {
-    if (this.client && !this.client.isClosed()) {
-      return this.client;
+    const clientKey = envFingerprint(runtimeEnv);
+    const existing = this.clients.get(clientKey);
+    if (existing && !existing.isClosed()) {
+      return existing;
     }
-    const rpcCapture = createCodexRpcCaptureRecorder(this.options.rpcCapture, this.options.env);
+    if (existing?.isClosed()) {
+      this.clients.delete(clientKey);
+    }
+    const rpcCapture = createCodexRpcCaptureRecorder(this.options.rpcCapture, runtimeEnv);
     const resolvedProviderCapture =
       providerCapture ??
       resolveProviderHttpCaptureOptions(
         this.options.providerHttpCapture,
-        this.options.env,
+        runtimeEnv,
       );
     rpcCapture?.recordLifecycle("provider_http_capture.configured", providerHttpCaptureSummary(resolvedProviderCapture));
     const env = applyProviderHttpCaptureEnv(
-      { ...process.env, ...this.options.env },
+      { ...process.env, ...runtimeEnv },
       resolvedProviderCapture,
     );
     if (!env.TERM) {
@@ -343,8 +353,15 @@ export class CodexRuntime implements AgentRuntime {
       rpcCapture,
     });
     await client.initialize();
-    this.client = client;
+    this.clients.set(clientKey, client);
     return client;
+  }
+
+  close(): void {
+    for (const client of this.clients.values()) {
+      client.close();
+    }
+    this.clients.clear();
   }
 
   private async startOrResumeThread(
@@ -547,6 +564,7 @@ function codexRuntimeBindingFingerprint(input: {
   dynamicToolsFingerprint: string;
   cwd: string;
   rawEventCapture: boolean;
+  runtimeEnvFingerprint: string;
 }): string {
   return [
     input.base || "native",
@@ -554,7 +572,27 @@ function codexRuntimeBindingFingerprint(input: {
     input.dynamicToolsFingerprint,
     input.cwd,
     input.rawEventCapture ? "raw" : "normal",
+    input.runtimeEnvFingerprint,
   ].join(":");
+}
+
+function mergeRuntimeEnv(
+  base: NodeJS.ProcessEnv | undefined,
+  override: NodeJS.ProcessEnv | undefined,
+): NodeJS.ProcessEnv | undefined {
+  const merged = { ...(base ?? {}), ...(override ?? {}) };
+  for (const [key, value] of Object.entries(merged)) {
+    if (value === undefined) delete merged[key];
+  }
+  return Object.keys(merged).length ? merged : undefined;
+}
+
+function envFingerprint(env: NodeJS.ProcessEnv | undefined): string {
+  const entries = Object.entries(env ?? {})
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+    .sort(([left], [right]) => left.localeCompare(right));
+  if (entries.length === 0) return "env:default";
+  return `env:${createHash("sha256").update(JSON.stringify(entries)).digest("hex").slice(0, 16)}`;
 }
 
 function codexModelProviderMatches(left: string | null | undefined, right: string | null | undefined): boolean {

@@ -156,11 +156,6 @@
   background: var(--c-bg);
 }
 
-.topbar[data-view="chat"] {
-  min-height: 42px;
-  padding: 7px 12px;
-}
-
 .topbar-status-pill,
 .topbar-icon-button {
   border-color: rgba(0, 0, 0, 0.06);
@@ -333,6 +328,18 @@
   width: 32px;
   height: 32px;
   min-height: 32px;
+}
+
+.opengrove-action.opengrove-composer-mic {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin-right: -2px;
+}
+
+.opengrove-action.opengrove-composer-mic svg {
+  width: 14px;
+  height: 14px;
 }
 
 .opengrove-model-button {
@@ -609,4 +616,3 @@
     max-height: min(640px, calc(100% - 28px));
   }
 }
-

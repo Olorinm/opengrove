@@ -224,11 +224,13 @@
 }
 
 .project-row-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  position: fixed;
+  top: auto;
+  right: auto;
   z-index: 12;
   display: grid;
+  box-sizing: border-box;
+  width: 190px;
   min-width: 178px;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--r-lg);
@@ -270,11 +272,12 @@
 }
 
 .conversation-sort-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 24px;
+  position: fixed;
+  top: auto;
+  right: auto;
   z-index: 18;
   display: grid;
+  box-sizing: border-box;
   width: 164px;
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--r-lg);
@@ -469,4 +472,3 @@
   border-left: 1px solid #dfe3e6;
   padding-left: 8px;
 }
-

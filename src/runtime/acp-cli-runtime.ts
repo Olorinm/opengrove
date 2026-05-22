@@ -47,6 +47,7 @@ export interface AcpCliRuntimeOptions {
 
 export class AcpCliRuntime implements AgentRuntime {
   private acpClient?: StdioJsonRpcClient;
+  private acpClientEnvFingerprint = "";
   private readonly acpSessions = new Set<string>();
 
   constructor(private readonly options: AcpCliRuntimeOptions) {}
@@ -63,10 +64,11 @@ export class AcpCliRuntime implements AgentRuntime {
     const producer = this.produceAcpTurn(request, queue, runId)
       .then(() => queue.close())
       .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
         queue.push({
           type: "error",
           runId,
-          message: error instanceof Error ? error.message : String(error),
+          message: translateAcpRuntimeError(this.options.kernelId, message),
         });
         queue.close();
       });
@@ -93,12 +95,13 @@ export class AcpCliRuntime implements AgentRuntime {
     const requestedModel =
       normalizeOptionalString(request.requestedModelId) ??
       normalizeOptionalString(this.options.configuredModel);
+    const runtimeEnv = mergeRuntimeEnv(this.options.env, request.runtimeEnv);
     const prompt = buildAcpPrompt(request, this.options.title);
     const providerCapture = resolveProviderHttpCaptureOptions(
       this.options.providerHttpCapture,
-      this.options.env,
+      runtimeEnv,
     );
-    const client = await this.ensureAcpClient(providerCapture);
+    const client = await this.ensureAcpClient(providerCapture, runtimeEnv);
     const cwd = resolve(this.options.cwd ?? process.cwd());
     const nativeSession = await this.ensureAcpSession(client, request, cwd, requestedModel);
     const priorMessages = recentSessionMessages(request);
@@ -226,10 +229,11 @@ export class AcpCliRuntime implements AgentRuntime {
       queue.push({ type: "turn.finished", runId, at: new Date().toISOString() });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const rawMessage = client.stderr().trim() || message || `${this.options.kernelId}_acp_failed`;
       queue.push({
         type: "error",
         runId,
-        message: client.stderr().trim() || message || `${this.options.kernelId}_acp_failed`,
+        message: translateAcpRuntimeError(this.options.kernelId, rawMessage),
       });
     } finally {
       request.signal?.removeEventListener("abort", abortPrompt);
@@ -240,21 +244,29 @@ export class AcpCliRuntime implements AgentRuntime {
 
   private async ensureAcpClient(
     providerCapture: ReturnType<typeof resolveProviderHttpCaptureOptions>,
+    runtimeEnv: NodeJS.ProcessEnv | undefined,
   ): Promise<StdioJsonRpcClient> {
-    if (this.acpClient && !this.acpClient.isClosed()) {
+    const envKey = envFingerprint(runtimeEnv);
+    if (this.acpClient && !this.acpClient.isClosed() && this.acpClientEnvFingerprint === envKey) {
       return this.acpClient;
+    }
+    if (this.acpClient && !this.acpClient.isClosed()) {
+      this.acpClient.close();
     }
     const args = [
       ...(this.options.commandArgs ?? []),
       ...(this.options.acpArgs ?? ["acp"]),
     ];
+    const cwd = resolve(this.options.cwd ?? process.cwd());
+    const env = applyProviderHttpCaptureEnv({ ...process.env, ...runtimeEnv }, providerCapture);
     const client = StdioJsonRpcClient.start({
       command: this.options.command,
       args,
-      cwd: this.options.cwd ?? process.cwd(),
-      env: applyProviderHttpCaptureEnv({ ...process.env, ...this.options.env }, providerCapture),
+      cwd,
+      env: { ...env, PWD: cwd },
     });
     this.acpClient = client;
+    this.acpClientEnvFingerprint = envKey;
     this.acpSessions.clear();
     await client.request(
       "initialize",
@@ -404,6 +416,35 @@ export class AcpCliRuntime implements AgentRuntime {
     }
     return { outcome: { outcome: "cancelled" } };
   }
+}
+
+function mergeRuntimeEnv(
+  base: NodeJS.ProcessEnv | undefined,
+  override: NodeJS.ProcessEnv | undefined,
+): NodeJS.ProcessEnv | undefined {
+  const merged = { ...(base ?? {}), ...(override ?? {}) };
+  for (const [key, value] of Object.entries(merged)) {
+    if (value === undefined) delete merged[key];
+  }
+  return Object.keys(merged).length ? merged : undefined;
+}
+
+function envFingerprint(env: NodeJS.ProcessEnv | undefined): string {
+  return Object.entries(env ?? {})
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string")
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("\n");
+}
+
+function translateAcpRuntimeError(kernelId: string, message: string): string {
+  if (kernelId === "copilot" && /authentication required|not authenticated|login required|unauthorized/i.test(message)) {
+    return [
+      "GitHub Copilot CLI 需要先完成 GitHub 登录。",
+      "请到设置 > 内核与知识 > GitHub Copilot CLI 点击“在终端登录”。",
+    ].join("\n");
+  }
+  return message;
 }
 
 function buildAcpPrompt(request: AgentTurnRequest, title: string): string {

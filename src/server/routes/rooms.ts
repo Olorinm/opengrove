@@ -2,9 +2,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AgentAttachmentContext, JsonObject } from "../../core.js";
 import type { BridgeState } from "../bridge-types.js";
 import { record } from "../http-utils.js";
-import type { RoomChannelMatrixBinding, RoomChannelMember, RoomChannelMessage, RoomMessageStatus } from "../../rooms/channel-store.js";
+import type { RoomChannelMember, RoomChannelMessage, RoomMessageStatus } from "../../rooms/channel-store.js";
 import { isRunnableRoomAssistantTarget, scheduleRoomAssistantRuns } from "../room-runs.js";
-import { matrixReady, publishMatrixRoomEvent } from "./matrix-invites.js";
+import { deliverRemoteRoomTarget } from "../remote/delivery.js";
 
 export async function handleRoomsRoute(input: {
   request: IncomingMessage;
@@ -28,7 +28,6 @@ export async function handleRoomsRoute(input: {
       title: readString(body.title),
       memberIds: readStringArray(body.memberIds),
       badge: readString(body.badge),
-      matrix: readMatrixBinding(body.matrix),
     });
     state.store.saveFrom(state.app);
     sendJson(response, 200, { ok: true, room, currentEventSeq: state.app.rooms.snapshot().currentEventSeq });
@@ -64,7 +63,6 @@ export async function handleRoomsRoute(input: {
       pinned: readOptionalBoolean(body.pinned),
       archived: readOptionalBoolean(body.archived),
       badge: readOptionalString(body.badge),
-      matrix: Object.prototype.hasOwnProperty.call(body, "matrix") ? readMatrixBinding(body.matrix) ?? null : undefined,
     });
     state.store.saveFrom(state.app);
     sendJson(response, 200, { ok: true, room, currentEventSeq: state.app.rooms.snapshot().currentEventSeq });
@@ -122,6 +120,7 @@ export async function handleRoomsRoute(input: {
     const roomId = decodeURIComponent(encodedRoomId);
     const body = record(await readJsonBody(request));
     const text = readString(body.text);
+    const appContextText = readString(body.appContextText);
     const targetIds = resolveVisibleRoomTargets(state, roomId, text, readStringArray(body.targetIds));
     const assistantTargets = targetIds
       .map((id) => state.app.rooms.listMembers().find((member) => member.id === id))
@@ -144,7 +143,7 @@ export async function handleRoomsRoute(input: {
     const scheduledMessages = scheduleRoomAssistantRuns(state, {
       roomId,
       userMessageId: result.userMessage.id,
-      prompt: result.userMessage.text,
+      prompt: appContextText ? `${appContextText}\n\nUser request:\n${result.userMessage.text}` : result.userMessage.text,
       targets: runnablePairs.map((pair) => pair.target),
       assistantMessages: runnablePairs.map((pair) => pair.message),
     });
@@ -152,13 +151,15 @@ export async function handleRoomsRoute(input: {
     for (const [index, message] of result.assistantMessages.entries()) {
       const target = assistantTargets[index];
       if (!target || updatedMessages.has(message.id)) continue;
-      const fallback = await deliverNonLocalRoomTarget(state, {
-        roomId,
-        prompt: result.userMessage.text,
-        attachments: readAttachments(body.attachments) ?? [],
-        target,
-        assistantMessage: message,
-      });
+      const fallback = target.source === "remote"
+        ? await deliverRemoteRoomTarget(state, {
+          roomId,
+          prompt: result.userMessage.text,
+          attachments: readAttachments(body.attachments) ?? [],
+          target,
+          assistantMessage: message,
+        })
+        : updateNonRunnableLocalTarget(state, roomId, target, message);
       updatedMessages.set(fallback.id, fallback);
     }
     if (updatedMessages.size) {
@@ -181,8 +182,6 @@ export async function handleRoomsRoute(input: {
       duration: readOptionalString(body.duration),
       startedAt: readOptionalString(body.startedAt),
       finishedAt: readOptionalString(body.finishedAt),
-      matrixEventId: readOptionalString(body.matrixEventId),
-      matrixTurnId: readOptionalString(body.matrixTurnId),
       parts: readJsonObjects(body.parts),
     });
     state.store.saveFrom(state.app);
@@ -206,13 +205,12 @@ function normalizeMember(input: Record<string, unknown>): RoomChannelMember {
     status: readMemberStatus(input.status),
     color: readString(input.color) || "#64748b",
     lastActive: readString(input.lastActive) || "now",
+    defaultSkillIds: readStringArray(input.defaultSkillIds),
     avatarDataUrl: readOptionalString(input.avatarDataUrl),
     source: readMemberSource(input.source) ?? "local",
     sourceLabel: readOptionalString(input.sourceLabel),
     inviteStatus: readInviteStatus(input.inviteStatus),
     homeNodeLabel: readOptionalString(input.homeNodeLabel),
-    matrixUserId: readOptionalString(input.matrixUserId),
-    matrixAgentId: readOptionalString(input.matrixAgentId),
     disabled: input.disabled === true,
   };
 }
@@ -237,85 +235,39 @@ function normalizeMemberPatch(input: Record<string, unknown>): Partial<Omit<Room
   if (Object.prototype.hasOwnProperty.call(input, "status")) patch.status = readMemberStatus(input.status);
   if (Object.prototype.hasOwnProperty.call(input, "color")) patch.color = readString(input.color);
   if (Object.prototype.hasOwnProperty.call(input, "lastActive")) patch.lastActive = readString(input.lastActive);
+  if (Object.prototype.hasOwnProperty.call(input, "defaultSkillIds")) patch.defaultSkillIds = readStringArray(input.defaultSkillIds);
   if (Object.prototype.hasOwnProperty.call(input, "avatarDataUrl")) patch.avatarDataUrl = readOptionalString(input.avatarDataUrl);
   if (Object.prototype.hasOwnProperty.call(input, "source")) patch.source = readMemberSource(input.source);
   if (Object.prototype.hasOwnProperty.call(input, "sourceLabel")) patch.sourceLabel = readOptionalString(input.sourceLabel);
   if (Object.prototype.hasOwnProperty.call(input, "inviteStatus")) patch.inviteStatus = readInviteStatus(input.inviteStatus);
   if (Object.prototype.hasOwnProperty.call(input, "homeNodeLabel")) patch.homeNodeLabel = readOptionalString(input.homeNodeLabel);
-  if (Object.prototype.hasOwnProperty.call(input, "matrixUserId")) patch.matrixUserId = readOptionalString(input.matrixUserId);
-  if (Object.prototype.hasOwnProperty.call(input, "matrixAgentId")) patch.matrixAgentId = readOptionalString(input.matrixAgentId);
   if (Object.prototype.hasOwnProperty.call(input, "disabled")) patch.disabled = input.disabled === true;
   return patch;
 }
 
-async function deliverNonLocalRoomTarget(
+function updateNonRunnableLocalTarget(
   state: BridgeState,
-  input: {
-    roomId: string;
-    prompt: string;
-    attachments: AgentAttachmentContext[];
-    target: RoomChannelMember;
-    assistantMessage: { id: string; matrixTurnId?: string; runId?: string };
-  },
+  roomId: string,
+  target: RoomChannelMember,
+  assistantMessage: { id: string },
 ) {
-  const room = state.app.rooms.getRoom(input.roomId);
-  if (input.target.disabled) {
-    return state.app.rooms.updateMessage(input.roomId, input.assistantMessage.id, {
-      text: `${input.target.name} 已被移除，不能参与这次对话。`,
+  if (target.disabled) {
+    return state.app.rooms.updateMessage(roomId, assistantMessage.id, {
+      text: `${target.name} 已被移除，不能参与这次对话。`,
       status: "done",
       finishedAt: new Date().toISOString(),
     });
   }
-  if (input.target.source === "human") {
-    return state.app.rooms.updateMessage(input.roomId, input.assistantMessage.id, {
-      text: `${input.target.name} 是人类成员，不会自动执行 agent 回复。`,
+  if (target.source === "human") {
+    return state.app.rooms.updateMessage(roomId, assistantMessage.id, {
+      text: `${target.name} 是人类成员，不会自动执行 agent 回复。`,
       status: "done",
       finishedAt: new Date().toISOString(),
     });
   }
 
-  const turnId = input.assistantMessage.matrixTurnId || input.assistantMessage.runId || input.assistantMessage.id;
-  if (
-    input.target.source === "remote"
-    && room?.matrix
-    && input.target.matrixUserId
-    && input.target.matrixAgentId
-    && matrixReady(state.settings.matrix)
-  ) {
-    try {
-      const eventId = await publishMatrixRoomEvent(
-        state.settings.matrix,
-        room.matrix.roomId,
-        "org.opengrove.agent.request",
-        {
-          version: 1,
-          turnId,
-          prompt: input.prompt,
-          attachments: input.attachments,
-          target: {
-            ownerUserId: input.target.matrixUserId,
-            agentId: input.target.matrixAgentId,
-          },
-        },
-        `agent-request-${turnId}`,
-      );
-      return state.app.rooms.updateMessage(input.roomId, input.assistantMessage.id, {
-        status: "running",
-        startedAt: new Date().toISOString(),
-        matrixEventId: eventId,
-        matrixTurnId: turnId,
-      });
-    } catch (error) {
-      return state.app.rooms.updateMessage(input.roomId, input.assistantMessage.id, {
-        text: error instanceof Error ? error.message : String(error),
-        status: "failed",
-        finishedAt: new Date().toISOString(),
-      });
-    }
-  }
-
-  return state.app.rooms.updateMessage(input.roomId, input.assistantMessage.id, {
-    text: `${input.target.name} 是远端成员，当前没有可用的 Matrix 投递通道。`,
+  return state.app.rooms.updateMessage(roomId, assistantMessage.id, {
+    text: `${target.name} 当前不是可执行的本机 agent。`,
     status: "done",
     finishedAt: new Date().toISOString(),
   });
@@ -335,19 +287,6 @@ function readStringArray(value: unknown): string[] {
 
 function readOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
-}
-
-function readMatrixBinding(value: unknown): RoomChannelMatrixBinding | undefined {
-  const input = record(value);
-  const homeserverUrl = readString(input.homeserverUrl);
-  const roomId = readString(input.roomId);
-  if (!homeserverUrl || !roomId) return undefined;
-  return {
-    homeserverUrl,
-    roomId,
-    localMemberId: readOptionalString(input.localMemberId),
-    mode: input.mode === "guest" ? "guest" : "host",
-  };
 }
 
 function readPositiveInt(value: unknown, fallback: number): number {

@@ -43,7 +43,7 @@ export function createCodexKernelAdapter(options: CodexRuntimeOptions = {}): Cod
 
 export function discoverCodexKernel(
   options: CodexRuntimeOptions = {},
-  cwd = process.cwd(),
+  _cwd = process.cwd(),
   diagnostics = CODEX_KERNEL_CONTRACT.diagnostics,
 ): KernelDiscovery {
   const codexHome = options.env?.CODEX_HOME || process.env.CODEX_HOME || resolveHomePath(".codex");

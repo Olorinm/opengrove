@@ -1,3 +1,10 @@
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   background: var(--c-bg);
@@ -5,12 +12,17 @@ body {
 }
 
 #root {
+  width: 100%;
   height: 100vh;
   height: 100dvh;
+  overflow: hidden;
 }
 
 .react-app {
+  box-sizing: border-box;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .entity-icon {
@@ -23,6 +35,11 @@ body {
   border-radius: 10px;
   background: var(--og-surface);
   color: var(--og-text-muted);
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
 }
 
 .entity-icon svg {
@@ -61,4 +78,3 @@ body {
     color: var(--og-text-muted);
   }
 }
-

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { APP_PROTOCOL_ID, appEnvName } from "../identity.js";
 import { BRIDGE_KERNEL_IDS, type BridgeKernelId, type BridgeProviderProfile } from "../server/bridge-types.js";
-import { createBridgeState } from "../server/bridge-state.js";
+import { createBridgeState, recreateBridgeApp } from "../server/bridge-state.js";
 import { createBridgeKernel, getBridgeKernelOptions, normalizeBridgeKernelPreference, resolveBridgeKernel } from "../server/kernel-selection.js";
 import { kernelModelAliasesForProvider, kernelModelForProviderSelection } from "../server/kernel-model-routing.js";
 import { filterEnabledKnowledgeDocuments } from "../server/knowledge-files.js";
@@ -82,6 +82,75 @@ async function main() {
   assert.equal(resolveBridgeKernel("hermes"), "hermes");
 
   const state = createBridgeState({ statePath: join(cwd, "state.json") });
+  const roomSeed = state.app.rooms.snapshot();
+  assert.deepEqual(
+    roomSeed.members,
+    [],
+    "kernel discovery should not auto-create employees; employees are explicit room/contact entities",
+  );
+  assert.deepEqual(
+    roomSeed.rooms.find((room) => room.id === "room-open-group")?.memberIds,
+    [],
+    "the default room should be bootstrapped without turning kernels into employees",
+  );
+  const vfsAppRoot = join(cwd, "opengrove-vfs");
+  mkdirSync(vfsAppRoot, { recursive: true });
+  writeFileSync(
+    join(vfsAppRoot, "opengrove.app.json"),
+    JSON.stringify({
+      id: "opengrove-vfs",
+      title: "VFS",
+      description: "Private VFS short-drama supply and editing workflows for OpenGrove.",
+      capabilities: {
+        skills: ["supply-drama-query", "auto-edit-project"],
+      },
+    }),
+    "utf8",
+  );
+  const maeveAppRoot = join(cwd, "maeve-agent");
+  mkdirSync(join(maeveAppRoot, "agents"), { recursive: true });
+  writeFileSync(
+    join(maeveAppRoot, "opengrove.app.json"),
+    JSON.stringify({
+      id: "maeve",
+      title: "Maeve",
+      description: "Short drama ad production workbench for OpenGrove.",
+    }),
+    "utf8",
+  );
+  writeFileSync(
+    join(maeveAppRoot, "opencode.jsonc"),
+    [
+      "{",
+      "  \"default_agent\": \"director\",",
+      "  \"agent\": { \"director\": { \"disable\": false } }",
+      "}",
+    ].join("\n"),
+    "utf8",
+  );
+  writeFileSync(
+    join(maeveAppRoot, "agents", "director.md"),
+    [
+      "---",
+      "description: Maeve 主控 agent",
+      "mode: primary",
+      "model: amazon-bedrock/global.anthropic.claude-sonnet-4-6",
+      "---",
+    ].join("\n"),
+    "utf8",
+  );
+  state.settings.mountedApps = [
+    { id: "opengrove-vfs", path: vfsAppRoot, enabled: true },
+    { id: "maeve", path: maeveAppRoot, enabled: true },
+  ];
+  recreateBridgeApp(state);
+  const appMembers = state.app.rooms.listMembers();
+  const vfsEmployee = appMembers.find((member) => member.id === "member-app-opengrove-vfs-editing");
+  const maeveEmployee = appMembers.find((member) => member.id === "member-app-maeve-director");
+  assert.equal(vfsEmployee?.kernel, "claude-code", "VFS素材剪辑员工应该默认走 Claude Code");
+  assert.deepEqual(vfsEmployee?.defaultSkillIds, ["supply-drama-query", "auto-edit-project"]);
+  assert.equal(maeveEmployee?.kernel, "opencode", "Maeve director 应该绑定 OpenCode 默认 agent");
+  assert.equal(maeveEmployee?.model, "amazon-bedrock/global.anthropic.claude-sonnet-4-6");
   state.settings.kernel = "hermes";
   const options = getBridgeKernelOptions(state);
   const hermesOption = options.find((option) => option.id === "hermes");
@@ -175,6 +244,16 @@ async function main() {
   assert.equal(codexEnv?.OPENGROVE_VOLC_CODING_PLAN_API_KEY, "raw-test-key");
   const hermesEnv = providerEnvForKernel("hermes", codexVolc, "glm-5.1");
   assert.equal(hermesEnv?.OPENGROVE_VOLC_CODING_PLAN_API_KEY, "raw-test-key");
+  const opencodeEnv = providerEnvForKernel("opencode", codexVolc, "glm-5.1");
+  assert.ok(opencodeEnv?.OPENCODE_CONFIG_CONTENT, "OpenCode should receive an inline custom provider config");
+  const opencodeConfig = JSON.parse(opencodeEnv.OPENCODE_CONFIG_CONTENT) as any;
+  assert.equal(opencodeConfig.model, "opengrove-volc-coding-plan/glm-5.1");
+  assert.equal(
+    opencodeConfig.provider["opengrove-volc-coding-plan"].options.baseURL,
+    "https://ark.cn-beijing.volces.com/api/coding/v3",
+  );
+  assert.equal(opencodeConfig.provider["opengrove-volc-coding-plan"].options.apiKey, "raw-test-key");
+  assert.ok(opencodeConfig.provider["opengrove-volc-coding-plan"].models["glm-5.1"]);
   assert.deepEqual(codexProviderConfigForKernel(codexVolc), {
     providerKey: "opengrove_volc_coding_plan",
     name: "Volcengine Coding Plan",
@@ -192,7 +271,7 @@ async function main() {
     "deepseek-tui": "glm-5.1",
     "gemini-cli": undefined,
     "qwen-code": "glm-5.1",
-    opencode: "glm-5.1",
+    opencode: "opengrove-volc-coding-plan/glm-5.1",
     copilot: "glm-5.1",
     "cursor-agent": undefined,
     kimi: undefined,
@@ -245,6 +324,13 @@ async function main() {
   assert.equal(providerSupportsKernel("openclaw", openrouter), false, "OpenClaw should use Gateway-native configuration, not provider bindings");
   assert.equal(providerSupportsKernel("deepseek-tui", anthropic), false, "DeepSeek TUI should not offer Anthropic-only providers");
   assert.equal(providerSupportsKernel("deepseek-tui", openrouter), true, "DeepSeek TUI can use OpenAI-compatible providers");
+  assert.equal(providerSupportsKernel("qwen-code", openrouter), true, "Qwen Code can use OpenAI-compatible providers");
+  assert.equal(providerSupportsKernel("gemini-cli", openrouter), false, "Gemini CLI should not offer OpenAI-compatible providers");
+  assert.equal(providerSupportsKernel("copilot", anthropic), true, "Copilot can use Anthropic-compatible providers");
+  const copilotAnthropicEnv = providerEnvForKernel("copilot", { ...anthropic, apiKey: "anthropic-test-key", apiKeyEnv: undefined }, "sonnet");
+  assert.equal(copilotAnthropicEnv?.COPILOT_PROVIDER_TYPE, "anthropic");
+  assert.equal(copilotAnthropicEnv?.COPILOT_PROVIDER_BASE_URL, "https://api.anthropic.com");
+  assert.equal(copilotAnthropicEnv?.COPILOT_PROVIDER_API_KEY, "anthropic-test-key");
   const discoveredCodexLogin: BridgeProviderProfile = {
     ...openai,
     custom: true,
@@ -268,6 +354,40 @@ async function main() {
   };
   assert.equal(providerSupportsKernel("claude-code", discoveredClaudeBedrock), true, "Claude Code Bedrock is a provider config for Claude Code");
   assert.equal(providerSupportsKernel("hermes", discoveredClaudeBedrock), false, "Bedrock credentials should not be offered to kernels without Bedrock support");
+  const discoveredClaudeBedrockApiKey: BridgeProviderProfile = {
+    ...discoveredClaudeBedrock,
+    id: "aws-bedrock-api-key",
+    name: "AWS Bedrock (API Key)",
+    sourceKernel: undefined,
+    authConfigured: undefined,
+    apiKey: "ABSKinline-bedrock-test-key",
+    models: [
+      {
+        id: "sonnet",
+        label: "Sonnet · us.anthropic.claude-sonnet-4-6",
+        description: "provider model: us.anthropic.claude-sonnet-4-6",
+      },
+    ],
+  };
+  assert.equal(providerSupportsKernel("claude-code", discoveredClaudeBedrockApiKey), true, "Claude Code can use a Bedrock bearer token provider");
+  const claudeBedrockEnv = providerEnvForKernel("claude-code", discoveredClaudeBedrockApiKey, "sonnet");
+  assert.equal(claudeBedrockEnv?.CLAUDE_CODE_USE_BEDROCK, "1");
+  assert.equal(claudeBedrockEnv?.AWS_REGION, "us-east-1");
+  assert.equal(claudeBedrockEnv?.ANTHROPIC_BEDROCK_BASE_URL, "https://bedrock-runtime.us-east-1.amazonaws.com");
+  assert.equal(claudeBedrockEnv?.AWS_BEARER_TOKEN_BEDROCK, "ABSKinline-bedrock-test-key");
+  assert.equal(providerSupportsKernel("opencode", discoveredClaudeBedrockApiKey), true, "OpenCode can use Amazon Bedrock through its native provider");
+  assert.equal(providerSupportsKernel("opencode", anthropic), false, "OpenCode should not offer Anthropic-compatible providers unless a config generator exists");
+  assert.equal(
+    kernelModelForProviderSelection("opencode", discoveredClaudeBedrockApiKey, "sonnet"),
+    "amazon-bedrock/sonnet",
+    "OpenCode Bedrock model ids should be qualified with the built-in Amazon Bedrock provider",
+  );
+  const opencodeBedrockEnv = providerEnvForKernel("opencode", discoveredClaudeBedrockApiKey, "sonnet");
+  assert.equal(opencodeBedrockEnv?.AWS_BEARER_TOKEN_BEDROCK, "ABSKinline-bedrock-test-key");
+  const opencodeBedrockConfig = JSON.parse(opencodeBedrockEnv?.OPENCODE_CONFIG_CONTENT ?? "{}") as any;
+  assert.equal(opencodeBedrockConfig.model, "amazon-bedrock/sonnet");
+  assert.equal(opencodeBedrockConfig.provider["amazon-bedrock"].options.region, "us-east-1");
+  assert.equal(opencodeBedrockConfig.provider["amazon-bedrock"].models.sonnet.id, "us.anthropic.claude-sonnet-4-6");
   const discoveredHermesVolc: BridgeProviderProfile = {
     id: "hermes-volc",
     name: "Hermes Volc",

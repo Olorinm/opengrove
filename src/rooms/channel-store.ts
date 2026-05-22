@@ -5,12 +5,29 @@ export type RoomMessageStatus = "sent" | "running" | "done" | "failed" | "interr
 export type RoomKind = "group" | "direct";
 export type RoomMemberSource = "local" | "remote" | "human";
 export type RoomInviteStatus = "none" | "pending" | "accepted" | "revoked" | "expired";
+export type RoomRemoteProvider = "matrix";
 
-export interface RoomChannelMatrixBinding {
-  homeserverUrl: string;
-  roomId: string;
+export interface RoomChannelRemoteBinding {
+  provider: RoomRemoteProvider;
+  accountId: string;
+  remoteRoomId: string;
   localMemberId?: string;
   mode: "host" | "guest";
+}
+
+export interface RoomChannelRemoteActor {
+  provider: RoomRemoteProvider;
+  accountId: string;
+  ownerId: string;
+  agentId: string;
+}
+
+export interface RoomChannelRemoteProvenance {
+  provider: RoomRemoteProvider;
+  accountId: string;
+  remoteRoomId?: string;
+  eventId?: string;
+  turnId?: string;
 }
 
 export interface RoomChannelMember {
@@ -22,13 +39,16 @@ export interface RoomChannelMember {
   status: RoomMemberStatus;
   color: string;
   lastActive: string;
+  defaultSkillIds?: string[];
+  appId?: string;
+  workspaceRoot?: string;
   avatarDataUrl?: string;
   source?: RoomMemberSource;
   sourceLabel?: string;
   inviteStatus?: RoomInviteStatus;
   homeNodeLabel?: string;
-  matrixUserId?: string;
-  matrixAgentId?: string;
+  // Remote actor identifiers are projection metadata owned by remote adapters.
+  remote?: RoomChannelRemoteActor;
   disabled?: boolean;
 }
 
@@ -43,7 +63,10 @@ export interface RoomChannelRoom {
   archived?: boolean;
   updatedAt: string;
   unread: number;
-  matrix?: RoomChannelMatrixBinding;
+  // Projection metadata only. Remote adapters remain the source of truth for
+  // transport-specific event history; server/remote/* is the only layer that
+  // should set or update this binding.
+  remote?: RoomChannelRemoteBinding;
 }
 
 export interface RoomChannelMessage {
@@ -64,8 +87,9 @@ export interface RoomChannelMessage {
   parts?: JsonObject[];
   startedAt?: string;
   finishedAt?: string;
-  matrixEventId?: string;
-  matrixTurnId?: string;
+  // Remote provenance used for de-duplication when projecting remote events
+  // into the local ledger. Local room APIs should not write this.
+  remote?: RoomChannelRemoteProvenance;
 }
 
 export type RoomChannelEventType =
@@ -270,7 +294,7 @@ export class RoomChannelStore {
     };
   }
 
-  createRoom(input: { id?: string; title?: string; memberIds?: string[]; badge?: string; matrix?: RoomChannelMatrixBinding }): RoomChannelRoom {
+  createRoom(input: { id?: string; title?: string; memberIds?: string[]; badge?: string; remote?: RoomChannelRemoteBinding }): RoomChannelRoom {
     const createdAt = nowIso();
     const room: RoomChannelRoom = {
       id: input.id?.trim() || createId("room"),
@@ -282,7 +306,7 @@ export class RoomChannelStore {
       archived: false,
       unread: 0,
       updatedAt: createdAt,
-      matrix: normalizeMatrixBinding(input.matrix),
+      remote: normalizeRemoteBinding(input.remote),
     };
     this.rooms.set(room.id, room);
     this.messagesByRoom.set(room.id, []);
@@ -316,7 +340,7 @@ export class RoomChannelStore {
     return cloneRoom(room);
   }
 
-  patchRoom(roomId: string, patch: { title?: string; pinned?: boolean; archived?: boolean; badge?: string; matrix?: RoomChannelMatrixBinding | null }): RoomChannelRoom {
+  patchRoom(roomId: string, patch: { title?: string; pinned?: boolean; archived?: boolean; badge?: string; remote?: RoomChannelRemoteBinding | null }): RoomChannelRoom {
     const room = this.requireRoom(roomId);
     const updated: RoomChannelRoom = {
       ...room,
@@ -324,7 +348,7 @@ export class RoomChannelStore {
       pinned: patch.pinned === undefined ? room.pinned : patch.pinned,
       archived: patch.archived === undefined ? room.archived : patch.archived,
       badge: patch.badge === undefined ? room.badge : patch.badge.trim(),
-      matrix: patch.matrix === undefined ? room.matrix : normalizeMatrixBinding(patch.matrix),
+      remote: patch.remote === undefined ? room.remote : normalizeRemoteBinding(patch.remote),
       updatedAt: nowIso(),
     };
     this.rooms.set(roomId, updated);
@@ -433,8 +457,7 @@ export class RoomChannelStore {
     target: RoomChannelMember;
     id?: string;
     runId?: string;
-    matrixEventId?: string;
-    matrixTurnId?: string;
+    remote?: RoomChannelRemoteProvenance;
     createdAt?: string;
   }): RoomChannelMessage {
     return this.createMessage({
@@ -448,8 +471,7 @@ export class RoomChannelStore {
       id: input.id,
       runId: input.runId,
       startedAt: input.createdAt ?? nowIso(),
-      matrixEventId: input.matrixEventId,
-      matrixTurnId: input.matrixTurnId,
+      remote: input.remote,
       createdAt: input.createdAt,
     });
   }
@@ -459,8 +481,7 @@ export class RoomChannelStore {
     text: string;
     id?: string;
     createdAt?: string;
-    matrixEventId?: string;
-    matrixTurnId?: string;
+    remote?: RoomChannelRemoteProvenance;
   }): RoomChannelMessage {
     return this.createMessage({
       roomId: input.roomId,
@@ -472,8 +493,7 @@ export class RoomChannelStore {
       status: "done",
       id: input.id,
       createdAt: input.createdAt,
-      matrixEventId: input.matrixEventId,
-      matrixTurnId: input.matrixTurnId,
+      remote: input.remote,
     });
   }
 
@@ -486,8 +506,7 @@ export class RoomChannelStore {
     attachments?: AgentAttachmentContext[];
     id?: string;
     createdAt?: string;
-    matrixEventId?: string;
-    matrixTurnId?: string;
+    remote?: RoomChannelRemoteProvenance;
   }): RoomChannelMessage {
     return this.createMessage({
       roomId: input.roomId,
@@ -500,8 +519,7 @@ export class RoomChannelStore {
       attachments: input.attachments,
       id: input.id,
       createdAt: input.createdAt,
-      matrixEventId: input.matrixEventId,
-      matrixTurnId: input.matrixTurnId,
+      remote: input.remote,
     });
   }
 
@@ -598,6 +616,7 @@ export function normalizeRoomChannelSnapshot(input: unknown): RoomChannelSnapsho
 }
 
 function normalizeRoom(input: Partial<RoomChannelRoom>): RoomChannelRoom | undefined {
+  const legacy = legacyRecord(input);
   const id = readString(input.id);
   if (!id) return undefined;
   return {
@@ -611,11 +630,12 @@ function normalizeRoom(input: Partial<RoomChannelRoom>): RoomChannelRoom | undef
     archived: Boolean(input.archived),
     updatedAt: readString(input.updatedAt) || nowIso(),
     unread: Number.isFinite(input.unread) ? Number(input.unread) : 0,
-    matrix: normalizeMatrixBinding(input.matrix),
+    remote: normalizeRemoteBinding(input.remote ?? legacy.matrix),
   };
 }
 
 function normalizeMember(input: Partial<RoomChannelMember>): RoomChannelMember {
+  const legacy = legacyRecord(input);
   const id = readString(input.id) || createId("member");
   const kernel = readString(input.kernel) || id;
   return {
@@ -627,13 +647,15 @@ function normalizeMember(input: Partial<RoomChannelMember>): RoomChannelMember {
     status: normalizeMemberStatus(input.status),
     color: readString(input.color) || "#64748b",
     lastActive: readString(input.lastActive) || "idle",
+    defaultSkillIds: readStringArray(input.defaultSkillIds),
+    appId: readOptionalString(input.appId),
+    workspaceRoot: readOptionalString(input.workspaceRoot),
     avatarDataUrl: readOptionalString(input.avatarDataUrl),
     source: normalizeMemberSource(input.source),
     sourceLabel: normalizeSourceLabel(input.sourceLabel, input.source),
     inviteStatus: normalizeInviteStatus(input.inviteStatus),
     homeNodeLabel: readOptionalString(input.homeNodeLabel),
-    matrixUserId: readOptionalString(input.matrixUserId),
-    matrixAgentId: readOptionalString(input.matrixAgentId),
+    remote: normalizeRemoteActor(input.remote ?? legacyRemoteActorFromMatrixFields(legacy)),
     disabled: Boolean(input.disabled),
   };
 }
@@ -650,6 +672,7 @@ function normalizeMemberModelForKernel(kernel: string, model: string): string {
 }
 
 function normalizeMessage(input: Partial<RoomChannelMessage>): RoomChannelMessage | undefined {
+  const legacy = legacyRecord(input);
   const id = readString(input.id);
   const roomId = readString(input.roomId);
   if (!id || !roomId) return undefined;
@@ -672,8 +695,7 @@ function normalizeMessage(input: Partial<RoomChannelMessage>): RoomChannelMessag
     parts: Array.isArray(input.parts) ? input.parts : undefined,
     startedAt: readOptionalString(input.startedAt),
     finishedAt: readOptionalString(input.finishedAt),
-    matrixEventId: readOptionalString(input.matrixEventId),
-    matrixTurnId: readOptionalString(input.matrixTurnId),
+    remote: normalizeRemoteProvenance(input.remote ?? legacyRemoteProvenanceFromMatrixFields(legacy)),
   };
 }
 
@@ -699,12 +721,16 @@ function cloneRoom(room: RoomChannelRoom): RoomChannelRoom {
   return {
     ...room,
     memberIds: [...room.memberIds],
-    matrix: room.matrix ? { ...room.matrix } : undefined,
+    remote: room.remote ? { ...room.remote } : undefined,
   };
 }
 
 function cloneMember(member: RoomChannelMember): RoomChannelMember {
-  return { ...member };
+  return {
+    ...member,
+    defaultSkillIds: member.defaultSkillIds ? [...member.defaultSkillIds] : undefined,
+    remote: member.remote ? { ...member.remote } : undefined,
+  };
 }
 
 function cloneMessage(message: RoomChannelMessage): RoomChannelMessage {
@@ -713,6 +739,7 @@ function cloneMessage(message: RoomChannelMessage): RoomChannelMessage {
     targetIds: [...message.targetIds],
     attachments: message.attachments ? [...message.attachments] : undefined,
     parts: message.parts ? [...message.parts] : undefined,
+    remote: message.remote ? { ...message.remote } : undefined,
   };
 }
 
@@ -745,22 +772,92 @@ function readOptionalString(value: unknown): string | undefined {
   return text || undefined;
 }
 
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = [...new Set(value.map((item) => readString(item)).filter(Boolean))];
+  return values.length ? values : undefined;
+}
+
 function stripModelTemplateTokens(value: string): string {
   return value.replace(/<\|(?:assistant|user|system|observation|tool|end|endoftext)\|>/g, "").trimEnd();
 }
 
-function normalizeMatrixBinding(input: unknown): RoomChannelMatrixBinding | undefined {
+function normalizeRemoteBinding(input: unknown): RoomChannelRemoteBinding | undefined {
   if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
-  const source = input as Partial<RoomChannelMatrixBinding>;
-  const homeserverUrl = readOptionalString(source.homeserverUrl);
-  const roomId = readOptionalString(source.roomId);
-  if (!homeserverUrl || !roomId) return undefined;
+  const source = input as Partial<RoomChannelRemoteBinding> & { roomId?: unknown; matrixRoomId?: unknown };
+  const provider = source.provider === "matrix" || readOptionalString(source.roomId) || readOptionalString(source.matrixRoomId)
+    ? "matrix"
+    : undefined;
+  const remoteRoomId = readOptionalString(source.remoteRoomId) ?? readOptionalString(source.roomId) ?? readOptionalString(source.matrixRoomId);
+  if (!provider || !remoteRoomId) return undefined;
   return {
-    homeserverUrl,
-    roomId,
+    provider,
+    accountId: readOptionalString(source.accountId) ?? "default",
+    remoteRoomId,
     localMemberId: readOptionalString(source.localMemberId),
     mode: source.mode === "guest" ? "guest" : "host",
   };
+}
+
+function normalizeRemoteActor(input: unknown): RoomChannelRemoteActor | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
+  const source = input as Partial<RoomChannelRemoteActor>;
+  const provider = source.provider === "matrix" ? "matrix" : undefined;
+  const ownerId = readOptionalString(source.ownerId);
+  const agentId = readOptionalString(source.agentId);
+  if (!provider || !ownerId || !agentId) return undefined;
+  return {
+    provider,
+    accountId: readOptionalString(source.accountId) ?? "default",
+    ownerId,
+    agentId,
+  };
+}
+
+function normalizeRemoteProvenance(input: unknown): RoomChannelRemoteProvenance | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return undefined;
+  const source = input as Partial<RoomChannelRemoteProvenance>;
+  const provider = source.provider === "matrix" ? "matrix" : undefined;
+  if (!provider) return undefined;
+  const remoteRoomId = readOptionalString(source.remoteRoomId);
+  const eventId = readOptionalString(source.eventId);
+  const turnId = readOptionalString(source.turnId);
+  if (!remoteRoomId && !eventId && !turnId) return undefined;
+  return {
+    provider,
+    accountId: readOptionalString(source.accountId) ?? "default",
+    remoteRoomId,
+    eventId,
+    turnId,
+  };
+}
+
+function legacyRemoteActorFromMatrixFields(input: Record<string, unknown>): RoomChannelRemoteActor | undefined {
+  const ownerId = readOptionalString(input.matrixUserId);
+  const agentId = readOptionalString(input.matrixAgentId);
+  if (!ownerId || !agentId) return undefined;
+  return {
+    provider: "matrix",
+    accountId: "default",
+    ownerId,
+    agentId,
+  };
+}
+
+function legacyRemoteProvenanceFromMatrixFields(input: Record<string, unknown>): RoomChannelRemoteProvenance | undefined {
+  const eventId = readOptionalString(input.matrixEventId);
+  const turnId = readOptionalString(input.matrixTurnId);
+  if (!eventId && !turnId) return undefined;
+  return {
+    provider: "matrix",
+    accountId: "default",
+    eventId,
+    turnId,
+  };
+}
+
+function legacyRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
 function normalizeMemberStatus(value: unknown): RoomMemberStatus {

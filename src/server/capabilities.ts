@@ -36,10 +36,22 @@ export interface BridgeCapabilitiesSnapshot {
 export function getBridgeCapabilitiesSnapshot(state: BridgeState): BridgeCapabilitiesSnapshot {
   const settings = getBridgeSettingsSnapshot(state);
   const inviteLanding = settings.inviteLanding as { baseUrl?: unknown } | undefined;
-  const matrix = settings.matrix as { enabled?: unknown } | undefined;
+  const remote = settings.remote as {
+    matrix?: {
+      enabled?: unknown;
+      homeserverUrl?: unknown;
+      userId?: unknown;
+      accessToken?: unknown;
+    };
+  } | undefined;
+  const matrix = remote?.matrix;
   const providerCapture = settings.providerHttpCapture as { enabled?: unknown } | undefined;
   const serverProfile = state.profile === "server";
   const testProfile = state.profile === "test";
+  const matrixReady = matrix?.enabled === true
+    && typeof matrix.homeserverUrl === "string" && matrix.homeserverUrl.trim().length > 0
+    && typeof matrix.userId === "string" && matrix.userId.trim().length > 0
+    && typeof matrix.accessToken === "string" && matrix.accessToken.trim().length > 0;
 
   return {
     profile: state.profile,
@@ -63,9 +75,9 @@ export function getBridgeCapabilitiesSnapshot(state: BridgeState): BridgeCapabil
     },
     features: {
       rooms: true,
-      matrix: matrix?.enabled === true,
+      matrix: matrixReady,
       inviteLandingPage: typeof inviteLanding?.baseUrl === "string" && inviteLanding.baseUrl.trim().length > 0,
-      remoteAgents: true,
+      remoteAgents: matrixReady,
       routines: true,
       providerCapture: providerCapture?.enabled === true,
     },

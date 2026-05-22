@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, ChangeEvent, ClipboardEvent as ReactClipboardEvent, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { CSSProperties, ChangeEvent, ClipboardEvent as ReactClipboardEvent, MouseEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { Bot, ChevronDown, FilePlus2, FolderInput, FolderPlus, ListChecks, ListChevronsDownUp, ListChevronsUpDown, PanelLeftClose, PanelLeftOpen, Search, SquarePen, X } from "lucide-react";
+import { ChevronDown, FilePlus2, FolderInput, FolderPlus, ListChecks, ListChevronsDownUp, ListChevronsUpDown, PanelLeftClose, PanelLeftOpen, Search, SquarePen, X } from "lucide-react";
 import type {
   AttachmentPayload,
   ApprovalsResponse,
   BridgeSettingsResponse,
   BridgeSettings,
   ContextArtifactPayload,
+  ExtensionItemRecord,
   HealthResponse,
+  KernelAuthLoginResponse,
+  KernelAuthResponse,
   KernelInstallResponse,
   KernelPreference,
   KnowledgeDocumentRecord,
@@ -19,13 +22,27 @@ import type {
   RuntimeAccessMode,
   ResponseSpeed,
   SkillRecord,
+  VisualAnnotation,
+  DeveloperSession,
+  DeveloperSessionCore,
+  DeveloperSessionResponse,
+  DeveloperSessionsResponse,
   WorkspaceDirectoryResponse,
 } from "./bridge";
 import {
+  addDeveloperSessionAnnotation,
+  addDeveloperSessionAnnotationThread,
   cancelAskStream,
+  createClientId,
+  createDeveloperSession,
+  deleteDeveloperSessionAnnotation,
+  getJson,
+  listDeveloperSessions,
+  patchDeveloperSessionAnnotation,
   patchJson,
+  patchDeveloperSession as patchDeveloperSessionRequest,
   postJson,
-  viewTitle,
+  restartDeveloperPreviewService,
 } from "./bridge";
 import {
   clamp,
@@ -41,10 +58,27 @@ import {
   markAssistantMessageError,
 } from "./messages";
 import { buildContextPayload, createSnapshot } from "./runtime/composer-context";
+import {
+  findAttachableAssistantMessageId,
+  isActiveRunRecord,
+  isFreshRunRecord,
+  isRecoverableStreamDisconnect,
+  latestPendingAssistantMessage,
+  messagesForUiThread,
+  modelBindingKey,
+  readStoredLibraryLastKnowledgeId,
+  readStoredModelBindings,
+  readStoredRailExpanded,
+  readStoredReasoningEffort,
+  readStoredResponseSpeed,
+  readStoredSidebarCollapsed,
+  runRecordId,
+  writeStoredModelBinding,
+} from "./runtime/app-shell-state";
+import { useAppLayoutResize } from "./runtime/app-layout-resize";
 import { attachThreadTurn, runThreadTurn } from "./runtime/thread-runtime";
 import {
   MAX_COMPOSER_ATTACHMENTS,
-  MIN_COMPOSER_HEIGHT,
   buildApprovalResolutionMessage,
   cloneMessage,
   composeSkillPrompt,
@@ -68,7 +102,7 @@ import {
 } from "./runtime/ui-model";
 import { useBridgeQueries } from "./runtime/use-bridge-queries";
 import { ChatComposer, type ComposerMenuKind } from "./components/chat/chat-composer";
-import { modelOptionsForKernel } from "./runtime/kernel-models";
+import { modelOptionsForKernel, resolveDefaultModelForKernel, runtimeControlsForKernel } from "./runtime/kernel-models";
 import { KnowledgeLibraryView } from "./components/knowledge/knowledge-views";
 import {
   emptyKnowledgeLedgers,
@@ -90,152 +124,43 @@ import { ContactsView } from "./components/rooms/contacts-view";
 import { ConversationSidebar } from "./components/sidebar/conversation-sidebar";
 import { VaultSidebarPanel } from "./components/sidebar/knowledge-sidebar-panels";
 import { buildSidebarProjectTree, sortSidebarThreads, type ConversationSortKey } from "./components/sidebar/conversation-sidebar-model";
-import { SettingsDialog } from "./components/sidebar/settings-dialog";
+import { AppCreateWizard, type AppBuilderRequest, type AppCreateSourceKind, type AppDraftMode } from "./components/apps/app-create-wizard";
+import { SettingsDialog, type SettingsSectionId } from "./components/sidebar/settings-dialog";
+import { mountedAppId } from "./components/sidebar/settings-model";
+import { DirectoryPanel } from "./components/shared/directory-panel";
+import { ExtensionsView } from "./components/extensions/extensions-view";
+import {
+  findMountedAppDeveloperSession,
+  isMountedWorkbenchApp,
+  mountedAppAgentContext,
+  mountedAppDeveloperPreviewUrl,
+  mountedAppDeveloperSessionDescription,
+  mountedAppDeveloperSessionTitle,
+  mountedAppMatchesId,
+  mountedAppSourcePath,
+} from "./components/apps/mounted-app-model";
+import { MountedAppChatPanel } from "./components/apps/mounted-app-chat-panel";
+import { MountedAppWorkbench } from "./components/apps/mounted-app-workbench";
+import { Dialog, DialogContent, DialogTitle } from "./components/ui/dialog";
 import { KernelIcon } from "./components/ui/entity-icons";
+import {
+  extractVisualAnnotationActions,
+  mergeVisualAnnotationArtifacts,
+  visualAnnotationContextArtifact,
+} from "./components/visual/visual-annotation-context";
+import { isOpenGroveMountedAppPreviewUrl } from "./components/visual/visual-url";
+import { VisualWorkbench, type VisualAnnotationInput } from "./components/visual/visual-workbench";
 import { WorkspaceInspector } from "./components/workspace/workspace-views";
 import { useUiStore, type UiProject, type UiThread } from "./store";
+import { useVoiceInput } from "./voice/use-voice-input";
 
-const DEFAULT_SIDEBAR_WIDTH = 284;
-const MIN_SIDEBAR_WIDTH = 244;
-const MAX_SIDEBAR_WIDTH = 520;
-const DEFAULT_LIBRARY_AI_PANEL_WIDTH = 420;
-const MIN_LIBRARY_AI_PANEL_WIDTH = 340;
-const MAX_LIBRARY_AI_PANEL_WIDTH = 680;
+type RoomsAppView = "messages" | "contacts";
 
 type RunningTurn = {
   controller: AbortController;
   assistantId: string;
   runId?: string;
 };
-
-function readStoredSidebarWidth(): number {
-  const raw = window.localStorage.getItem(APP_STORAGE_KEYS.sidebarWidth);
-  const value = raw ? Number(raw) : DEFAULT_SIDEBAR_WIDTH;
-  return clamp(Number.isFinite(value) ? value : DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
-}
-
-function readStoredSidebarCollapsed(): boolean {
-  return false;
-}
-
-function readStoredRailExpanded(): boolean {
-  return window.localStorage.getItem(APP_STORAGE_KEYS.railExpanded) === "true";
-}
-
-function readStoredLibraryAiPanelWidth(): number {
-  const raw = window.localStorage.getItem(APP_STORAGE_KEYS.libraryAiPanelWidth);
-  const value = raw ? Number(raw) : DEFAULT_LIBRARY_AI_PANEL_WIDTH;
-  return clamp(
-    Number.isFinite(value) ? value : DEFAULT_LIBRARY_AI_PANEL_WIDTH,
-    MIN_LIBRARY_AI_PANEL_WIDTH,
-    MAX_LIBRARY_AI_PANEL_WIDTH,
-  );
-}
-
-function readStoredLibraryLastKnowledgeId(): string {
-  return window.localStorage.getItem(APP_STORAGE_KEYS.libraryLastKnowledgeId) || "";
-}
-
-function modelBindingKey(kernel: string | undefined, source: string | undefined): string {
-  return `${kernel || "unknown"}:${source || "native"}`;
-}
-
-function readStoredModelBindings(): Record<string, string> {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(APP_STORAGE_KEYS.uiModelByBinding) || "{}");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed as Record<string, string>
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeStoredModelBinding(key: string, modelId: string): void {
-  const current = readStoredModelBindings();
-  current[key] = modelId;
-  window.localStorage.setItem(APP_STORAGE_KEYS.uiModelByBinding, JSON.stringify(current));
-}
-
-function runRecordId(run: { id?: string; runId?: string } | undefined): string {
-  return String(run?.id || run?.runId || "");
-}
-
-function isActiveRunRecord(run: { status?: string } | undefined): boolean {
-  return run?.status === "running" || run?.status === "waiting_for_approval";
-}
-
-function isFreshRunRecord(run: { startedAt?: string; updatedAt?: string; createdAt?: string } | undefined, maxAgeMs = 60_000): boolean {
-  const timestamp = run?.startedAt || run?.updatedAt || run?.createdAt || "";
-  const time = timestamp ? new Date(timestamp).getTime() : 0;
-  return Number.isFinite(time) && time > 0 && Date.now() - time <= maxAgeMs;
-}
-
-function messagesForUiThread(
-  threads: UiThread[],
-  activeThreadId: string,
-  activeMessages: ReturnType<typeof useUiStore.getState>["messages"],
-  targetThreadId: string,
-) {
-  return targetThreadId === activeThreadId
-    ? activeMessages
-    : threads.find((thread) => thread.id === targetThreadId)?.messages ?? [];
-}
-
-function findAttachableAssistantMessageId(
-  messages: ReturnType<typeof useUiStore.getState>["messages"],
-  runId: string,
-  runInput = "",
-): string {
-  const normalizedRunInput = normalizeRunInput(runInput);
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message.role !== "assistant" || !message.pending) {
-      continue;
-    }
-    if (message.runId === runId) {
-      return message.id;
-    }
-    if (!message.runId && normalizedRunInput && previousUserInputForAssistant(messages, index) === normalizedRunInput) {
-      return message.id;
-    }
-  }
-  return "";
-}
-
-function previousUserInputForAssistant(messages: ReturnType<typeof useUiStore.getState>["messages"], assistantIndex: number): string {
-  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message.role === "user") {
-      return normalizeRunInput(message.text);
-    }
-  }
-  return "";
-}
-
-function normalizeRunInput(value: unknown): string {
-  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
-}
-
-function isRecoverableStreamDisconnect(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error || "");
-  return (
-    error instanceof DOMException && error.name === "AbortError"
-  ) || /network error|failed to fetch|load failed|cancelled|canceled|aborted|stream_finished_without_final_payload/i.test(message);
-}
-
-function readStoredReasoningEffort(): ReasoningEffort {
-  const raw = window.localStorage.getItem(APP_STORAGE_KEYS.reasoningEffort);
-  if (raw === "low" || raw === "medium" || raw === "high" || raw === "xhigh") {
-    return raw;
-  }
-  return "high";
-}
-
-function readStoredResponseSpeed(): ResponseSpeed {
-  const raw = window.localStorage.getItem(APP_STORAGE_KEYS.responseSpeed);
-  return raw === "fast" ? "fast" : "standard";
-}
 
 export function App() {
   const { t } = useI18n();
@@ -249,6 +174,7 @@ export function App() {
   const [, setVaultActionRootPath] = useState("OpenGrove");
   const [vaultAllFoldersOpen, setVaultAllFoldersOpen] = useState(false);
   const [vaultExpandRequest, setVaultExpandRequest] = useState({ id: 0, open: false });
+  const [vaultRevealPathRequest, setVaultRevealPathRequest] = useState({ id: 0, path: "" });
   const [vaultEditingPath, setVaultEditingPath] = useState("");
   const [vaultDeleteDialog, setVaultDeleteDialog] = useState<null | {
     path: string;
@@ -270,17 +196,25 @@ export function App() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [workspacePickerPending, setWorkspacePickerPending] = useState(false);
   const [libraryAiOpen, setLibraryAiOpen] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<SettingsSectionId>("kernels");
+  const [appCreateDialogOpen, setAppCreateDialogOpen] = useState(false);
+  const [appDraftMode, setAppDraftMode] = useState<AppDraftMode>("choice");
+  const [appDraftSourceKind, setAppDraftSourceKind] = useState<AppCreateSourceKind>("local");
+  const [appDraftPath, setAppDraftPath] = useState("");
+  const [appDraftTitle, setAppDraftTitle] = useState("");
+  const [appDraftDescription, setAppDraftDescription] = useState("");
+  const [activeDeveloperSessionId, setActiveDeveloperSessionId] = useState("");
+  const [activeMountedAppId, setActiveMountedAppId] = useState("");
+  const [mountedAppSelectedPath, setMountedAppSelectedPath] = useState("");
+  const [mountedAppDeveloperModeIds, setMountedAppDeveloperModeIds] = useState<string[]>([]);
+  const [selectedOpsRunId, setSelectedOpsRunId] = useState("");
+  const [visualPreviewReloadKeys, setVisualPreviewReloadKeys] = useState<Record<string, number>>({});
   const [libraryAiThreadMenuOpen, setLibraryAiThreadMenuOpen] = useState(false);
   const [isComposingText, setIsComposingText] = useState(false);
   const [railExpanded, setRailExpandedState] = useState(readStoredRailExpanded);
-  const [sidebarWidth, setSidebarWidth] = useState(readStoredSidebarWidth);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredSidebarCollapsed);
   const [sidebarRevealArmed, setSidebarRevealArmed] = useState(true);
-  const [libraryAiPanelWidth, setLibraryAiPanelWidth] = useState(readStoredLibraryAiPanelWidth);
   const [runningThreadIds, setRunningThreadIds] = useState<string[]>([]);
-  const resizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
-  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
-  const libraryAiResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const modelMenuRef = useRef<HTMLDivElement | null>(null);
   const threadScrollRef = useRef<HTMLElement | null>(null);
   const libraryAiScrollRef = useRef<HTMLElement | null>(null);
@@ -288,6 +222,7 @@ export function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const queuedChoicePromptsRef = useRef(new Map<string, string>());
   const runningTurnsRef = useRef(new Map<string, RunningTurn>());
+  const visualPreviewRestartRef = useRef(new Map<string, number>());
 
   function setAccessMode(value: RuntimeAccessMode) {
     setAccessModeState(value);
@@ -346,6 +281,23 @@ export function App() {
     deleteThread: deleteThreadFromStore,
     deleteProject: deleteProjectFromStore,
   } = useUiStore();
+  const [roomsAppView, setRoomsAppView] = useState<RoomsAppView>("messages");
+  const [roomsFocusRoomId, setRoomsFocusRoomId] = useState("");
+  const {
+    sidebarWidth,
+    libraryAiPanelWidth,
+    libraryAiRailBottom,
+    libraryAiRailDragging,
+    onComposerPointerDown,
+    onSidebarResizePointerDown,
+    onLibraryAiResizePointerDown,
+    onLibraryAiRailMouseDown,
+    openLibraryAiFromRail,
+  } = useAppLayoutResize({
+    composerHeight,
+    setComposerHeight,
+    openLibraryAiPanel,
+  });
 
   const {
     healthQuery,
@@ -357,13 +309,91 @@ export function App() {
   } = useBridgeQueries();
 
   const inventory = inventoryQuery.data;
-
+  const copilotAuthQuery = useQuery({
+    queryKey: ["kernel-auth", "copilot"],
+    queryFn: () => getJson<KernelAuthResponse>("/settings/kernel-auth/copilot"),
+    enabled: activeView === "settings" || activeView === "ops",
+    refetchInterval: activeView === "settings" || activeView === "ops" ? 2_000 : false,
+  });
+  const developerSessionsQuery = useQuery({
+    queryKey: ["developer-sessions"],
+    queryFn: listDeveloperSessions,
+    refetchInterval: activeView === "app" ? 2_000 : false,
+  });
+  const developerSessions = developerSessionsQuery.data?.sessions ?? [];
+  const mountedApps = useMemo(
+    () => (inventory?.extensions?.items ?? []).filter(isMountedWorkbenchApp),
+    [inventory?.extensions?.items],
+  );
+  const mountedAppSearchParams = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search)
+    : undefined;
+  const embeddedMountedAppMode = mountedAppSearchParams?.get("embedded") === "app";
+  const embeddedMountedAppId = mountedAppSearchParams?.get("app") || "";
+  const activeMountedApp = useMemo(
+    () => {
+      if (embeddedMountedAppMode) {
+        return mountedApps.find((app) => mountedAppMatchesId(app, embeddedMountedAppId));
+      }
+      return mountedApps.find((app) => mountedAppMatchesId(app, activeMountedAppId)) ??
+        (activeView === "app" ? mountedApps[0] : undefined);
+    },
+    [activeMountedAppId, activeView, embeddedMountedAppId, embeddedMountedAppMode, mountedApps],
+  );
+  const activeMountedAppDeveloperMode = Boolean(
+    activeMountedApp && mountedAppDeveloperModeIds.includes(activeMountedApp.name),
+  );
+  const activeMountedAppDeveloperSession = useMemo(
+    () => findMountedAppDeveloperSession(activeMountedApp, developerSessions),
+    [activeMountedApp, developerSessions],
+  );
+  const activeDeveloperSession = useMemo(
+    () => activeMountedAppDeveloperMode
+      ? activeMountedAppDeveloperSession ?? developerSessions.find((session) => session.id === activeDeveloperSessionId)
+      : developerSessions.find((session) => session.id === activeDeveloperSessionId),
+    [activeMountedAppDeveloperMode, activeMountedAppDeveloperSession, activeDeveloperSessionId, developerSessions],
+  );
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    if (params.get("view") === "app") {
+      const requestedApp = params.get("app");
+      if (requestedApp) setActiveMountedAppId(requestedApp);
+      setView("app");
+      return;
+    }
     if (params.get("view") === "rooms" || params.get("roomInvite")) {
       setView("rooms");
     }
   }, [setView]);
+
+  useEffect(() => {
+    if (!developerSessions.length) {
+      setActiveDeveloperSessionId("");
+      return;
+    }
+    if (activeDeveloperSessionId && !developerSessions.some((session) => session.id === activeDeveloperSessionId)) {
+      setActiveDeveloperSessionId("");
+    }
+  }, [activeDeveloperSessionId, developerSessions]);
+
+  useEffect(() => {
+    if (!mountedApps.length) {
+      setActiveMountedAppId("");
+      return;
+    }
+    if (activeMountedAppId && mountedApps.some((app) => app.name === activeMountedAppId)) {
+      return;
+    }
+    if (activeView === "app") {
+      setActiveMountedAppId(mountedApps[0].name);
+    }
+  }, [activeMountedAppId, activeView, mountedApps]);
+
+  useEffect(() => {
+    if (activeView !== "app" || !activeMountedAppDeveloperSession?.id) return;
+    if (isOpenGroveMountedAppPreviewUrl(activeMountedAppDeveloperSession.targetUrl)) return;
+    restartDeveloperSessionPreview(activeMountedAppDeveloperSession.id);
+  }, [activeView, activeMountedAppDeveloperSession?.id, activeMountedAppDeveloperSession?.targetUrl]);
 
   const approvals = approvalsQuery.data?.approvals ?? [];
   const pendingApprovals = useMemo(
@@ -391,8 +421,11 @@ export function App() {
     }
     return ids;
   }, [runningThreadIds, runs]);
+  const activeDeveloperSessionIsRunning = Boolean(activeDeveloperSession?.threadId && runningThreadSet.has(activeDeveloperSession.threadId));
   const currentThreadRunIds = useMemo(() => collectMessageRunIds(messages), [messages]);
   const activeThreadIsRunning = runningThreadSet.has(threadId);
+  const activeThreadPendingAssistant = useMemo(() => latestPendingAssistantMessage(messages), [messages]);
+  const activeThreadCanStop = activeThreadIsRunning || Boolean(activeThreadPendingAssistant);
   const hasThreadActivity = messages.length > 0 || activeThreadIsRunning;
   const latestRun = resolveLatestRun(runs, workingState.sessionId, currentThreadRunIds, hasThreadActivity);
   const currentSession = resolveCurrentSession(sessions, workingState, threadId, latestRun, hasThreadActivity);
@@ -403,10 +436,61 @@ export function App() {
   const activeRuntimeControls = healthQuery.data?.runtimeControls?.kernel === activeKernel
     ? healthQuery.data?.runtimeControls
     : undefined;
+  const developerCoreOptions = useMemo<DeveloperSessionCore[]>(() => {
+    const kernels = settingsQuery.data?.settings.kernels ?? healthQuery.data?.settings?.kernels ?? [];
+    const cores = kernels
+      .filter((kernel) => kernel.id !== "auto" && kernel.available)
+      .map((kernel) => {
+        const controls = runtimeControlsForKernel(kernel.id, activeRuntimeControls, healthQuery.data?.runtimeControlsByKernel);
+        const options = modelOptionsForKernel(kernel.id, controls);
+        return {
+          coreId: kernel.id,
+          name: kernel.label || formatKernelLabel(kernel.id),
+          kernel: kernel.id,
+          model: resolveDefaultModelForKernel({
+            kernelId: kernel.id,
+            activeKernel,
+            activeModel: model,
+            runtimeControls: activeRuntimeControls,
+            runtimeControlsByKernel: healthQuery.data?.runtimeControlsByKernel,
+            options,
+          }),
+        };
+      });
+    if (cores.length) {
+      return cores;
+    }
+    const fallbackKernel = activeKernel && activeKernel !== "auto" ? activeKernel : "codex";
+    return [{
+      coreId: fallbackKernel,
+      name: formatKernelLabel(fallbackKernel) || "Codex",
+      kernel: fallbackKernel,
+      model,
+    }];
+  }, [
+    activeKernel,
+    activeRuntimeControls,
+    healthQuery.data?.runtimeControlsByKernel,
+    healthQuery.data?.settings?.kernels,
+    model,
+    settingsQuery.data?.settings.kernels,
+  ]);
   const activeModelBindingKey = modelBindingKey(activeKernel, activeRuntimeControls?.source);
+  const voiceInput = useVoiceInput({
+    voiceSettings: settingsQuery.data?.settings.voice ?? healthQuery.data?.settings?.voice,
+    copy: {
+      browserUnavailable: "浏览器语音转写不可用，请在设置里切换到 OpenAI、Groq 或 Local Whisper。",
+      mediaUnavailable: "当前浏览器不能录音，请手动输入，或换用支持 MediaRecorder 的浏览器。",
+      transcriptionFailed: (message) => `语音转写失败：${message}`,
+      recordingFailed: (message) => `语音录制失败：${message}`,
+    },
+    onTranscript: appendVoiceTranscript,
+    onSystemMessage: (message) => appendMessage("system", message),
+  });
   const isCodexKernel = activeKernel === "codex";
   const sidebarProjects = useMemo(() => {
-    const tree = buildSidebarProjectTree(projects, threads, projectId, threadId, messages);
+    const conversationThreads = threads.filter((thread) => !thread.id.startsWith("developer_thread") && !thread.id.startsWith("app_thread"));
+    const tree = buildSidebarProjectTree(projects, conversationThreads, projectId, threadId, messages);
     return tree.map((project) => ({
       ...project,
       threads: sortSidebarThreads(project.threads, conversationSortKey),
@@ -424,7 +508,9 @@ export function App() {
     [projectId, projects],
   );
   const libraryAiThreadOptions = useMemo(() => {
-    const realThreads = threads.filter((thread) => !thread.id.startsWith("empty:"));
+    const realThreads = threads.filter((thread) =>
+      !thread.id.startsWith("empty:") && !thread.id.startsWith("developer_thread") && !thread.id.startsWith("app_thread")
+    );
     if (realThreads.some((thread) => thread.id === threadId)) {
       return realThreads;
     }
@@ -497,7 +583,7 @@ export function App() {
   const composerQuestionValue = question;
 
   useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
+    function handlePointerDown(event: globalThis.PointerEvent) {
       const target = event.target;
       if (!modelMenuRef.current || !(target instanceof Node)) {
         return;
@@ -538,14 +624,8 @@ export function App() {
   }, [activeKernel, activeRuntimeControls, activeModelBindingKey, model, setModel]);
 
   useEffect(() => {
-    if (composerHeight > 64) {
-      setComposerHeight(MIN_COMPOSER_HEIGHT);
-    }
-  }, [composerHeight, setComposerHeight]);
-
-  useEffect(() => {
     const scrollEl =
-      activeView === "chat"
+      activeView === "chat" || (activeView === "app" && activeMountedAppDeveloperMode)
         ? threadScrollRef.current
         : activeView === "library"
           ? libraryAiScrollRef.current
@@ -555,7 +635,7 @@ export function App() {
       scrollEl.scrollTop = scrollEl.scrollHeight;
     });
     return () => window.cancelAnimationFrame(frameId);
-  }, [activeView, activeThreadIsRunning, messages]);
+  }, [activeMountedAppDeveloperMode, activeView, activeThreadIsRunning, activeDeveloperSessionIsRunning, activeDeveloperSession?.threadId, messages, threads]);
 
   useEffect(() => {
     for (const run of runs) {
@@ -614,9 +694,11 @@ export function App() {
       workspaceRoot?: BridgeSettings["workspaceRoot"];
       providerHttpCaptureEnabled?: boolean;
       codexRawEventCaptureEnabled?: boolean;
+      mountedApps?: BridgeSettings["mountedApps"];
       kernelProxy?: BridgeSettings["kernelProxy"];
       inviteLanding?: BridgeSettings["inviteLanding"];
-      matrix?: BridgeSettings["matrix"];
+      remote?: BridgeSettings["remote"];
+      voice?: BridgeSettings["voice"];
       kernelPathOverrides?: BridgeSettings["kernelPathOverrides"];
       kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
       kernelProviderBindings?: Record<string, string>;
@@ -641,6 +723,83 @@ export function App() {
     },
     onError(error) {
       appendMessage("system", t("system.saveSettingsFailed", { message: error instanceof Error ? error.message : String(error) }));
+    },
+  });
+
+  const extensionActionMutation = useMutation({
+    mutationFn: (payload: { path: string; body: Record<string, unknown> }) =>
+      postJson<any>(payload.path, payload.body),
+    onSuccess(result) {
+      if (result?.extensions) {
+        queryClient.setQueryData(["inventory"], (previous: any) =>
+          previous ? { ...previous, extensions: result.extensions } : previous,
+        );
+      }
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    },
+    onError(error) {
+      appendMessage("system", `扩展管理操作失败：${error instanceof Error ? error.message : String(error)}`);
+    },
+  });
+
+  const openExtensionLocalPathMutation = useMutation({
+    mutationFn: (path: string) => postJson<any>("/extensions/open-local-path", { path }),
+    onError(error) {
+      appendMessage("system", `打开本地文件夹失败：${error instanceof Error ? error.message : String(error)}`);
+    },
+  });
+
+  const createMountedAppDeveloperSessionMutation = useMutation({
+    mutationFn: (payload: Parameters<typeof createDeveloperSession>[0] & { appId: string }) =>
+      createDeveloperSession(payload),
+    onSuccess(result, payload) {
+      mergeDeveloperSessionResponse(result);
+      if (result.session) {
+        setActiveDeveloperSessionId(result.session.id);
+        setMountedAppDeveloperModeIds((ids) => ids.includes(payload.appId) ? ids : [...ids, payload.appId]);
+        setActiveMountedAppId(payload.appId);
+        setView("app");
+      }
+      queryClient.invalidateQueries({ queryKey: ["developer-sessions"] });
+    },
+    onError(error) {
+      const message = error instanceof Error ? error.message : String(error);
+      appendMessage("system", `进入 App 开发者模式失败：${message === "not_found"
+        ? "当前 OpenGrove bridge/server 版本缺少 /developer/sessions 路由，请重启或更新正在运行的桌面/本地 bridge。"
+        : message}`);
+    },
+  });
+
+  const addDeveloperSessionAnnotationMutation = useMutation({
+    mutationFn: ({ sessionId, annotation }: { sessionId: string; annotation: VisualAnnotationInput }) =>
+      addDeveloperSessionAnnotation(sessionId, annotation),
+    onSuccess(result) {
+      mergeDeveloperSessionResponse(result);
+      queryClient.invalidateQueries({ queryKey: ["developer-sessions"] });
+    },
+    onError(error) {
+      appendMessage("system", `保存标注失败：${error instanceof Error ? error.message : String(error)}`);
+    },
+  });
+
+  const deleteDeveloperSessionAnnotationMutation = useMutation({
+    mutationFn: ({ sessionId, annotationId }: { sessionId: string; annotationId: string }) =>
+      deleteDeveloperSessionAnnotation(sessionId, annotationId),
+    onSuccess(result) {
+      mergeDeveloperSessionResponse(result);
+      queryClient.invalidateQueries({ queryKey: ["developer-sessions"] });
+    },
+    onError(error) {
+      appendMessage("system", `删除标注失败：${error instanceof Error ? error.message : String(error)}`);
+    },
+  });
+
+  const patchDeveloperSessionMutation = useMutation({
+    mutationFn: ({ sessionId, patch }: { sessionId: string; patch: Parameters<typeof patchDeveloperSessionRequest>[1] }) =>
+      patchDeveloperSessionRequest(sessionId, patch),
+    onSuccess(result) {
+      mergeDeveloperSessionResponse(result);
+      queryClient.invalidateQueries({ queryKey: ["developer-sessions"] });
     },
   });
 
@@ -702,6 +861,20 @@ export function App() {
     },
     onError(error, variables) {
       appendMessage("system", `安装失败：${variables.kernelId} · ${error instanceof Error ? error.message : String(error)}`);
+    },
+  });
+
+  const copilotLoginMutation = useMutation({
+    mutationFn: () =>
+      postJson<KernelAuthLoginResponse>("/settings/kernel-auth/copilot/login", {}),
+    onSuccess(result) {
+      queryClient.setQueryData(["kernel-auth", "copilot"], result);
+      queryClient.invalidateQueries({ queryKey: ["kernel-auth", "copilot"] });
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+      queryClient.invalidateQueries({ queryKey: ["health"] });
+    },
+    onError(error) {
+      appendMessage("system", `Copilot 登录终端打开失败：${error instanceof Error ? error.message : String(error)}`);
     },
   });
 
@@ -860,15 +1033,6 @@ export function App() {
     },
   });
 
-  const bridgeStatus = healthQuery.data?.ok
-    ? {
-        status: "online",
-        label: t("system.connected"),
-        detail: healthQuery.data.tokenRequired ? t("system.tokenRequired") : t("system.localReady"),
-        kernel: formatKernelLabel(healthQuery.data.kernel),
-      }
-    : { status: "offline", label: t("system.disconnected"), detail: healthQuery.isFetching ? t("system.checking") : "Failed to fetch" };
-
   function openAttachmentPicker(event?: MouseEvent<HTMLButtonElement>) {
     event?.currentTarget.blur();
     fileInputRef.current?.click();
@@ -880,6 +1044,263 @@ export function App() {
 
   async function patchKnowledgePage(knowledgeId: string, patch: Record<string, unknown>, options: { silent?: boolean } = {}) {
     await patchKnowledgeMutation.mutateAsync({ knowledgeId, patch, silent: options.silent });
+  }
+
+  function openExtensionSkillEditor(item: ExtensionItemRecord) {
+    const paths = [
+      String(item.source?.path || ""),
+      ...item.deployments.flatMap((deployment) => [
+        String(deployment.sourcePath || ""),
+        String(deployment.targetPath || ""),
+        String(deployment.metadata?.skillFile || ""),
+      ]),
+    ].filter(Boolean).map((value) => value.replace(/\\/g, "/").toLowerCase());
+    const skillName = String(item.name || "").toLowerCase();
+    const skillTitle = String(item.title || "").toLowerCase();
+    const document = knowledge.find((candidate) => {
+      if (candidate?.type !== "skill") return false;
+      const metadata = candidate.metadata ?? {};
+      const candidateName = String(metadata.skillName || candidate.title || candidate.id || "").toLowerCase();
+      const candidateId = String(metadata.skillId || candidate.id || "").toLowerCase();
+      if (candidateName === skillName || candidateName === skillTitle || candidateId === item.id || candidateId === skillName) {
+        return true;
+      }
+      const candidatePaths = [
+        metadata.skillRoot,
+        metadata.entry,
+        metadata.sourceFilePath,
+        metadata.sourceFileOriginPath,
+        knowledgeVaultPath(candidate),
+      ].map((value) => String(value || "").replace(/\\/g, "/").toLowerCase()).filter(Boolean);
+      return paths.some((path) => candidatePaths.some((candidatePath) =>
+        candidatePath === path ||
+        candidatePath.includes(`/${skillName}/`) ||
+        path.includes(candidatePath) ||
+        candidatePath.includes(path)
+      ));
+    });
+    if (!document?.id) {
+      appendMessage("system", `资料库里没有找到 skill：${item.title || item.name}`);
+      return;
+    }
+    setFocusedKnowledgeId(document.id);
+    setVaultRevealPathRequest((current) => ({
+      id: current.id + 1,
+      path: knowledgeVaultPath(document),
+    }));
+    setKnowledgeQuery("");
+    setLibrarySearchOpen(false);
+    setView("library");
+  }
+
+  function mergeDeveloperSessionResponse(result: DeveloperSessionResponse) {
+    if (!result.session) return;
+    queryClient.setQueryData(["developer-sessions"], (previous: DeveloperSessionsResponse | undefined) => {
+      const previousSessions = previous?.sessions ?? [];
+      return {
+        ok: true,
+        sessions: [result.session as DeveloperSession, ...previousSessions.filter((session) => session.id !== result.session?.id)],
+      };
+    });
+  }
+
+  function restartDeveloperSessionPreview(sessionId: string, options: { force?: boolean } = {}) {
+    const now = Date.now();
+    const lastRestartAt = visualPreviewRestartRef.current.get(sessionId) ?? 0;
+    if (!options.force && now - lastRestartAt < 1500) return;
+    visualPreviewRestartRef.current.set(sessionId, now);
+
+    void restartDeveloperPreviewService(sessionId)
+      .then((result) => {
+        mergeDeveloperSessionResponse(result);
+        if (result.previewService?.status === "restarted") {
+          setVisualPreviewReloadKeys((current) => ({
+            ...current,
+            [sessionId]: (current[sessionId] ?? 0) + 1,
+          }));
+        }
+      })
+      .catch(() => undefined);
+  }
+
+  function selectMountedApp(appId: string) {
+    setActiveMountedAppId(appId);
+    setMountedAppSelectedPath("");
+    setView("app");
+  }
+
+  function setMountedAppDeveloperMode(appId: string, enabled: boolean) {
+    setMountedAppDeveloperModeIds((ids) => {
+      const hasApp = ids.includes(appId);
+      if (enabled && !hasApp) return [...ids, appId];
+      if (!enabled && hasApp) return ids.filter((id) => id !== appId);
+      return ids;
+    });
+    setActiveMountedAppId(appId);
+    setView("app");
+  }
+
+  function enterMountedAppDeveloperMode(appId: string) {
+    const app = mountedApps.find((item) => item.name === appId);
+    if (!app) return;
+    const targetUrl = mountedAppDeveloperPreviewUrl(app);
+    if (!targetUrl) {
+      appendMessage("system", `「${app.title}」没有声明可预览的 App UI，不能进入开发者模式。请在 opengrove.app.json 的 ui.developer 里声明 entry 或 targetUrl。`);
+      return;
+    }
+    const existingSession = findMountedAppDeveloperSession(app, developerSessions);
+    if (existingSession) {
+      const shouldClearMountedAppPreviewError = isOpenGroveMountedAppPreviewUrl(targetUrl) && existingSession.preview.status === "error";
+      if (existingSession.targetUrl !== targetUrl || shouldClearMountedAppPreviewError) {
+        const patchedSession: DeveloperSession = {
+          ...existingSession,
+          targetUrl,
+          preview: {
+            status: "ready",
+            lastLoadedAt: new Date().toISOString(),
+          },
+          updatedAt: new Date().toISOString(),
+        };
+        mergeDeveloperSessionResponse({ ok: true, session: patchedSession });
+        patchDeveloperSessionMutation.mutate({
+          sessionId: existingSession.id,
+          patch: {
+            targetUrl,
+            preview: patchedSession.preview,
+          },
+        });
+      }
+      setActiveDeveloperSessionId(existingSession.id);
+      setMountedAppDeveloperMode(appId, true);
+      return;
+    }
+    createMountedAppDeveloperSessionMutation.mutate({
+      appId,
+      title: mountedAppDeveloperSessionTitle(app),
+      description: mountedAppDeveloperSessionDescription(app),
+      targetRoot: mountedAppSourcePath(app),
+      targetUrl,
+      core: developerCoreOptions[0],
+      threadId: createClientId("developer_thread"),
+    });
+  }
+
+  function exitMountedAppDeveloperMode(appId: string) {
+    setMountedAppDeveloperMode(appId, false);
+  }
+
+  function deleteMountedAppTab(appId: string) {
+    const app = mountedApps.find((item) => item.name === appId);
+    if (!app) return;
+    const confirmed = window.confirm(`从 OpenGrove 移除「${app.title}」？本地 App 文件不会被删除。`);
+    if (!confirmed) return;
+
+    const settings = settingsQuery.data?.settings ?? healthQuery.data?.settings;
+    const currentMountedApps = settings?.mountedApps ?? [];
+    const appRoot = mountedAppSourcePath(app);
+    const nextMountedApps = currentMountedApps.filter((item) => {
+      if (item.id === appId) return false;
+      if (appRoot && item.path === appRoot) return false;
+      return true;
+    });
+
+    if (nextMountedApps.length === currentMountedApps.length) {
+      appendMessage("system", `没有找到可移除的 App：${app.title}`);
+      return;
+    }
+
+    settingsMutation.mutate({ mountedApps: nextMountedApps });
+    setMountedAppDeveloperModeIds((ids) => ids.filter((id) => id !== appId));
+    if (activeMountedAppId === appId || activeMountedApp?.name === appId) {
+      const nextActiveAppId = nextMountedApps[0]?.id ?? "";
+      setActiveMountedAppId(nextActiveAppId);
+      if (!nextActiveAppId) setView("chat");
+    }
+  }
+
+  function saveDeveloperSessionAnnotation(sessionId: string, annotation: VisualAnnotationInput) {
+    void saveDeveloperSessionAnnotationAndAttach(sessionId, annotation);
+  }
+
+  async function saveDeveloperSessionAnnotationAndAttach(sessionId: string, annotation: VisualAnnotationInput) {
+    try {
+      const result = await addDeveloperSessionAnnotationMutation.mutateAsync({ sessionId, annotation });
+      const session = result.session;
+      const savedAnnotation = session?.annotations.at(-1);
+      if (session && savedAnnotation) {
+        attachVisualAnnotationToComposer(session, savedAnnotation);
+      }
+    } catch {
+      // The mutation already reports the error through onError.
+    }
+  }
+
+  function attachVisualAnnotationToComposer(session: DeveloperSession, annotation: VisualAnnotation) {
+    const artifact = visualAnnotationContextArtifact(session, annotation);
+    setContextArtifacts((current) => [
+      ...current.filter((item) => item.id !== artifact.id),
+      artifact,
+    ]);
+    requestAnimationFrame(() => composerInputRef.current?.focus());
+  }
+
+  function removeDeveloperSessionAnnotation(sessionId: string, annotationId: string) {
+    deleteDeveloperSessionAnnotationMutation.mutate({ sessionId, annotationId });
+  }
+
+  function markVisualPreviewLoaded(sessionId: string) {
+    patchDeveloperSessionMutation.mutate({
+      sessionId,
+      patch: {
+        preview: {
+          status: "ready",
+          lastLoadedAt: new Date().toISOString(),
+        },
+      },
+    });
+  }
+
+  function markVisualPreviewFailed(sessionId: string, message: string) {
+    patchDeveloperSessionMutation.mutate({
+      sessionId,
+      patch: {
+        preview: {
+          status: "error",
+          error: message,
+        },
+      },
+    });
+  }
+
+  async function applyVisualAnnotationActionsFromAnswer(sessionId: string, answer: string | undefined): Promise<string | undefined> {
+    if (!answer) return answer;
+    const extracted = extractVisualAnnotationActions(answer);
+    if (!extracted.actions.length) return answer;
+
+    for (const action of extracted.actions) {
+      try {
+        const reply = action.reply?.trim();
+        const status = action.status ?? (reply ? "replied" : undefined);
+        if (reply) {
+          const result = await addDeveloperSessionAnnotationThread(sessionId, action.annotationId, {
+            role: "agent",
+            content: reply,
+          });
+          mergeDeveloperSessionResponse(result);
+        }
+        if (status) {
+          const result = await patchDeveloperSessionAnnotation(sessionId, action.annotationId, {
+            status,
+            resolvedBy: status === "resolved" || status === "dismissed" ? "agent" : undefined,
+          });
+          mergeDeveloperSessionResponse(result);
+        }
+      } catch (error) {
+        appendMessage("system", `同步标注状态失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ["developer-sessions"] });
+    return extracted.answer;
   }
 
   function createVaultEntry(kind: "note" | "folder", parentPath: string) {
@@ -1179,91 +1600,6 @@ export function App() {
     }
   }
 
-  function onComposerPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    const handle = event.target as HTMLElement;
-    if (!handle.closest("[data-action='resize-composer']")) {
-      return;
-    }
-    resizeRef.current = {
-      startY: event.clientY,
-      startHeight: composerHeight,
-    };
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp, { once: true });
-  }
-
-  function onPointerMove(event: PointerEvent) {
-    if (!resizeRef.current) {
-      return;
-    }
-    setComposerHeight(resizeRef.current.startHeight + resizeRef.current.startY - event.clientY);
-  }
-
-  function onPointerUp() {
-    resizeRef.current = null;
-    window.removeEventListener("pointermove", onPointerMove);
-  }
-
-  function onSidebarResizePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    sidebarResizeRef.current = {
-      startX: event.clientX,
-      startWidth: sidebarWidth,
-    };
-    document.body.dataset.sidebarResizing = "true";
-    window.addEventListener("pointermove", onSidebarResizePointerMove);
-    window.addEventListener("pointerup", onSidebarResizePointerUp, { once: true });
-  }
-
-  function onSidebarResizePointerMove(event: PointerEvent) {
-    if (!sidebarResizeRef.current) {
-      return;
-    }
-    const nextWidth = clamp(
-      sidebarResizeRef.current.startWidth + event.clientX - sidebarResizeRef.current.startX,
-      MIN_SIDEBAR_WIDTH,
-      MAX_SIDEBAR_WIDTH,
-    );
-    setSidebarWidth(nextWidth);
-    window.localStorage.setItem(APP_STORAGE_KEYS.sidebarWidth, String(Math.round(nextWidth)));
-  }
-
-  function onSidebarResizePointerUp() {
-    sidebarResizeRef.current = null;
-    delete document.body.dataset.sidebarResizing;
-    window.removeEventListener("pointermove", onSidebarResizePointerMove);
-  }
-
-  function onLibraryAiResizePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    libraryAiResizeRef.current = {
-      startX: event.clientX,
-      startWidth: libraryAiPanelWidth,
-    };
-    document.body.dataset.sidebarResizing = "true";
-    window.addEventListener("pointermove", onLibraryAiResizePointerMove);
-    window.addEventListener("pointerup", onLibraryAiResizePointerUp, { once: true });
-  }
-
-  function onLibraryAiResizePointerMove(event: PointerEvent) {
-    if (!libraryAiResizeRef.current) {
-      return;
-    }
-    const nextWidth = clamp(
-      libraryAiResizeRef.current.startWidth - (event.clientX - libraryAiResizeRef.current.startX),
-      MIN_LIBRARY_AI_PANEL_WIDTH,
-      MAX_LIBRARY_AI_PANEL_WIDTH,
-    );
-    setLibraryAiPanelWidth(nextWidth);
-    window.localStorage.setItem(APP_STORAGE_KEYS.libraryAiPanelWidth, String(Math.round(nextWidth)));
-  }
-
-  function onLibraryAiResizePointerUp() {
-    libraryAiResizeRef.current = null;
-    delete document.body.dataset.sidebarResizing;
-    window.removeEventListener("pointermove", onLibraryAiResizePointerMove);
-  }
-
   function applySlashCommand(command: { name: string }) {
     insertPrompt(`/${command.name} `);
   }
@@ -1387,7 +1723,14 @@ export function App() {
     userPrompt: string,
     userContext: MessageContext | null,
     turnAttachments: AttachmentPayload[],
-    options: { requestedSkill?: { name: string; args?: string }; targetThreadId?: string } = {},
+    options: {
+      requestedSkill?: { name: string; args?: string };
+      targetThreadId?: string;
+      developerSessionId?: string;
+      appId?: string;
+      kernel?: string;
+      model?: string;
+    } = {},
   ) {
     const turnThreadId = options.targetThreadId ?? threadId;
     if (runningTurnsRef.current.has(turnThreadId)) {
@@ -1396,7 +1739,8 @@ export function App() {
       }
       return;
     }
-    const turnModel = model;
+    const turnModel = options.model || model;
+    const turnKernel = options.kernel;
     const turnEffort = reasoningEffort;
     const turnResponseSpeed = responseSpeed;
     const turnAccessMode = accessMode;
@@ -1412,10 +1756,12 @@ export function App() {
         {
           question: userPrompt,
           model: turnModel,
+          kernel: turnKernel,
           effort: turnEffort,
           responseSpeed: turnResponseSpeed,
           accessMode: turnAccessMode,
           threadId: turnThreadId,
+          appId: options.appId,
           snapshot: createSnapshot(userContext, turnAttachments, turnVaultFileContext),
           computerSnapshot: {},
           allowMemory: false,
@@ -1444,8 +1790,11 @@ export function App() {
         },
       );
 
+      const answer = options.developerSessionId
+        ? await applyVisualAnnotationActionsFromAnswer(options.developerSessionId, finalData.answer)
+        : finalData.answer;
       updateThreadMessage(turnThreadId, assistantId, (message) => {
-        finalizeAssistantMessage(message, { answer: finalData.answer, events: finalData.events });
+        finalizeAssistantMessage(message, { answer, events: finalData.events });
       });
       mergeFinalDataIntoCache(queryClient, finalData);
       queryClient.invalidateQueries({ queryKey: ["events"] });
@@ -1469,7 +1818,13 @@ export function App() {
       if (queuedPrompt) {
         queuedChoicePromptsRef.current.delete(turnThreadId);
         window.setTimeout(() => {
-          void runAskTurn(queuedPrompt, null, [], { targetThreadId: turnThreadId });
+          void runAskTurn(queuedPrompt, null, [], {
+            targetThreadId: turnThreadId,
+            developerSessionId: options.developerSessionId,
+            appId: options.appId,
+            kernel: options.kernel,
+            model: options.model,
+          });
         }, 0);
       }
     }
@@ -1479,8 +1834,24 @@ export function App() {
     const runningTurn = runningTurnsRef.current.get(threadId);
     runningTurn?.controller.abort();
     const activeRun = runs.find((run) => isActiveRunRecord(run) && run.sessionId === threadId);
-    const runId = runningTurn?.runId || runRecordId(activeRun);
+    const pendingAssistant = latestPendingAssistantMessage(messages);
+    const runId = runningTurn?.runId || runRecordId(activeRun) || pendingAssistant?.runId;
     void cancelAskStream({ runId: runId || undefined, threadId });
+    if (!runningTurn && pendingAssistant) {
+      updateThreadMessage(threadId, pendingAssistant.id, (message) => {
+        markAssistantMessageError(message, t("system.stopped"));
+      });
+    }
+  }
+
+  function stopVisualTurn() {
+    const turnThreadId = activeDeveloperSession?.threadId;
+    if (!turnThreadId) return;
+    const runningTurn = runningTurnsRef.current.get(turnThreadId);
+    runningTurn?.controller.abort();
+    const activeRun = runs.find((run) => isActiveRunRecord(run) && run.sessionId === turnThreadId);
+    const runId = runningTurn?.runId || runRecordId(activeRun);
+    void cancelAskStream({ runId: runId || undefined, threadId: turnThreadId });
   }
 
   async function submitPrompt(prompt: string) {
@@ -1488,7 +1859,7 @@ export function App() {
     if (!trimmedPrompt) {
       return;
     }
-    if (activeThreadIsRunning) {
+    if (activeThreadCanStop) {
       queuedChoicePromptsRef.current.set(threadId, trimmedPrompt);
       return;
     }
@@ -1499,8 +1870,70 @@ export function App() {
     await runAskTurn(trimmedPrompt, null, []);
   }
 
+  async function requestAppBuilder(request: AppBuilderRequest) {
+    setView("chat");
+    await submitPrompt(buildAppBuilderPrompt(request));
+  }
+
+  function resetAppCreateDraft() {
+    setAppDraftMode("choice");
+    setAppDraftSourceKind("local");
+    setAppDraftPath("");
+    setAppDraftTitle("");
+    setAppDraftDescription("");
+  }
+
+  function closeAppCreateDialog() {
+    setAppCreateDialogOpen(false);
+    resetAppCreateDraft();
+  }
+
+  function openAppCreateDialog() {
+    setProjectMenuOpenId("");
+    setConversationSortMenuOpen(false);
+    resetAppCreateDraft();
+    setAppCreateDialogOpen(true);
+  }
+
+  function setAppCreateDialogState(open: boolean) {
+    if (open) {
+      openAppCreateDialog();
+    } else {
+      closeAppCreateDialog();
+    }
+  }
+
+  function directMountAppFromDialog() {
+    const path = appDraftPath.trim();
+    if (!path) return;
+    const title = appDraftTitle.trim();
+    const currentSettings = settingsQuery.data?.settings ?? healthQuery.data?.settings;
+    const currentMountedApps = currentSettings?.mountedApps ?? [];
+    const nextApp = {
+      id: mountedAppId(path, title, currentMountedApps),
+      path,
+      enabled: true,
+      ...(title ? { title } : {}),
+    };
+    settingsMutation.mutate(
+      { mountedApps: [...currentMountedApps, nextApp] },
+      {
+        onSuccess() {
+          setActiveMountedAppId(nextApp.id);
+          setView("app");
+        },
+      },
+    );
+    closeAppCreateDialog();
+  }
+
+  function requestAppBuilderFromDialog(request: AppBuilderRequest) {
+    closeAppCreateDialog();
+    void requestAppBuilder(request);
+  }
+
   async function sendAsk() {
-    if (activeThreadIsRunning) {
+    if (activeThreadCanStop) {
       return;
     }
     const trimmedQuestion = question.trim();
@@ -1530,6 +1963,50 @@ export function App() {
     setActiveSlashIndex(0);
     setModelMenuKind(null);
     await runAskTurn(userPrompt, userContext, turnAttachments, { requestedSkill });
+  }
+
+  async function sendVisualAsk() {
+    if (!activeDeveloperSession) {
+      appendMessage("system", "请先创建或选择一个任务。");
+      return;
+    }
+    if (activeDeveloperSessionIsRunning) {
+      return;
+    }
+    const trimmedQuestion = question.trim();
+    const requestedSkill = composerSkillInvocation
+      ? {
+          name: composerSkillInvocation.name,
+          args: trimmedQuestion,
+        }
+      : undefined;
+    const turnAttachments = attachments;
+    const turnArtifacts = mergeVisualAnnotationArtifacts(contextArtifacts, activeDeveloperSession);
+    const contextPayload = buildContextPayload(contextText, turnAttachments, turnArtifacts);
+    if (!requestedSkill && !trimmedQuestion && !contextPayload.text.trim() && !turnAttachments.length && !turnArtifacts.length) {
+      appendMessage("system", "请输入这个任务的补充说明。");
+      return;
+    }
+
+    const userContext = contextPayload.text.trim() || turnAttachments.length || turnArtifacts.length ? contextPayload : null;
+    const userPrompt = requestedSkill
+      ? composeSkillPrompt(requestedSkill.name, trimmedQuestion).trim()
+      : trimmedQuestion || (turnAttachments.length || turnArtifacts.length ? t("system.defaultAttachmentPrompt") : t("system.defaultTextPrompt"));
+    clearContext();
+    setAttachments([]);
+    setContextArtifacts([]);
+    setQuestion("");
+    setComposerSkillInvocation(null);
+    setActiveSlashIndex(0);
+    setModelMenuKind(null);
+    await runAskTurn(userPrompt, userContext, turnAttachments, {
+      requestedSkill,
+      targetThreadId: activeDeveloperSession.threadId,
+      developerSessionId: activeDeveloperSession.id,
+      appId: activeMountedAppDeveloperMode ? activeMountedApp?.name : undefined,
+      kernel: activeDeveloperSession.core?.kernel,
+      model: activeDeveloperSession.core?.model,
+    });
   }
 
   function handleComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -1579,6 +2056,22 @@ export function App() {
     }
   }
 
+  function handleVisualComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (isComposingText || event.nativeEvent.isComposing || event.key === "Process") {
+      return;
+    }
+    if (composerSkillInvocation && event.key === "Backspace" && !composerQuestionValue) {
+      event.preventDefault();
+      setComposerSkillInvocation(null);
+      setActiveSlashIndex(0);
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      void sendVisualAsk();
+    }
+  }
+
   function handleQuestionChange(nextValue: string) {
     setQuestion(nextValue);
     setModelMenuKind(null);
@@ -1587,6 +2080,16 @@ export function App() {
       return;
     }
     setActiveSlashIndex(0);
+  }
+
+  function appendVoiceTranscript(transcript: string) {
+    const normalized = transcript.trim();
+    if (!normalized) return;
+    setQuestion((current) => {
+      const separator = current.trim() ? "\n" : "";
+      return `${current.trimEnd()}${separator}${normalized}`;
+    });
+    requestAnimationFrame(() => composerInputRef.current?.focus());
   }
 
   function toggleLibrarySearch() {
@@ -1617,9 +2120,13 @@ export function App() {
   const showLibrarySearch = librarySearchOpen || Boolean(knowledgeQuery.trim());
   const activeRailSection = railSectionForView(activeView);
 
-  const renderSharedThreadShell = () => (
+  const activeDeveloperSessionMessages = activeDeveloperSession
+    ? messagesForUiThread(threads, threadId, messages, activeDeveloperSession.threadId)
+    : [];
+
+  const renderSharedThreadShell = (threadMessages = messages) => (
     <ThreadShell
-      messages={messages}
+      messages={threadMessages}
       projectTitle={currentProjectTitle}
       skills={skills}
       runtimeEvents={events}
@@ -1633,7 +2140,7 @@ export function App() {
 
   const renderSharedComposer = () => (
     <ChatComposer
-      sending={activeThreadIsRunning}
+      sending={activeThreadCanStop}
       contextText={contextText}
       attachments={attachments}
       contextArtifacts={contextArtifacts}
@@ -1671,11 +2178,16 @@ export function App() {
       onSetEffort={setReasoningEffort}
       onSetResponseSpeed={setResponseSpeed}
       onSetAccessMode={setAccessMode}
-      onSubmitOrStop={() => (activeThreadIsRunning ? stopActiveTurn() : void sendAsk())}
+      onSubmitOrStop={() => (activeThreadCanStop ? stopActiveTurn() : void sendAsk())}
       onRemoveSkillInvocation={() => {
         setComposerSkillInvocation(null);
         setActiveSlashIndex(0);
         requestAnimationFrame(() => composerInputRef.current?.focus());
+      }}
+      voiceInput={{
+        state: voiceInput.state,
+        error: voiceInput.error,
+        onToggle: () => void voiceInput.toggle(),
       }}
       skillMenu={showSlashPalette ? (
         <SlashCommandMenu
@@ -1689,20 +2201,134 @@ export function App() {
     />
   );
 
+  const visualComposerKernel = activeDeveloperSession?.core?.kernel || activeKernel;
+  const visualComposerModel = activeDeveloperSession?.core?.model || model;
+  const visualComposerRuntimeControls = runtimeControlsForKernel(
+    visualComposerKernel,
+    activeRuntimeControls,
+    healthQuery.data?.runtimeControlsByKernel,
+  );
+  const renderDeveloperSessionComposer = () => (
+    <ChatComposer
+      sending={activeDeveloperSessionIsRunning}
+      contextText={contextText}
+      attachments={attachments}
+      contextArtifacts={contextArtifacts}
+      composerSkillInvocation={composerSkillInvocation}
+      composerQuestionValue={composerQuestionValue}
+      composerHeight={composerHeight}
+      model={visualComposerModel}
+      activeKernel={visualComposerKernel}
+      runtimeControls={visualComposerRuntimeControls}
+      effort={reasoningEffort}
+      responseSpeed={responseSpeed}
+      accessMode={accessMode}
+      modelMenuKind={modelMenuKind}
+      modelMenuPlacement={modelMenuPlacement}
+      composerInputRef={composerInputRef}
+      fileInputRef={fileInputRef}
+      modelMenuRef={modelMenuRef}
+      onPointerDown={onComposerPointerDown}
+      onClearContext={clearContext}
+      onRemoveContextArtifact={removeContextArtifact}
+      onRemoveAttachment={removeAttachment}
+      onQuestionChange={handleQuestionChange}
+      onKeyDown={handleVisualComposerKeyDown}
+      onPaste={handleComposerPaste}
+      onCompositionStart={() => setIsComposingText(true)}
+      onCompositionEnd={() => setIsComposingText(false)}
+      onAttachmentInputChange={handleAttachmentInputChange}
+      onOpenAttachmentPicker={openAttachmentPicker}
+      onToggleModelMenu={toggleModelMenu}
+      onSetModel={(nextModel) => {
+        if (activeDeveloperSession?.core) {
+          patchDeveloperSessionMutation.mutate({
+            sessionId: activeDeveloperSession.id,
+            patch: { core: { ...activeDeveloperSession.core, model: nextModel } },
+          });
+        } else {
+          setModel(nextModel);
+          writeStoredModelBinding(activeModelBindingKey, nextModel);
+        }
+        setModelMenuKind(null);
+      }}
+      onSetEffort={setReasoningEffort}
+      onSetResponseSpeed={setResponseSpeed}
+      onSetAccessMode={setAccessMode}
+      onSubmitOrStop={() => (activeDeveloperSessionIsRunning ? stopVisualTurn() : void sendVisualAsk())}
+      onRemoveSkillInvocation={() => {
+        setComposerSkillInvocation(null);
+        setActiveSlashIndex(0);
+        requestAnimationFrame(() => composerInputRef.current?.focus());
+      }}
+      voiceInput={{
+        state: voiceInput.state,
+        error: voiceInput.error,
+        onToggle: () => void voiceInput.toggle(),
+      }}
+    />
+  );
+
   function openRailSection(section: RailSectionId) {
     setProjectMenuOpenId("");
     setConversationSortMenuOpen(false);
     if (section === "chat") {
       setView("chat");
     } else if (section === "rooms") {
+      setRoomsAppView("messages");
       setView("rooms");
-    } else if (section === "contacts") {
-      setView("contacts");
     } else if (section === "library") {
       setView("library");
+    } else if (section === "ops") {
+      setView("ops");
+    } else if (section === "extensions") {
+      setView("extensions");
+    } else if (section === "apps") {
+      if (mountedApps[0]) {
+        setActiveMountedAppId(mountedApps[0].name);
+        setView("app");
+      } else {
+        openAppCreateDialog();
+      }
     } else if (section === "settings") {
+      setSettingsInitialSection("kernels");
       setView("settings");
     }
+  }
+
+  function openRoomsMessages(roomId?: string) {
+    setProjectMenuOpenId("");
+    setConversationSortMenuOpen(false);
+    setRoomsFocusRoomId(roomId ?? "");
+    setRoomsAppView("messages");
+    setView("rooms");
+  }
+
+  function openRoomsContacts() {
+    setProjectMenuOpenId("");
+    setConversationSortMenuOpen(false);
+    setRoomsAppView("contacts");
+    setView("rooms");
+  }
+
+  if (embeddedMountedAppMode) {
+    return (
+      <div className="embedded-mounted-app-shell" data-layout="developer-preview">
+        <section className="view-panel mounted-app-view" data-view="app">
+          <MountedAppWorkbench
+            app={activeMountedApp}
+            selectedPath={mountedAppSelectedPath}
+            onSelectedPathChange={setMountedAppSelectedPath}
+            corePanel={(
+              <MountedAppChatPanel
+                app={activeMountedApp}
+                appContextText={activeMountedApp ? mountedAppAgentContext(activeMountedApp, mountedAppSelectedPath) : ""}
+              />
+            )}
+          />
+        </section>
+      </div>
+    );
   }
 
   return (
@@ -1758,54 +2384,64 @@ export function App() {
       <AppRail
         activeSection={activeRailSection}
         expanded={railExpanded}
+        mountedApps={mountedApps}
+        activeMountedAppId={activeView === "app" ? activeMountedApp?.name : ""}
+        mountedAppDeveloperModeIds={mountedAppDeveloperModeIds}
+        onCreateApp={openAppCreateDialog}
+        onSelectMountedApp={selectMountedApp}
+        onEnterMountedAppDeveloperMode={enterMountedAppDeveloperMode}
+        onExitMountedAppDeveloperMode={exitMountedAppDeveloperMode}
+        onDeleteMountedApp={deleteMountedAppTab}
         onOpenSection={openRailSection}
         onOpenSettings={() => openRailSection("settings")}
         onSetExpanded={setRailExpanded}
       />
 
+      <Dialog open={appCreateDialogOpen} onOpenChange={setAppCreateDialogState}>
+        <DialogContent className="app-create-dialog" aria-label="新建应用">
+          <DialogTitle>新建应用</DialogTitle>
+          <AppCreateWizard
+            mode={appDraftMode}
+            title={appDraftTitle}
+            source={appDraftPath}
+            sourceKind={appDraftSourceKind}
+            description={appDraftDescription}
+            loading={settingsQuery.isLoading}
+            saving={settingsMutation.isPending}
+            canRequestAgent
+            onModeChange={setAppDraftMode}
+            onTitleChange={setAppDraftTitle}
+            onSourceChange={setAppDraftPath}
+            onSourceKindChange={setAppDraftSourceKind}
+            onDescriptionChange={setAppDraftDescription}
+            onCancel={closeAppCreateDialog}
+            onDirectMount={directMountAppFromDialog}
+            onRequestAgent={requestAppBuilderFromDialog}
+          />
+        </DialogContent>
+      </Dialog>
+
       <aside className="sidebar" data-section={activeRailSection} aria-label={t("layout.sidebar")}>
         <nav className="nav-list" aria-label={t("layout.spaceNav")}>
           {activeRailSection === "library" ? (
-            <section className="sidebar-panel-space" aria-label={t("app.library")}>
-              <div className="sidebar-space-header">
-                <div>
-                  <div className="sidebar-space-title">{t("app.library")}</div>
-                </div>
-                <div className={clsx("sidebar-space-actions", showLibrarySearch && "active")} aria-label={t("vault.actions")}>
-                  <button
-                    className="sidebar-mini-action"
-                    type="button"
-                    onClick={() => createVaultEntry("note", "")}
-                    aria-label={t("vault.newNote")}
-                    title={t("vault.newNote")}
-                  >
+            <DirectoryPanel
+              title={t("app.library")}
+              aria-label={t("app.library")}
+              actions={(
+                <>
+                  <button className="sidebar-mini-action" type="button" onClick={() => createVaultEntry("note", "")} aria-label={t("vault.newNote")} title={t("vault.newNote")}>
                     <ThemedPixelIcon pixelIcon="document" professionalIcon={FilePlus2} professionalSize={13} pixelSize={15} />
                   </button>
-                  <button
-                    className="sidebar-mini-action"
-                    type="button"
-                    onClick={() => createVaultEntry("folder", "")}
-                    aria-label={t("vault.newFolder")}
-                    title={t("vault.newFolder")}
-                  >
+                  <button className="sidebar-mini-action" type="button" onClick={() => createVaultEntry("folder", "")} aria-label={t("vault.newFolder")} title={t("vault.newFolder")}>
                     <ThemedPixelIcon pixelIcon="folder" professionalIcon={FolderPlus} professionalSize={13} pixelSize={15} />
                   </button>
-                  <button
-                    className="sidebar-mini-action"
-                    type="button"
-                    onClick={() => importLocalFolderMutation.mutate()}
-                    aria-label={t("vault.importLocalFolder")}
-                    title={t("vault.importLocalFolder")}
-                  >
+                  <button className="sidebar-mini-action" type="button" onClick={() => importLocalFolderMutation.mutate()} aria-label={t("vault.importLocalFolder")} title={t("vault.importLocalFolder")}>
                     <ThemedPixelIcon pixelIcon="folder" professionalIcon={FolderInput} professionalSize={13} pixelSize={15} />
                   </button>
                   <button
                     className="sidebar-mini-action"
                     type="button"
-                    onClick={() => setVaultExpandRequest((current) => ({
-                      id: current.id + 1,
-                      open: !vaultAllFoldersOpen,
-                    }))}
+                    onClick={() => setVaultExpandRequest((current) => ({ id: current.id + 1, open: !vaultAllFoldersOpen }))}
                     aria-label={vaultAllFoldersOpen ? t("vault.collapseAll") : t("vault.expandAll")}
                     title={vaultAllFoldersOpen ? t("vault.collapseAll") : t("vault.expandAll")}
                   >
@@ -1820,25 +2456,22 @@ export function App() {
                   >
                     <ThemedPixelIcon pixelIcon="search" professionalIcon={Search} professionalSize={13} pixelSize={15} />
                   </button>
-                </div>
-              </div>
-              {showLibrarySearch ? (
+                </>
+              )}
+              search={showLibrarySearch ? (
                 <label className="sidebar-library-search">
                   <ThemedPixelIcon pixelIcon="search" professionalIcon={Search} professionalSize={13} pixelSize={15} />
-                  <input
-                    autoFocus
-                    value={knowledgeQuery}
-                    onChange={(event) => setKnowledgeQuery(event.target.value)}
-                    placeholder={t("vault.search")}
-                  />
+                  <input autoFocus value={knowledgeQuery} onChange={(event) => setKnowledgeQuery(event.target.value)} placeholder={t("vault.search")} />
                 </label>
               ) : null}
+            >
               <VaultSidebarPanel
                 documents={vaultDocuments}
                 folders={knowledgeFolders as KnowledgeFolderRecord[]}
                 focusedKnowledgeId={focusedKnowledgeId}
                 forceOpen={Boolean(knowledgeQuery.trim())}
                 expandRequest={vaultExpandRequest}
+                revealPathRequest={vaultRevealPathRequest}
                 editingPath={vaultEditingPath}
                 onActiveRootChange={setVaultActionRootPath}
                 onAllFoldersOpenChange={setVaultAllFoldersOpen}
@@ -1854,7 +2487,7 @@ export function App() {
                   setView("library");
                 }}
               />
-            </section>
+            </DirectoryPanel>
           ) : null}
 
           {activeRailSection === "chat" ? (
@@ -1871,6 +2504,7 @@ export function App() {
               conversationSortKey={conversationSortKey}
               onToggleAllProjectsCollapsed={toggleAllProjectsCollapsed}
               onOpenConversationSortMenu={openConversationSortMenu}
+              onCloseConversationSortMenu={() => setConversationSortMenuOpen(false)}
               onSortKeyChange={setConversationSortKey}
               onOpenNewProject={openNewProject}
               onOpenFolderProject={openFolderProject}
@@ -1878,6 +2512,7 @@ export function App() {
               onOpenThread={openThread}
               onToggleProjectCollapsed={(projectId) => setProjectCollapsedIds((ids) => ids.includes(projectId) ? ids.filter((id) => id !== projectId) : [...ids, projectId])}
               onToggleProjectMenu={(projectId) => setProjectMenuOpenId((current) => (current === projectId ? "" : projectId))}
+              onCloseProjectMenu={() => setProjectMenuOpenId("")}
               onRenameProject={renameProjectWithPrompt}
               onChangeProjectFolder={changeProjectFolder}
               onDeleteProject={deleteProjectWithConfirm}
@@ -1896,61 +2531,36 @@ export function App() {
         onPointerDown={onSidebarResizePointerDown}
       />
 
-      <MobileNav activeView={activeView} onSelect={setView} />
+      <MobileNav
+        activeView={activeView}
+        onSelect={(view) => {
+          if (view === "rooms") {
+            openRoomsMessages();
+            return;
+          }
+          setView(view);
+        }}
+      />
 
       <main className="workspace">
-        <header className="topbar" data-view={activeView}>
-          <div>
-            {activeView === "chat" || activeView === "rooms" ? null : (
-              <>
-                <div className="topbar-title">{viewTitle(activeView)}</div>
-                <div className="topbar-subtitle">
-                  <span className="status-dot" data-status={bridgeStatus.status}></span>
-                  <span>{t("layout.localBridge")}</span>
-                  <span>{bridgeStatus.label}</span>
-                  <span>{bridgeStatus.detail}</span>
-                  {"kernel" in bridgeStatus && bridgeStatus.kernel ? <span>{bridgeStatus.kernel}</span> : null}
-                </div>
-              </>
-            )}
-          </div>
-          <div className="app-topbar-actions">
-            {activeView === "chat" ? (
-              <>
-                <div className="topbar-status-pill kernel-button" title={formatKernelLabel(healthQuery.data?.kernel) || "Kernel"}>
-                  <KernelIcon kernelId={healthQuery.data?.kernel} className="topbar-kernel-icon" size={13} />
-                  <span>{formatKernelLabel(healthQuery.data?.kernel) || "Kernel"}</span>
-                </div>
-                <button
-                  className="topbar-icon-button"
-                  data-open={inspectorOpen ? "true" : "false"}
-                  type="button"
-                  onClick={() => setInspectorOpen((current) => !current)}
-                  title={inspectorOpen ? t("layout.closeWorkbench") : t("layout.openWorkbench")}
-                  aria-label={inspectorOpen ? t("layout.closeWorkbench") : t("layout.openWorkbench")}
-                >
-                  <ListChecks size={16} />
-                </button>
-              </>
-            ) : null}
-            {activeView === "library" ? (
-              <button
-                className="topbar-icon-button library-ai-topbar-button"
-                data-open={libraryAiOpen ? "true" : "false"}
-                type="button"
-                onClick={() => (libraryAiOpen ? setLibraryAiOpen(false) : openLibraryAiPanel())}
-                title={libraryAiOpen ? t("library.closeAi") : t("library.openAi")}
-                aria-label={libraryAiOpen ? t("library.closeAi") : t("library.openAi")}
-              >
-                <Bot size={16} />
-                <span>{t("library.ai")}</span>
-              </button>
-            ) : null}
-          </div>
-        </header>
-
         {activeView === "chat" ? (
           <section className="view-panel chat-view" data-view="chat" data-empty={messages.length === 0 ? "true" : "false"}>
+            <div className="workspace-overlay-controls chat-frame-controls" aria-label="当前对话工具">
+              <span className="topbar-status-pill" title={formatKernelLabel(healthQuery.data?.kernel) || "Kernel"}>
+                <KernelIcon kernelId={healthQuery.data?.kernel} className="topbar-kernel-icon" size={14} />
+                <span>{formatKernelLabel(healthQuery.data?.kernel) || "Kernel"}</span>
+              </span>
+              <button
+                className="topbar-icon-button chat-frame-workbench-button"
+                data-open={inspectorOpen ? "true" : "false"}
+                type="button"
+                onClick={() => setInspectorOpen((current) => !current)}
+                title={inspectorOpen ? t("layout.closeWorkbench") : t("layout.openWorkbench")}
+                aria-label={inspectorOpen ? t("layout.closeWorkbench") : t("layout.openWorkbench")}
+              >
+                <ListChecks size={17} />
+              </button>
+            </div>
             <div className="chat-layout" data-inspector={inspectorOpen ? "true" : "false"}>
               <section className="conversation">
                 <section ref={threadScrollRef} className="thread chat-thread-scroll" aria-live="polite">
@@ -1959,35 +2569,88 @@ export function App() {
 
                 {renderSharedComposer()}
               </section>
-
-              {inspectorOpen ? (
-                <aside className="inspector" aria-label={t("layout.workbench")}>
-                  <WorkspaceInspector
-                    workingState={workingState}
-                    currentSession={currentSession}
-                    latestRun={latestRun}
-                    runtimeBlocker={runtimeBlocker}
-                    kernelLabel={formatKernelLabel(healthQuery.data?.kernel)}
-                    threadId={threadId}
-                    sending={activeThreadIsRunning}
-                    messages={messages}
-                    artifacts={artifacts}
-                    skills={skills}
-                    tools={tools}
-                    events={events}
-                    pendingApprovals={pendingApprovals}
-                    onOpenChat={() => {
-                      setView("chat");
-                      setInspectorOpen(false);
-                    }}
-                  />
-                </aside>
-              ) : null}
             </div>
+            {inspectorOpen ? (
+              <aside className="workspace-overlay-panel inspector" aria-label={t("layout.workbench")}>
+                <WorkspaceInspector
+                  workingState={workingState}
+                  currentSession={currentSession}
+                  latestRun={latestRun}
+                  runtimeBlocker={runtimeBlocker}
+                  kernelLabel={formatKernelLabel(healthQuery.data?.kernel)}
+                  threadId={threadId}
+                  sending={activeThreadCanStop}
+                  messages={messages}
+                  artifacts={artifacts}
+                  skills={skills}
+                  tools={tools}
+                  events={events}
+                  pendingApprovals={pendingApprovals}
+                  onOpenChat={() => {
+                    setView("chat");
+                    setInspectorOpen(false);
+                  }}
+                />
+              </aside>
+            ) : null}
           </section>
         ) : null}
 
-        {activeView === "rooms" && roomsRuntimeReady ? (
+        {activeView === "app" ? (
+          <section
+            className={clsx("view-panel", "mounted-app-view", activeMountedAppDeveloperMode ? "mounted-app-developer-view visual-view" : "")}
+            data-view="app"
+          >
+            {activeMountedAppDeveloperMode ? (
+              <VisualWorkbench
+                activeSession={activeMountedAppDeveloperSession}
+                developerMode={true}
+                allowAiCollapse={false}
+                previewReloadKey={activeMountedAppDeveloperSession ? visualPreviewReloadKeys[activeMountedAppDeveloperSession.id] ?? 0 : 0}
+                onAddAnnotation={saveDeveloperSessionAnnotation}
+                onDeleteAnnotation={removeDeveloperSessionAnnotation}
+                onPreviewLoaded={markVisualPreviewLoaded}
+                onPreviewFailed={markVisualPreviewFailed}
+                onCreateSession={() => activeMountedApp && enterMountedAppDeveloperMode(activeMountedApp.name)}
+                corePanel={(
+                  <>
+                    <section ref={threadScrollRef} className="library-ai-thread chat-thread-scroll" aria-live="polite">
+                      {renderSharedThreadShell(activeDeveloperSessionMessages)}
+                    </section>
+                    {renderDeveloperSessionComposer()}
+                  </>
+                )}
+              />
+            ) : (
+              <MountedAppWorkbench
+                app={activeMountedApp}
+                selectedPath={mountedAppSelectedPath}
+                onSelectedPathChange={setMountedAppSelectedPath}
+                corePanel={(
+                  <MountedAppChatPanel
+                    app={activeMountedApp}
+                    appContextText={activeMountedApp ? mountedAppAgentContext(activeMountedApp, mountedAppSelectedPath) : ""}
+                  />
+                )}
+              />
+            )}
+          </section>
+        ) : null}
+
+        {activeView === "extensions" ? (
+          <ExtensionsView
+            extensions={inventory?.extensions}
+            settings={settingsQuery.data?.settings ?? healthQuery.data?.settings}
+            loading={inventoryQuery.isLoading || settingsQuery.isLoading}
+            saving={settingsMutation.isPending}
+            actionPending={extensionActionMutation.isPending}
+            onEditSkill={openExtensionSkillEditor}
+            onOpenLocalPath={(path) => openExtensionLocalPathMutation.mutate(path)}
+            onAction={(path, body) => extensionActionMutation.mutate({ path, body })}
+          />
+        ) : null}
+
+        {activeView === "rooms" && roomsAppView === "messages" && roomsRuntimeReady ? (
           <RoomsView
             activeKernel={activeKernel}
             activeModel={model}
@@ -1997,23 +2660,27 @@ export function App() {
             runtimeControlsByKernel={healthQuery.data?.runtimeControlsByKernel}
             runtimeEvents={events}
             runs={runs}
+            focusRoomId={roomsFocusRoomId}
             pendingApprovalCount={pendingApprovals.length}
             onResolveApproval={(approvalId, action, response) => approvalsMutation.mutateAsync({ approvalId, action, response })}
+            onOpenContacts={openRoomsContacts}
             onOpenSettings={() => setView("settings")}
           />
-        ) : activeView === "rooms" ? (
+        ) : activeView === "rooms" && roomsAppView === "messages" ? (
           <section className="rooms-view" aria-label="消息" />
         ) : null}
 
-        {activeView === "contacts" ? (
+        {activeView === "rooms" && roomsAppView === "contacts" ? (
           <ContactsView
             activeKernel={activeKernel}
             activeModel={model}
             activeWorkspaceRoot={activeWorkspaceRoot}
+            extensions={inventory?.extensions}
             kernelOptions={settingsQuery.data?.settings.kernels ?? healthQuery.data?.settings?.kernels ?? []}
             runtimeControls={activeRuntimeControls}
             runtimeControlsByKernel={healthQuery.data?.runtimeControlsByKernel}
-            onOpenRooms={() => setView("rooms")}
+            skills={skills}
+            onOpenMessages={openRoomsMessages}
           />
         ) : null}
 
@@ -2038,17 +2705,25 @@ export function App() {
                 onFeedback={sendKnowledgeFeedback}
               />
             </div>
-            <button
-              className="library-ai-edge-button"
-              data-open={libraryAiOpen ? "true" : "false"}
-              type="button"
-              onClick={openLibraryAiPanel}
-              title={libraryAiOpen ? t("library.closeAi") : t("library.openAi")}
-              aria-label={libraryAiOpen ? t("library.closeAi") : t("library.openAi")}
-            >
-              <Bot size={15} />
-              <span>{t("library.ai")}</span>
-            </button>
+            {!libraryAiOpen ? (
+              <aside className="library-ai-edge-rail" aria-label={`${t("library.aiTitle")} 已收起`}>
+                <button
+                  className="library-ai-edge-button"
+                  type="button"
+                  style={{ "--library-ai-rail-bottom": `${libraryAiRailBottom}px` } as CSSProperties}
+                  data-dragging={libraryAiRailDragging ? "true" : "false"}
+                  onMouseDown={onLibraryAiRailMouseDown}
+                  onClick={openLibraryAiFromRail}
+                  title={`${t("library.openAi")}；拖动可调整位置`}
+                  aria-label={`${t("library.openAi")}，拖动可调整位置`}
+                >
+                  <span className="library-ai-edge-mark">
+                    <OpenGroveSaplingMark />
+                  </span>
+                  <span className="library-ai-edge-label">{t("library.aiTitle")}</span>
+                </button>
+              </aside>
+            ) : null}
             {libraryAiOpen ? (
               <>
               <div
@@ -2119,18 +2794,36 @@ export function App() {
             ) : null}
           </section>
         ) : null}
-        {activeView === "settings" ? (
+        {activeView === "settings" || activeView === "ops" ? (
           <SettingsDialog
             embedded
+            initialSection={activeView === "ops" ? "ops" : settingsInitialSection}
             settings={settingsQuery.data?.settings ?? healthQuery.data?.settings}
-            contextRecords={contextRecords}
             loading={settingsQuery.isLoading}
             saving={settingsMutation.isPending}
             installingKernelId={installKernelMutation.isPending ? installKernelMutation.variables?.kernelId : ""}
+            copilotAuth={copilotAuthQuery.data?.auth}
+            copilotAuthLoading={copilotAuthQuery.isLoading || copilotAuthQuery.isFetching}
+            copilotLoginPending={copilotLoginMutation.isPending}
             error={settingsQuery.error instanceof Error ? settingsQuery.error.message : ""}
             onClose={() => setView("chat")}
             onInstallKernel={(kernelId, actionId) => installKernelMutation.mutate({ kernelId, actionId })}
+            onRequestAppBuilder={(request) => void requestAppBuilder(request)}
+            onStartCopilotLogin={() => copilotLoginMutation.mutate()}
             onSave={(payload) => settingsMutation.mutate(payload)}
+            ops={{
+              runs,
+              executions,
+              approvals,
+              events,
+              skills,
+              tools,
+              developerSessions,
+              selectedRunId: selectedOpsRunId,
+              contextRecords,
+              onSelectRun: setSelectedOpsRunId,
+              onUpdateDiagnostics: (patch) => settingsMutation.mutate(patch),
+            }}
           />
         ) : null}
       </main>
@@ -2164,6 +2857,55 @@ export function App() {
       ) : null}
     </div>
   );
+}
+
+function buildAppBuilderPrompt(request: AppBuilderRequest): string {
+  const titleLine = request.title ? `应用名称：${request.title}` : "应用名称：未指定，请根据功能取一个清晰名称";
+  if (request.mode === "import") {
+    return [
+      "请使用 opengrove-app-builder skill 导入一个 OpenGrove App，并用当前默认 kernel 完成接入。",
+      "",
+      titleLine,
+      `来源类型：${appBuilderSourceKindLabel(request.sourceKind)}`,
+      `来源：${request.source || ""}`,
+      "",
+      "导入边界：",
+      "1. 本地普通项目优先用 opengrove app import <source> --target <app-dir> --id <id> 生成 App 包边界；URL 来源先用 opengrove app stage 落到 OpenGrove 托管 staging，再 import staged root。",
+      "2. 对 staged/local root 运行 opengrove app inspect；如果来源已有完整前端界面，优先按原界面接入，不重做 UI。",
+      "3. 如果来源没有完整界面，根据 App 功能设计一个 OpenGrove 原生工作台，优先复用现有组件，例如共享目录树、Markdown/媒体预览、设置表单和对话面板。",
+      "4. 所有文件读写必须限制在 App 目录或 manifest 声明的 workspace 内；不要把用户资料、密钥或缓存复制进 App 包。",
+      "5. 若需要命令能力，优先在 App 自己的 bin/ 或 scripts/ 下提供 CLI，并在 manifest/skill 文档里写清楚命令、输入、输出和失败行为。",
+      "6. 完成后运行 opengrove app validate 和 opengrove app report；如果报告 readyToMount，再用 opengrove app mount 或 Settings UI 注册。",
+      "7. 验证前端构建/类型检查、App 文件浏览与 workspace 写入、至少一个真实 smoke 流程。",
+      "",
+      "最后请用人话说明：接入了什么、用户从哪里打开、还需要用户配置哪些密钥/模型/本地依赖。",
+    ].join("\n");
+  }
+  return [
+    "请使用 opengrove-app-builder skill 根据下面描述创建一个 OpenGrove App，并用当前默认 kernel 完成实现。",
+    "",
+    titleLine,
+    "应用描述：",
+    request.description || "",
+    "",
+    "创建边界：",
+    "1. 先用 opengrove app scaffold 建立 App 包边界，再填入真实 manifest、ui、skills、bin/scripts、workspace 示例。",
+    "2. 把 App 当成可传递的工作台包：manifest、ui、skills、bin/scripts、workspace 示例和 agent 说明要能说明完整体验。",
+    "3. 先判断用户真正的工作流，再决定 UI：能用现有 OpenGrove 组件就复用；只有现有组件表达不了时才新增小而清晰的组件。",
+    "4. 业务逻辑不要写死到通用组件里；如果需要目录、预览、表单、任务状态，请通过 adapter 接入共享组件。",
+    "5. App 的读写、命令执行和产物输出必须有明确边界，默认写入自己的 workspace/runs 或 manifest 声明的目录。",
+    "6. 完成后运行 opengrove app validate 和 opengrove app report；如果报告 readyToMount，再用 opengrove app mount 或 Settings UI 注册。",
+    "7. 验证前端构建/类型检查、文件工作台操作、至少一个端到端 smoke 流程。",
+    "",
+    "最后请用人话说明：这个 App 能干什么、用户怎么用、还缺哪些真实依赖或模型配置。",
+  ].join("\n");
+}
+
+function appBuilderSourceKindLabel(kind: AppBuilderRequest["sourceKind"]): string {
+  if (kind === "git") return "Git / GitHub URL";
+  if (kind === "archive") return "压缩包 URL";
+  if (kind === "project") return "普通项目或混合项目";
+  return "本地文件夹";
 }
 
 function OpenGroveSaplingMark() {

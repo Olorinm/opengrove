@@ -1,16 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RoomChannelMember } from "../../rooms/channel-store.js";
-import { acceptMatrixInviteIntoLedger } from "../room-matrix-sync.js";
+import { acceptMatrixInviteIntoLedger } from "../remote/matrix/ledger-sync.js";
 import type { BridgeState } from "../bridge-types.js";
 import { record, stringValue } from "../http-utils.js";
-import {
-  matrixReady,
-} from "./matrix-invites.js";
+import { matrixReady } from "../remote/matrix/invites.js";
 
 type SendJson = (response: ServerResponse, status: number, data: unknown) => void;
 type ReadJsonBody = (request: IncomingMessage) => Promise<unknown>;
 
-export async function handleMatrixRoomRoute(options: {
+export async function handleRemoteMatrixRoute(options: {
   request: IncomingMessage;
   response: ServerResponse;
   url: URL;
@@ -23,7 +21,7 @@ export async function handleMatrixRoomRoute(options: {
     return false;
   }
 
-  if (!matrixReady(state.settings.matrix)) {
+  if (!matrixReady(state.settings.remote.matrix)) {
     sendJson(response, 400, { ok: false, error: "matrix_not_configured" });
     return true;
   }
@@ -47,7 +45,7 @@ export async function handleMatrixRoomRoute(options: {
       });
       sendJson(response, 200, {
         ok: true,
-        roomId: result.room.matrix?.roomId,
+        roomId: result.room.remote?.remoteRoomId,
         profileEventId: result.profileEventId,
         room: result.room,
         member: result.member,

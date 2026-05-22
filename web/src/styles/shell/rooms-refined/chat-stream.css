@@ -130,18 +130,18 @@
 }
 
 .room-chat-tools .thread-activity {
-  border: 1px solid var(--rooms-border);
-  border-radius: 8px;
-  background: #ffffff;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--rooms-muted);
   box-sizing: border-box;
   width: 100%;
-  padding: 6px 8px;
+  padding: 0;
 }
 
 .room-chat-tools .thread-activity[open] {
-  border-bottom: 1px solid var(--rooms-border);
-  padding-bottom: 10px;
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 
 .room-chat-tools .thread-activity summary {
@@ -158,7 +158,7 @@
 }
 
 .room-chat-tools .thread-activity-list {
-  padding-left: 0;
+  padding-left: 28px;
 }
 
 .room-chat-tools .thread-activity-row {
@@ -255,4 +255,3 @@
   height: 100%;
   object-fit: cover;
 }
-

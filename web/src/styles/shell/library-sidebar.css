@@ -3,6 +3,34 @@
   gap: 10px;
 }
 
+.directory-panel {
+  min-height: 0;
+}
+
+.directory-panel-header {
+  flex: 0 0 auto;
+}
+
+.directory-panel-title-block {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.directory-panel-body {
+  min-width: 0;
+  min-height: 0;
+}
+
+.directory-panel-status {
+  overflow: hidden;
+  color: #7d837d;
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar-space-header {
   min-height: 32px;
   padding: 0 6px 0 8px;
@@ -131,4 +159,3 @@
 .sidebar-tree-more:focus-visible {
   background: rgba(0, 0, 0, 0.06);
 }
-

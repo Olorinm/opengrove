@@ -1,9 +1,9 @@
-import { saveBridgeSettings } from "../bridge-state.js";
-import type {
-  BridgeMatrixRoomBinding,
-  BridgeMatrixSettings,
-  BridgeState,
-} from "../bridge-types.js";
+export interface MatrixConnectionSettings {
+  enabled: boolean;
+  homeserverUrl: string;
+  userId: string;
+  accessToken?: string;
+}
 
 type MatrixCreateRoomResponse = {
   room_id?: string;
@@ -39,22 +39,7 @@ export type MatrixRoomEvent = {
   content?: unknown;
 };
 
-export type MatrixInviteForRoomResult = {
-  binding: BridgeMatrixRoomBinding;
-  invite: {
-    provider: "matrix";
-    token: string;
-    roomId: string;
-    matrixRoomId: string;
-    matrixHomeserverUrl: string;
-    roomTitle: string;
-    inviterName: string;
-    createdAt: string;
-  };
-  inviteUrl: string;
-};
-
-export function matrixReady(matrix: BridgeMatrixSettings): boolean {
+export function matrixReady(matrix: MatrixConnectionSettings): boolean {
   return Boolean(
     matrix.enabled
     && normalizeMatrixHomeserverUrl(matrix.homeserverUrl)
@@ -63,56 +48,15 @@ export function matrixReady(matrix: BridgeMatrixSettings): boolean {
   );
 }
 
-export async function createMatrixInviteForRoom(
-  state: BridgeState,
-  matrix: BridgeMatrixSettings,
-  localRoomId: string,
-  roomTitle: string,
-): Promise<MatrixInviteForRoomResult> {
-  const homeserverUrl = normalizeMatrixHomeserverUrl(matrix.homeserverUrl);
-  if (!matrix.enabled || !homeserverUrl || !matrix.userId.trim() || !matrix.accessToken?.trim()) {
-    throw new Error("matrix_not_configured");
-  }
-
-  let matrixSettings = { ...matrix, homeserverUrl, roomBindings: { ...matrix.roomBindings } };
-  const existingBinding = matrixSettings.roomBindings[localRoomId];
-  const binding = existingBinding ?? await createMatrixRoomBinding(matrixSettings, localRoomId, roomTitle);
-  if (!existingBinding) {
-    matrixSettings.roomBindings[localRoomId] = binding;
-    state.settings = {
-      ...state.settings,
-      matrix: matrixSettings,
-    };
-    saveBridgeSettings(state);
-  }
-
-  const createdAt = new Date().toISOString();
-  const invite = {
-    provider: "matrix" as const,
-    token: binding.matrixRoomId,
-    roomId: localRoomId,
-    matrixRoomId: binding.matrixRoomId,
-    matrixHomeserverUrl: binding.homeserverUrl,
-    roomTitle: binding.title || roomTitle,
-    inviterName: "OpenGrove",
-    createdAt,
-  };
-  return {
-    binding,
-    invite,
-    inviteUrl: opengroveInviteUrl(invite, state.settings.inviteLanding.baseUrl),
-  };
-}
-
-async function createMatrixRoomBinding(
-  matrix: BridgeMatrixSettings,
-  localRoomId: string,
-  roomTitle: string,
-): Promise<BridgeMatrixRoomBinding> {
-  const createdAt = new Date().toISOString();
-  const response = await matrixRequest<MatrixCreateRoomResponse>(matrix, "POST", "/_matrix/client/v3/createRoom", {
+export async function createMatrixRoom(input: {
+  matrix: MatrixConnectionSettings;
+  localRoomId: string;
+  roomTitle: string;
+  createdAt: string;
+}): Promise<string> {
+  const response = await matrixRequest<MatrixCreateRoomResponse>(input.matrix, "POST", "/_matrix/client/v3/createRoom", {
     visibility: "private",
-    name: roomTitle || "OpenGrove 群聊",
+    name: input.roomTitle || "OpenGrove 群聊",
     topic: "OpenGrove shared agent room",
     preset: "private_chat",
     initial_state: [
@@ -126,9 +70,9 @@ async function createMatrixRoomBinding(
         state_key: "",
         content: {
           version: 1,
-          localRoomId,
-          title: roomTitle || "OpenGrove 群聊",
-          createdAt,
+          localRoomId: input.localRoomId,
+          title: input.roomTitle || "OpenGrove 群聊",
+          createdAt: input.createdAt,
         },
       },
     ],
@@ -136,15 +80,10 @@ async function createMatrixRoomBinding(
   if (!response.room_id) {
     throw new Error("matrix_room_create_failed");
   }
-  return {
-    matrixRoomId: response.room_id,
-    homeserverUrl: normalizeMatrixHomeserverUrl(matrix.homeserverUrl),
-    title: roomTitle || "OpenGrove 群聊",
-    createdAt,
-  };
+  return response.room_id;
 }
 
-export async function joinMatrixRoom(matrix: BridgeMatrixSettings, roomId: string): Promise<string> {
+export async function joinMatrixRoom(matrix: MatrixConnectionSettings, roomId: string): Promise<string> {
   const response = await matrixRequest<MatrixJoinRoomResponse>(
     matrix,
     "POST",
@@ -158,7 +97,7 @@ export async function joinMatrixRoom(matrix: BridgeMatrixSettings, roomId: strin
 }
 
 export async function publishMatrixRoomEvent(
-  matrix: BridgeMatrixSettings,
+  matrix: MatrixConnectionSettings,
   roomId: string,
   type: string,
   content: unknown,
@@ -177,7 +116,7 @@ export async function publishMatrixRoomEvent(
 }
 
 export async function syncMatrixRoom(
-  matrix: BridgeMatrixSettings,
+  matrix: MatrixConnectionSettings,
   roomId: string,
   since?: string,
 ): Promise<{ nextBatch: string; events: MatrixRoomEvent[] }> {
@@ -196,7 +135,7 @@ export async function syncMatrixRoom(
 }
 
 async function matrixRequest<T>(
-  matrix: BridgeMatrixSettings,
+  matrix: MatrixConnectionSettings,
   method: "GET" | "POST" | "PUT",
   path: string,
   payload?: unknown,
@@ -228,23 +167,6 @@ export function normalizeMatrixHomeserverUrl(value: string): string {
   } catch {
     return "";
   }
-}
-
-function opengroveInviteUrl(payload: MatrixInviteForRoomResult["invite"], publicLandingBaseUrl: string): string {
-  const encoded = encodeInvitePayload(payload);
-  const landingBaseUrl = normalizeMatrixHomeserverUrl(publicLandingBaseUrl);
-  if (!landingBaseUrl) throw new Error("invite_landing_not_configured");
-  const url = new URL("/opengrove/invite", ensureTrailingSlash(landingBaseUrl));
-  url.searchParams.set("payload", encoded);
-  return url.toString();
-}
-
-function encodeInvitePayload(payload: MatrixInviteForRoomResult["invite"]): string {
-  return Buffer.from(JSON.stringify(payload), "utf8")
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
 }
 
 function ensureTrailingSlash(value: string): string {

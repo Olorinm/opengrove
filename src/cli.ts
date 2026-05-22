@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { packageRoot } from "./package-root.js";
 import { startInviteLandingServer } from "./invite/invite-landing-server.js";
+import { runAppBuilderCli } from "./app-builder/cli.js";
 import { normalizePersistedAgentState } from "./storage/json-state-store.js";
 import { savePostgresStateSnapshot } from "./storage/postgres-state-store.js";
 import { startLocalProfile } from "./profiles/local.js";
@@ -21,6 +22,7 @@ Usage:
   opengrove bridge [--host HOST] [--port PORT]
   opengrove server [--host HOST] [--port PORT] [--database-url URL] [--workspace-id ID]
   opengrove invite-landing [--host HOST] [--port PORT]
+  opengrove app <inspect|validate|scaffold> ...
   opengrove migrate json-to-postgres --state PATH --database-url URL [--workspace-id ID]
   opengrove update
   opengrove version
@@ -29,6 +31,7 @@ Commands:
   start, bridge   Start the local OpenGrove bridge and UI.
   server          Start the deployable OpenGrove server profile.
   invite-landing  Start the public invite landing page server.
+  app             Inspect, scaffold, and validate portable OpenGrove Apps.
   migrate         Run data migrations between storage profiles.
   update          Upgrade the npm global installation to the latest version.
   version         Print the installed OpenGrove version.
@@ -64,6 +67,11 @@ async function main(): Promise<void> {
   if (command === "invite-landing") {
     const options = parseStartOptions(args.slice(1));
     startInviteLandingServer(options);
+    return;
+  }
+
+  if (command === "app") {
+    await runAppBuilderCli(args.slice(1));
     return;
   }
 

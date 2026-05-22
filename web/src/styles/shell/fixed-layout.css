@@ -2,10 +2,17 @@
 .app-shell,
 .app-shell[data-sidebar-collapsed="true"] {
   grid-template-columns: var(--opengrove-rail-width, 52px) var(--opengrove-sidebar-width, 284px) minmax(0, 1fr);
+  transition: grid-template-columns var(--motion-slow) var(--motion-ease);
+}
+
+body[data-sidebar-resizing="true"] .app-shell {
+  transition: none;
 }
 
 .app-shell[data-view="rooms"],
-.app-shell[data-view="contacts"] {
+.app-shell[data-view="contacts"],
+.app-shell[data-view="app"],
+.app-shell[data-view="extensions"] {
   grid-template-columns: var(--opengrove-rail-width, 52px) minmax(0, 1fr);
 }
 
@@ -42,7 +49,7 @@
 }
 
 .sidebar-brand-word span {
-  color: var(--og-green);
+  color: var(--og-brand);
 }
 
 .sidebar-collapse-button {
@@ -69,7 +76,7 @@
   grid-area: 1 / 1;
   display: grid;
   place-items: center;
-  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  transition: opacity var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease);
 }
 
 .sidebar-collapse-logo svg {
@@ -103,6 +110,10 @@
 
 .app-rail {
   padding-top: 14px;
+  transition:
+    background-color var(--motion-normal) var(--motion-ease),
+    border-color var(--motion-normal) var(--motion-ease),
+    padding var(--motion-normal) var(--motion-ease);
 }
 
 .app-rail[data-expanded="true"] {
@@ -112,45 +123,23 @@
 }
 
 .app-rail[data-expanded="true"] .app-rail-brand-row {
-  grid-template-columns: 38px auto 18px;
+  grid-template-columns: minmax(0, 1fr);
   column-gap: 0;
   justify-items: start;
   padding-right: 0;
+  transition: grid-template-columns var(--motion-slow) var(--motion-ease);
 }
 
 .app-rail[data-expanded="true"] .app-rail-brand {
-  justify-self: center;
-}
-
-.app-rail[data-expanded="true"] .app-rail-brand {
+  width: 100%;
+  justify-self: stretch;
   margin-bottom: 18px;
 }
 
 .app-rail[data-expanded="true"] .app-rail-wordmark {
-  display: inline-block;
-  margin-bottom: 18px;
-  margin-left: -2px;
+  display: block;
   font-size: 13px;
-}
-
-.app-rail[data-expanded="true"] .app-rail-collapse {
-  display: grid;
-  position: relative;
-  top: -10px;
-  left: 8px;
-  width: 18px;
-  height: 18px;
-  align-self: start;
-  justify-self: start;
-  margin-top: 0;
-  margin-left: 0;
-  margin-bottom: 18px;
-  border-radius: 6px;
-}
-
-.app-rail[data-expanded="true"] .app-rail-collapse svg {
-  width: 13px;
-  height: 13px;
+  animation: rail-label-in var(--motion-normal) var(--motion-ease-out);
 }
 
 .app-rail[data-expanded="true"] .app-rail-nav,
@@ -183,6 +172,7 @@
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  animation: rail-label-in var(--motion-normal) var(--motion-ease-out);
 }
 
 .app-rail[data-expanded="true"] .app-user-button {
@@ -200,6 +190,14 @@
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  animation: rail-label-in var(--motion-normal) var(--motion-ease-out);
+}
+
+@keyframes rail-label-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
 }
 
 .sidebar {
@@ -207,6 +205,18 @@
   gap: 0;
   background: var(--og-sidebar-bg);
   padding-top: 16px;
+}
+
+.app-shell[data-view="app"] .sidebar,
+.app-shell[data-view="app"] .sidebar-resize-handle,
+.app-shell[data-view="extensions"] .sidebar,
+.app-shell[data-view="extensions"] .sidebar-resize-handle {
+  display: none;
+}
+
+.app-shell[data-view="app"] .workspace,
+.app-shell[data-view="extensions"] .workspace {
+  grid-column: 2;
 }
 
 .app-shell[data-sidebar-collapsed="true"] {
@@ -222,3 +232,19 @@
   grid-column: 3;
 }
 
+.app-shell[data-sidebar-collapsed="true"][data-view="app"],
+.app-shell[data-sidebar-collapsed="true"][data-view="extensions"] {
+  grid-template-columns: var(--opengrove-rail-width, 52px) minmax(0, 1fr);
+}
+
+.app-shell[data-sidebar-collapsed="true"][data-view="app"] .sidebar,
+.app-shell[data-sidebar-collapsed="true"][data-view="app"] .sidebar-resize-handle,
+.app-shell[data-sidebar-collapsed="true"][data-view="extensions"] .sidebar,
+.app-shell[data-sidebar-collapsed="true"][data-view="extensions"] .sidebar-resize-handle {
+  display: none;
+}
+
+.app-shell[data-sidebar-collapsed="true"][data-view="app"] .workspace,
+.app-shell[data-sidebar-collapsed="true"][data-view="extensions"] .workspace {
+  grid-column: 2;
+}

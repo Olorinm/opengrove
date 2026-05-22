@@ -3,10 +3,7 @@ import type {
   BridgeSettings,
 } from "./bridge-types.js";
 import { BRIDGE_KERNEL_IDS } from "./bridge-types.js";
-import {
-  getAllBridgeProviderProfiles,
-  providerSupportsKernel,
-} from "./provider-profiles.js";
+import { getAllBridgeProviderProfiles } from "./provider-profiles.js";
 import {
   kernelConfigHome,
 } from "./kernel-paths.js";
@@ -35,6 +32,7 @@ export function applySystemProviderDiscovery(settings: BridgeSettings): BridgeSe
     }
 
     next.customProviders = upsertDiscoveredProvider(next.customProviders, discovered);
+    next.customProviders = removeStaleDiscoveredAliases(next.customProviders, discovered);
   }
 
   const profiles = getAllBridgeProviderProfiles(next.customProviders);
@@ -105,7 +103,9 @@ function claudeProviderFromNativeProfile(profile: KernelNativeProviderProfile): 
 function geminiProviderFromNativeProfile(profile: KernelNativeProviderProfile): BridgeProviderProfile {
   return {
     id: slug(profile.providerId || "gemini"),
-    name: profile.providerLabel || "Google Gemini",
+    name: profile.providerLabel || (profile.kernel === "gemini-cli"
+      ? "Google Gemini (Gemini CLI)"
+      : "Google Gemini"),
     custom: true,
     origin: "discovered",
     sourceKernel: profile.kernel,
@@ -156,7 +156,7 @@ function upsertDiscoveredProvider(
   if (index < 0) return [...current, discovered];
 
   const existing = current[index];
-  if (existing.origin && existing.origin !== "discovered") {
+  if (existing.origin && existing.origin !== "discovered" && !canRefreshStaleNativeProvider(existing, discovered)) {
     return current;
   }
   if (!existing.origin && existing.custom && !existing.sourceKernel) {
@@ -172,6 +172,30 @@ function upsertDiscoveredProvider(
     origin: "discovered",
   };
   return next;
+}
+
+function canRefreshStaleNativeProvider(
+  existing: BridgeProviderProfile,
+  discovered: BridgeProviderProfile,
+): boolean {
+  if (existing.id !== discovered.id) return false;
+  if (existing.sourceKernel || discovered.sourceKernel) return true;
+  return existing.custom === true && existing.id.endsWith("-native");
+}
+
+function removeStaleDiscoveredAliases(
+  current: BridgeProviderProfile[],
+  discovered: BridgeProviderProfile,
+): BridgeProviderProfile[] {
+  if (discovered.id !== "gemini-cli-native" || discovered.sourceKernel !== "gemini-cli") {
+    return current;
+  }
+  return current.filter((provider) => {
+    if (provider.id !== "gemini") return true;
+    if (provider.sourceKernel !== "gemini-cli") return true;
+    if (provider.apiKey?.trim()) return true;
+    return false;
+  });
 }
 
 function isDeletedProvider(providers: BridgeProviderProfile[], providerId: string): boolean {

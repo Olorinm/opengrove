@@ -1,18 +1,24 @@
-.topbar[data-view="chat"] {
-  justify-content: flex-end;
-}
-
-.topbar[data-view="chat"] > div:first-child {
-  display: none;
-}
-
-.topbar[data-view="library"],
-.topbar[data-view="settings"] {
-  display: none;
-}
-
 .app-topbar-actions {
   gap: 8px;
+}
+
+.chat-view {
+  position: relative;
+}
+
+.chat-frame-controls {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-frame-workbench-button[data-open="true"] {
+  background: var(--c-surface-hover);
+  color: var(--c-text-2);
 }
 
 .topbar-icon-button {
@@ -110,4 +116,3 @@
   letter-spacing: -0.035em;
   line-height: 1.15;
 }
-

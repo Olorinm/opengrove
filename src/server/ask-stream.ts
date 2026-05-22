@@ -21,6 +21,7 @@ import {
 import { syncBridgeWorkingState } from "./bridge-working-state.js";
 import { runWithBridgeTurnContext, type BridgeTurnContext } from "./bridge-turn-context.js";
 import { bridgeDataPath } from "./storage-paths.js";
+import { resolveMountedAppRuntimeEnv } from "./app-runtime-env.js";
 
 type AskStreamChunk =
   | { type: "start"; ok: true; threadId: string; runId: string }
@@ -103,6 +104,7 @@ async function executeBackgroundAskRun(state: BridgeState, run: BackgroundAskRun
     executionState = askExecutionState(state, payload);
     turnContext = prepareAskState(executionState, payload);
     const policyOverrides = turnContext.policyOverrides;
+    const appRuntimeEnv = resolveMountedAppRuntimeEnv(executionState, payload.appId);
     emitAskRunChunk(run, { type: "start", ok: true, threadId: payload.threadId, runId: run.runId });
 
     await runWithBridgeTurnContext(turnContext, async () => {
@@ -116,6 +118,7 @@ async function executeBackgroundAskRun(state: BridgeState, run: BackgroundAskRun
         requestedSkillName: payload.requestedSkill?.name,
         requestedSkillArgs: payload.requestedSkill?.args,
         policy: policyOverrides,
+        runtimeEnv: appRuntimeEnv?.env,
         signal: run.controller.signal,
       })) {
         attachModelId([event], payload.model);
@@ -315,7 +318,7 @@ function prepareAskState(state: BridgeState, payload: BridgeAskPayload): BridgeT
   };
 }
 
-function buildAskPolicyOverrides(payload: BridgeAskPayload): PolicyRule[] {
+function buildAskPolicyOverrides(_payload: BridgeAskPayload): PolicyRule[] {
   const policyOverrides: PolicyRule[] = [];
   return policyOverrides;
 }

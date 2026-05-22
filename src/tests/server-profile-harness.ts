@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
@@ -13,6 +13,25 @@ assert.equal(normalizeBridgeApiUrl(new URL("http://example.test/api")).pathname,
 assert.equal(normalizeBridgeApiUrl(new URL("http://example.test/health")).pathname, "/health");
 
 const dir = mkdtempSync(join(tmpdir(), "opengrove-server-profile-"));
+writeFileSync(join(dir, "bridge-settings.json"), `${JSON.stringify({
+  kernel: "auto",
+  matrix: {
+    enabled: true,
+    homeserverUrl: "https://matrix.example.com",
+    userId: "@alice:matrix.example.com",
+    accessToken: "legacy-token",
+    roomBindings: {
+      "room-legacy": {
+        matrixRoomId: "!legacy:matrix.example.com",
+        homeserverUrl: "https://matrix.example.com",
+        title: "Legacy Matrix Room",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        syncToken: "legacy-sync-token",
+        enabled: true,
+      },
+    },
+  },
+})}\n`, "utf8");
 const server = startLocalBridgeServer({
   host: "127.0.0.1",
   port: 0,
@@ -73,6 +92,10 @@ try {
   const settings = await getJson(`${baseUrl}/api/settings`);
   assert.equal(settings.ok, true);
   assert.equal(typeof settings.settings.activeKernel, "string");
+  assert.equal(settings.settings.matrix, undefined);
+  assert.equal(settings.settings.remote.matrix.enabled, true);
+  assert.equal(settings.settings.remote.matrix.bindings["room-legacy"].remoteRoomId, "!legacy:matrix.example.com");
+  assert.equal(settings.settings.remote.matrix.bindings["room-legacy"].syncCursor, "legacy-sync-token");
 
   await verifyServerProfileGuards(dir);
 

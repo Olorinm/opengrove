@@ -1,46 +1,48 @@
-/* Chat text density: smaller type and tighter reading rhythm. */
+/* Chat reading rhythm: comfortable text with enough breathing room for longer answers. */
 .thread-stack {
-  gap: 30px;
+  gap: 34px;
 }
 
 .thread-user-stack,
 .thread-part-stack {
-  gap: 9px;
+  gap: 11px;
 }
 
 .thread-user-bubble {
-  padding: 8px 12px;
-  font-size: 14.5px;
-  line-height: 1.42;
+  padding: 9px 13px;
+  font-size: 15px;
+  line-height: 1.54;
 }
 
 .thread-text-block {
-  gap: 9px;
-  font-size: 14.5px;
-  line-height: 1.58;
+  gap: 12px;
+  max-width: min(72ch, 100%);
+  color: var(--og-text);
+  font-size: 15.5px;
+  line-height: 1.74;
 }
 
 .thread-md-p,
 .thread-md-list,
 .thread-md-heading {
-  line-height: 1.58;
+  line-height: 1.74;
 }
 
 .thread-md-heading {
-  line-height: 1.45;
+  line-height: 1.42;
 }
 
 .thread-md-heading.level-1 {
-  font-size: 15.5px;
+  font-size: 18px;
 }
 
 .thread-md-heading.level-2,
 .thread-md-heading.level-3 {
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .thread-md-list {
-  gap: 5px;
+  gap: 7px;
   padding-left: 22px;
 }
 
@@ -67,6 +69,5 @@
 .thread-code-block pre {
   padding: 12px;
   font-size: 13.5px;
-  line-height: 1.42;
+  line-height: 1.5;
 }
-

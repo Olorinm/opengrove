@@ -3,7 +3,7 @@
   inset: 0;
   background: rgba(0, 0, 0, 0.15);
   z-index: var(--z-overlay);
-  animation: fade-in var(--dur-fast) var(--ease-out);
+  animation: fade-in var(--motion-fast) var(--motion-ease-out);
 }
 
 .modal-shell {
@@ -22,12 +22,12 @@
   width: min(720px, 100%);
   border: 0;
   border-radius: var(--r-lg);
-  background: var(--c-bg);
+  background: var(--c-surface);
   padding: var(--sp-6);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-lg);
   pointer-events: auto;
   outline: 0;
-  animation: slide-up var(--dur-normal) var(--ease-out);
+  animation: scale-in var(--motion-normal) var(--motion-ease-out);
 }
 
 .modal-title {
@@ -49,7 +49,7 @@
 
 .vault-create-dialog-subtitle {
   margin-top: 5px;
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
 }
@@ -77,9 +77,9 @@
 }
 
 .vault-create-dialog-field input:focus {
-  border-color: var(--c-muted);
+  border-color: var(--c-accent);
   outline: 0;
-  box-shadow: 0 0 0 3px rgba(88, 91, 82, 0.12);
+  box-shadow: 0 0 0 3px var(--c-focus-ring);
 }
 
 .ghost-button,
@@ -97,10 +97,11 @@
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
   line-height: 1;
-  transition: background var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease),
-    color var(--dur-fast) var(--ease),
-    opacity var(--dur-fast) var(--ease);
+  transition: background var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
 }
 
 .ghost-button {
@@ -115,25 +116,25 @@
 }
 
 .primary-button {
-  border-color: var(--c-text-2);
-  background: var(--c-text-2);
-  color: var(--c-bg);
+  border-color: var(--c-text);
+  background: var(--c-text);
+  color: var(--c-surface);
 }
 
 .primary-button:hover {
-  border-color: var(--c-text);
-  background: var(--c-text);
+  border-color: var(--c-text-2);
+  background: var(--c-text-2);
 }
 
 .danger-button {
-  border-color: #b94a3c;
-  background: #b94a3c;
-  color: var(--c-bg);
+  border-color: var(--c-error);
+  background: var(--c-error);
+  color: var(--c-surface);
 }
 
 .danger-button:hover {
-  border-color: #943225;
-  background: #943225;
+  border-color: color-mix(in srgb, var(--c-error) 86%, #000000);
+  background: color-mix(in srgb, var(--c-error) 86%, #000000);
 }
 
 .ghost-button:disabled,

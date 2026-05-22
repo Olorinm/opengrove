@@ -178,7 +178,7 @@ function UserMessageBody(props: { message: StoredMessage }) {
         <div className="thread-context-files">
           {artifacts.map((artifact) => (
             <span className="thread-context-file" key={artifact.id || artifact.title}>
-              产物 · {artifact.title || artifact.id}
+              {artifact.type === "visual_annotation" ? "标注" : "产物"} · {artifact.title || artifact.id}
             </span>
           ))}
         </div>
@@ -554,8 +554,9 @@ function AssistantTailThinking(props: {
   const hasPendingApproval = items.some(
     (item) => item.type === "approval" && item.part.approvalStatus === "pending" && item.part.approvalId,
   );
+  const isActive = messagePending || hasRunningItem;
 
-  if (!messagePending || hasRunningItem || hasPendingApproval || hasRecentTextOutput) {
+  if (!isActive || hasPendingApproval || hasRecentTextOutput) {
     return null;
   }
 

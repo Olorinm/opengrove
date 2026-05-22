@@ -27,9 +27,7 @@ function handleMockChatCompletion(req: IncomingMessage, res: ServerResponse) {
   let body = "";
   req.on("data", (chunk) => { body += chunk; });
   req.on("end", () => {
-    const parsed = JSON.parse(body);
-    const userMsg = parsed.messages?.find((m: any) => m.role === "user")?.content ?? "";
-
+    JSON.parse(body);
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",

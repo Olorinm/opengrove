@@ -1,4 +1,7 @@
 import { createHash } from "node:crypto";
+import { existsSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import {
   query as claudeQuery,
   type EffortLevel,
@@ -29,7 +32,6 @@ import {
   applyProviderHttpCaptureEnv,
   providerHttpCaptureSummary,
   resolveProviderHttpCaptureOptions,
-  type ProviderHttpCaptureOptions,
   type ResolvedProviderHttpCaptureOptions,
 } from "./provider-http-capture.js";
 import { runWithNativeSessionLock } from "./native-session-lock.js";
@@ -48,6 +50,7 @@ interface ClaudeSdkMessageState {
   assistantText: string;
   resultText: string;
   resultIsError: boolean;
+  stderrText: string;
   sawPartialText: boolean;
   compactionActive: boolean;
   toolCalls: Map<string, { toolId: string; input: JsonValue }>;
@@ -97,16 +100,20 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
       );
     const cwd = this.options.cwd ?? process.cwd();
     const permissionMode = resolveClaudePermissionMode(request.accessMode, this.options.permissionMode);
+    const runtimeEnv = mergeRuntimeEnv(this.options.env, request.runtimeEnv);
     const runtimeBindingFingerprint = claudeRuntimeBindingFingerprint({
       base: this.options.runtimeBindingFingerprint,
       cwd,
     });
-    const nativeSession = resolveClaudeNativeSession(request, runtimeBindingFingerprint);
+    const nativeSession = resolveClaudeNativeSession(request, runtimeBindingFingerprint, {
+      configDir: this.options.env?.CLAUDE_CONFIG_DIR,
+      cwd,
+    });
     rememberClaudeNativeSession(request, nativeSession.sessionId, runtimeBindingFingerprint);
     const systemPrompt = buildClaudeSdkSystemPrompt(request);
     const providerCapture = resolveProviderHttpCaptureOptions(
       this.options.providerHttpCapture,
-      this.options.env,
+      runtimeEnv,
     );
     const hostBridge = createClaudeSdkHostBridge(request, runId, queue);
     const sessionTrace: AgentSessionTrace = {
@@ -148,44 +155,59 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
       assistantText: "",
       resultText: "",
       resultIsError: false,
+      stderrText: "",
       sawPartialText: false,
       compactionActive: false,
       toolCalls: new Map(),
     };
-    await runWithNativeSessionLock("claude-code", nativeSession.sessionId, async () => {
-      const query = (this.options.query ?? claudeQuery)({
-        prompt: request.input,
-        options: this.createQueryOptions({
-          request,
-          cwd,
-          requestedModel,
-          permissionMode,
-          nativeSession,
-          systemPrompt,
-          providerCapture,
-          hostBridge,
-          abortController,
-        }),
-      });
-
-      try {
-        for await (const message of query) {
-          for (const event of mapClaudeSdkMessage(message, {
-            runId,
-            state: messageState,
+    try {
+      await runWithNativeSessionLock("claude-code", nativeSession.sessionId, async () => {
+        const query = (this.options.query ?? claudeQuery)({
+          prompt: request.input,
+          options: this.createQueryOptions({
+            request,
+            cwd,
+            requestedModel,
+            permissionMode,
+            nativeSession,
+            systemPrompt,
+            providerCapture,
+            runtimeEnv,
             hostBridge,
-            onInit: (init) => {
-              rememberClaudeNativeSession(request, init.session_id, runtimeBindingFingerprint);
-              recordClaudeRuntimeInventory(request, init);
+            abortController,
+            onStderr: (chunk) => {
+              messageState.stderrText = limitDiagnosticText(messageState.stderrText + chunk);
             },
-          })) {
-            queue.push(event);
+          }),
+        });
+
+        try {
+          for await (const message of query) {
+            for (const event of mapClaudeSdkMessage(message, {
+              runId,
+              state: messageState,
+              hostBridge,
+              onInit: (init) => {
+                rememberClaudeNativeSession(request, init.session_id, runtimeBindingFingerprint);
+                recordClaudeRuntimeInventory(request, init);
+              },
+            })) {
+              queue.push(event);
+            }
           }
+        } finally {
+          query.close();
         }
-      } finally {
-        query.close();
-      }
-    });
+      });
+    } catch (error) {
+      queue.push({
+        type: "error",
+        runId,
+        message: claudeSdkProcessErrorMessage(error, messageState.stderrText),
+      });
+      queue.push({ type: "turn.finished", runId, at: new Date().toISOString() });
+      return;
+    }
 
     const finalText = messageState.resultText || messageState.assistantText;
     if (messageState.compactionActive) {
@@ -216,13 +238,15 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
     nativeSession: { sessionId: string; resuming: boolean };
     systemPrompt: string;
     providerCapture: ResolvedProviderHttpCaptureOptions;
+    runtimeEnv: NodeJS.ProcessEnv | undefined;
     hostBridge: ClaudeSdkHostBridge;
     abortController: AbortController;
+    onStderr(data: string): void;
   }): ClaudeAgentSdkOptions {
     const options: ClaudeAgentSdkOptions = {
       abortController: input.abortController,
       cwd: input.cwd,
-      env: this.prepareEnv(input.requestedModel, input.providerCapture),
+      env: this.prepareEnv(input.requestedModel, input.providerCapture, input.runtimeEnv),
       includePartialMessages: true,
       includeHookEvents: true,
       settingSources: ["user", "project", "local"],
@@ -242,6 +266,7 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
       model: input.requestedModel,
       effort: normalizeClaudeEffort(input.request.requestedEffort),
       pathToClaudeCodeExecutable: this.options.cliPath,
+      stderr: input.onStderr,
       ...(input.nativeSession.resuming
         ? { resume: input.nativeSession.sessionId }
         : { sessionId: input.nativeSession.sessionId }),
@@ -255,10 +280,11 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
   private prepareEnv(
     requestedModel: string | undefined,
     providerCapture: ResolvedProviderHttpCaptureOptions,
+    runtimeEnv: NodeJS.ProcessEnv | undefined,
   ): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
-      ...this.options.env,
+      ...runtimeEnv,
       CLAUDE_AGENT_SDK_CLIENT_APP: `${APP_PRODUCT_NAME}/0.0.0`,
     };
     const configuredBaseUrl = this.options.configuredBaseUrl?.trim();
@@ -275,6 +301,17 @@ export class ClaudeAgentSdkRuntime implements AgentRuntime {
     }
     return applyProviderHttpCaptureEnv(env, providerCapture);
   }
+}
+
+function mergeRuntimeEnv(
+  base: NodeJS.ProcessEnv | undefined,
+  override: NodeJS.ProcessEnv | undefined,
+): NodeJS.ProcessEnv | undefined {
+  const merged = { ...(base ?? {}), ...(override ?? {}) };
+  for (const [key, value] of Object.entries(merged)) {
+    if (value === undefined) delete merged[key];
+  }
+  return Object.keys(merged).length ? merged : undefined;
 }
 
 function mapClaudeSdkMessage(
@@ -531,6 +568,7 @@ function buildClaudeSdkSystemPrompt(request: AgentTurnRequest): string {
 function resolveClaudeNativeSession(
   request: AgentTurnRequest,
   runtimeBindingFingerprint: string | undefined,
+  options: { cwd: string; configDir?: string | undefined },
 ): { sessionId: string; resuming: boolean } {
   const current = request.context.sessions.get(request.context.sessionId);
   const fingerprint = runtimeBindingFingerprint || "native";
@@ -544,11 +582,13 @@ function resolveClaudeNativeSession(
   const metadataSession = typeof current?.metadata?.claudeCodeSessionId === "string"
     ? current.metadata.claudeCodeSessionId
     : undefined;
+  const stableSessionId = metadataSession && fingerprint === "native"
+    ? metadataSession
+    : toStableClaudeSessionId(`${request.context.sessionId}:${fingerprint}`);
   return {
-    sessionId: metadataSession && fingerprint === "native"
-      ? metadataSession
-      : toStableClaudeSessionId(`${request.context.sessionId}:${fingerprint}`),
-    resuming: Boolean(metadataSession && fingerprint === "native"),
+    sessionId: stableSessionId,
+    resuming: Boolean(metadataSession && fingerprint === "native") ||
+      claudeNativeTranscriptExists(stableSessionId, options),
   };
 }
 
@@ -596,6 +636,55 @@ function recordClaudeRuntimeInventory(
       "claude.version": init.claude_code_version,
     },
   });
+}
+
+function claudeNativeTranscriptExists(
+  sessionId: string,
+  options: { cwd: string; configDir?: string | undefined },
+): boolean {
+  const configDir = options.configDir?.trim() || process.env.CLAUDE_CONFIG_DIR?.trim() || resolve(homedir(), ".claude");
+  const projectsDir = join(configDir, "projects");
+  const projectPath = join(projectsDir, claudeProjectKey(options.cwd), `${sessionId}.jsonl`);
+  if (existsSync(projectPath)) {
+    return true;
+  }
+
+  try {
+    for (const entry of readdirSync(projectsDir, { withFileTypes: true })) {
+      if (entry.isDirectory() && existsSync(join(projectsDir, entry.name, `${sessionId}.jsonl`))) {
+        return true;
+      }
+    }
+  } catch {
+    // Missing or unreadable native transcript directories should not block a fresh session.
+  }
+  return false;
+}
+
+function claudeProjectKey(cwd: string): string {
+  return resolve(cwd || process.cwd())
+    .normalize("NFC")
+    .replace(/[^A-Za-z0-9._-]/g, "-");
+}
+
+function claudeSdkProcessErrorMessage(error: unknown, stderrText: string): string {
+  const base = error instanceof Error ? error.message : String(error || "claude_agent_sdk_failed");
+  const stderr = sanitizeDiagnosticText(stderrText).trim();
+  if (!stderr) {
+    return base || "claude_agent_sdk_failed";
+  }
+  return base.includes(stderr) ? base : `${base}: ${stderr}`;
+}
+
+function limitDiagnosticText(value: string): string {
+  const limit = 4_000;
+  return value.length > limit ? value.slice(value.length - limit) : value;
+}
+
+function sanitizeDiagnosticText(value: string): string {
+  return value
+    .replace(/(AWS_BEARER_TOKEN_BEDROCK|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_API_KEY|OPENAI_API_KEY|GEMINI_API_KEY|authorization|api[_-]?key|token|secret|bearer)([=:\s"]+)[^\s"]+/gi, "$1$2<redacted>")
+    .replace(/(sk|ark|ABSK)[A-Za-z0-9_.=+/-]{12,}/g, "<redacted>");
 }
 
 function resolveClaudePermissionMode(

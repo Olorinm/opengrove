@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { APP_CONFIG_DIR, APP_ENV_PREFIX } from "../identity.js";
 import { packageRoot } from "../package-root.js";
@@ -21,6 +21,13 @@ interface SkillRoot {
   packId?: string;
 }
 
+interface ExternalMountedApp {
+  id?: string;
+  path: string;
+  enabled?: boolean;
+  title?: string;
+}
+
 interface ParsedFrontmatter {
   frontmatter: Record<string, unknown>;
   body: string;
@@ -30,6 +37,7 @@ interface CreateSkillCatalogOptions {
   cwd?: string;
   workspaceRoot?: string;
   includeCodexSkills?: boolean;
+  mountedApps?: ExternalMountedApp[];
 }
 
 interface SkillInterfaceMetadata {
@@ -44,6 +52,7 @@ export function createSkillCatalog(options: CreateSkillCatalogOptions = {}): Ski
   const loaded = loadSkillManifests(cwd, {
     workspaceRoot,
     includeCodexSkills: options.includeCodexSkills === true,
+    mountedApps: options.mountedApps ?? [],
   });
   const byId = new Map<string, SkillManifest>();
   const byName = new Map<string, SkillManifest>();
@@ -102,8 +111,8 @@ export function estimateSkillFrontmatterText(skill: SkillManifest): string {
   return [skill.name, skill.description, skill.whenToUse ?? ""].filter(Boolean).join(" ");
 }
 
-function loadSkillManifests(cwd: string, options: { workspaceRoot: string; includeCodexSkills: boolean }): SkillManifest[] {
-  const roots = collectSkillRoots(cwd, options);
+function loadSkillManifests(_cwd: string, options: { workspaceRoot: string; includeCodexSkills: boolean; mountedApps: ExternalMountedApp[] }): SkillManifest[] {
+  const roots = collectSkillRoots(options);
   const seen = new Set<string>();
   const seenSkillKeys = new Set<string>();
   const skills: SkillManifest[] = [];
@@ -164,7 +173,7 @@ function loadSkillManifests(cwd: string, options: { workspaceRoot: string; inclu
   return skills;
 }
 
-function collectSkillRoots(cwd: string, options: { workspaceRoot: string; includeCodexSkills: boolean }): SkillRoot[] {
+function collectSkillRoots(options: { workspaceRoot: string; includeCodexSkills: boolean; mountedApps: ExternalMountedApp[] }): SkillRoot[] {
   const roots: SkillRoot[] = [];
   const ancestry = collectAncestry(options.workspaceRoot);
   for (const dir of ancestry) {
@@ -240,6 +249,19 @@ function collectSkillRoots(cwd: string, options: { workspaceRoot: string; includ
     }
   }
 
+  for (const mountedApp of options.mountedApps) {
+    if (mountedApp.enabled === false || !mountedApp.path?.trim()) continue;
+    const appRoot = resolvePathLike(mountedApp.path);
+    for (const dir of mountedAppSkillRoots(appRoot)) {
+      roots.push({
+        dir,
+        source: "pack",
+        trust: "trusted",
+        packId: mountedApp.id ? `app.${mountedApp.id}` : `app.${basename(appRoot)}`,
+      });
+    }
+  }
+
   roots.push({
     dir: resolve(packageRoot(), "src", "skills", "bundled"),
     source: "bundled",
@@ -247,6 +269,73 @@ function collectSkillRoots(cwd: string, options: { workspaceRoot: string; includ
   });
 
   return roots.filter((root, index, list) => list.findIndex((candidate) => candidate.dir === root.dir) === index);
+}
+
+function mountedAppSkillRoots(appRoot: string): string[] {
+  const manifest = readMountedAppManifest(appRoot);
+  const declaredRoots = [
+    ...stringArray(recordValue(manifest.skills).roots),
+    ...stringArray(recordValue(manifest.capabilities).skillRoots),
+    ...stringArray(manifest.skillRoots),
+  ];
+  if (declaredRoots.length) {
+    return uniqueStrings(declaredRoots.map((dir) => resolveAppPath(appRoot, dir)));
+  }
+  return collectSkillCollectionRoots(join(appRoot, "skills"), 0, 4);
+}
+
+function collectSkillCollectionRoots(dir: string, depth: number, maxDepth: number): string[] {
+  if (depth > maxDepth || !existsSync(dir)) return [];
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const roots: string[] = [];
+  const hasDirectSkills = entries.some((entry) => entry.isDirectory() && existsSync(join(dir, entry.name, "SKILL.md")));
+  if (hasDirectSkills) roots.push(dir);
+  if (depth >= maxDepth) return roots;
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || shouldSkipSkillSearchDirectory(entry.name)) continue;
+    roots.push(...collectSkillCollectionRoots(join(dir, entry.name), depth + 1, maxDepth));
+  }
+  return uniqueStrings(roots);
+}
+
+function readMountedAppManifest(appRoot: string): JsonObject {
+  for (const candidate of ["opengrove.app.json", "opengrove.app.jsonc"]) {
+    const path = join(appRoot, candidate);
+    if (!existsSync(path)) continue;
+    try {
+      return JSON.parse(readFileSync(path, "utf8")) as JsonObject;
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function resolveAppPath(appRoot: string, path: string): string {
+  return isAbsolute(path) ? path : resolve(appRoot, path);
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : [];
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function shouldSkipSkillSearchDirectory(name: string): boolean {
+  return name === ".git" || name === "node_modules" || name === ".venv" || name === "__pycache__";
 }
 
 function collectCodexPluginSkillRoots(root: string): string[] {
@@ -354,8 +443,8 @@ function createSkillManifest(input: {
     model: readString(input.frontmatter.model) || undefined,
     effort: readString(input.frontmatter.effort) || undefined,
     context,
-    shell: readStringList(input.frontmatter.shell),
-    paths: readStringList(input.frontmatter.paths),
+    shell: readSkillScopedStringList(input.frontmatter.shell, input.skillRoot),
+    paths: readSkillScopedStringList(input.frontmatter.paths, input.skillRoot),
     hooks: isJsonObject(input.frontmatter.hooks) ? input.frontmatter.hooks : undefined,
     source: input.source,
     trust: input.trust,
@@ -364,6 +453,26 @@ function createSkillManifest(input: {
     contentLength: input.body.length,
     tags: readStringList(input.frontmatter.tags),
   };
+}
+
+function readSkillScopedStringList(value: unknown, skillRoot: string): string[] {
+  return readStringList(value).map((item) => resolveSkillScopedValue(item, skillRoot));
+}
+
+function resolveSkillScopedValue(value: string, skillRoot: string): string {
+  const resolved = value
+    .replace(new RegExp(`\\$\\{${APP_ENV_PREFIX}_SKILL_DIR\\}`, "g"), skillRoot)
+    .replace(/\$\{CLAUDE_SKILL_DIR\}/g, skillRoot);
+  if (/^[^\s]+$/.test(resolved) && (resolved.startsWith("/") || resolved === "~" || resolved.startsWith("~/"))) {
+    return resolvePathLike(resolved);
+  }
+  return resolved;
+}
+
+function resolvePathLike(path: string): string {
+  if (path === "~") return resolve(homedir());
+  if (path.startsWith("~/")) return resolve(homedir(), path.slice(2));
+  return resolve(path);
 }
 
 function readSkillInterfaceMetadata(skillRoot: string): SkillInterfaceMetadata | undefined {

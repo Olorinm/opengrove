@@ -2,6 +2,7 @@ import type { AgentEvent } from "../core.js";
 import type { BridgeKernelId, BridgeState } from "./bridge-types.js";
 import { BRIDGE_KERNEL_IDS } from "./bridge-types.js";
 import type { RoomChannelMember, RoomChannelMessage } from "../rooms/channel-store.js";
+import { resolveMountedAppRuntimeEnv } from "./app-runtime-env.js";
 import { recreateBridgeApp } from "./bridge-state.js";
 import { runWithBridgeTurnContext } from "./bridge-turn-context.js";
 import { resolveKernelRuntimeModel } from "./kernel-selection.js";
@@ -86,9 +87,12 @@ async function executeRoomRun(
   const sessionId = roomAgentThreadId(input.roomId, target.id, target.kernel);
   const question = buildRoomRunPrompt(state, { ...input, target });
   const events: AgentEvent[] = [];
+  let executionState: BridgeState | undefined;
 
   try {
-    const executionState = roomExecutionState(state, target);
+    executionState = roomExecutionState(state, target);
+    const activeExecutionState = executionState;
+    const appRuntimeEnv = resolveMountedAppRuntimeEnv(activeExecutionState, target.appId);
     const turnContext = {
       threadId: sessionId,
       model,
@@ -102,17 +106,18 @@ async function executeRoomRun(
     };
 
     await runWithBridgeTurnContext(turnContext, async () => {
-      for await (const event of executionState.app.runTurn(question, {
+      for await (const event of activeExecutionState.app.runTurn(question, {
         sessionId,
         runId: input.runId,
         requestedModelId: model,
+        runtimeEnv: appRuntimeEnv?.env,
       })) {
         attachModelId([event], model);
         events.push(event);
       }
     });
 
-    if (executionState !== state) {
+    if (activeExecutionState !== state) {
       for (const event of events) {
         state.app.recordEvent(event, {
           sessionId,
@@ -121,6 +126,7 @@ async function executeRoomRun(
         });
       }
     }
+    syncRoomExecutionSessionMetadata(state, executionState, sessionId);
 
     const errorMessage = collectErrorText(events);
     const answer = collectAssistantText(events) || errorMessage;
@@ -138,6 +144,7 @@ async function executeRoomRun(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    syncRoomExecutionSessionMetadata(state, executionState, sessionId);
     const errorEvent: AgentEvent = {
       type: "error",
       runId: input.runId,
@@ -164,6 +171,25 @@ async function executeRoomRun(
   }
 }
 
+function syncRoomExecutionSessionMetadata(
+  state: BridgeState,
+  executionState: BridgeState | undefined,
+  sessionId: string,
+): void {
+  if (!executionState || executionState === state) {
+    return;
+  }
+  const scopedSession = executionState.app.sessions.get(sessionId);
+  if (!scopedSession?.metadata || Object.keys(scopedSession.metadata).length === 0) {
+    return;
+  }
+  state.app.sessions.ensureSession({
+    id: sessionId,
+    activity: scopedSession.activity,
+    metadata: scopedSession.metadata,
+  });
+}
+
 function roomExecutionState(state: BridgeState, target: RoomChannelMember): BridgeState {
   if (!isBridgeKernelId(target.kernel)) {
     throw new Error(`room_member_kernel_not_runnable:${target.kernel || "unknown"}`);
@@ -177,6 +203,7 @@ function roomExecutionState(state: BridgeState, target: RoomChannelMember): Brid
     settings: {
       ...state.settings,
       kernel: target.kernel,
+      workspaceRoot: target.workspaceRoot || state.settings.workspaceRoot,
     },
     kernel: target.kernel,
   } satisfies BridgeState;
@@ -218,6 +245,7 @@ function buildRoomRunPrompt(
     `You are participating in this room as "${input.target.name}".`,
     `Runtime binding: kernel=${input.target.kernel || "kernel"}, model=${input.target.model || "default"}.`,
     input.target.role.trim() ? `Role and persona:\n${input.target.role.trim()}` : "",
+    input.target.defaultSkillIds?.length ? `Default skills:\n${input.target.defaultSkillIds.map((skillId) => `- ${skillId}`).join("\n")}` : "",
     "<opengrove_room_delivery>",
     `  <room id="${escapeXml(room?.id || input.roomId)}" kind="${escapeXml(room?.kind || "group")}" title="${escapeXml(room?.title || "room")}" />`,
     `  <target_member id="${escapeXml(input.target.id)}" name="${escapeXml(input.target.name)}" kernel="${escapeXml(input.target.kernel)}" model="${escapeXml(input.target.model)}" />`,

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { resolve } from "node:path";
 import type {
   AgentEvent,
   AgentRuntime,
@@ -35,14 +36,16 @@ export class GenericCliRuntime implements AgentRuntime {
 
   async *runTurn(request: AgentTurnRequest): AsyncIterable<AgentEvent> {
     const runId = request.runId ?? `run_${Date.now()}`;
-    const capture = resolveProviderHttpCaptureOptions(this.options.providerHttpCapture, this.options.env);
+    const runtimeEnv = mergeRuntimeEnv(this.options.env, request.runtimeEnv);
+    const capture = resolveProviderHttpCaptureOptions(this.options.providerHttpCapture, runtimeEnv);
     const prompt = buildPrompt(request, this.options.promptLayout);
     const priorMessages = recentSessionMessages(request);
     const args = this.options.promptMode === "arg"
       ? [...(this.options.args ?? []), prompt]
       : [...(this.options.args ?? [])];
     const invocation = resolveCommandInvocation(this.options.command, args);
-    const env = applyProviderHttpCaptureEnv({ ...process.env, ...this.options.env }, capture);
+    const cwd = resolve(this.options.cwd ?? process.cwd());
+    const env = applyProviderHttpCaptureEnv({ ...process.env, ...runtimeEnv }, capture);
     const session: AgentSessionTrace = {
       provider: this.options.kernelId,
       sessionId: request.context.sessionId,
@@ -79,8 +82,8 @@ export class GenericCliRuntime implements AgentRuntime {
     };
 
     const child = spawn(invocation.command, invocation.args, {
-      cwd: this.options.cwd ?? process.cwd(),
-      env,
+      cwd,
+      env: { ...env, PWD: cwd },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -133,6 +136,17 @@ export class GenericCliRuntime implements AgentRuntime {
     yield { type: "model.response", runId, response: { text } };
     yield { type: "turn.finished", runId, at: new Date().toISOString() };
   }
+}
+
+function mergeRuntimeEnv(
+  base: NodeJS.ProcessEnv | undefined,
+  override: NodeJS.ProcessEnv | undefined,
+): NodeJS.ProcessEnv | undefined {
+  const merged = { ...(base ?? {}), ...(override ?? {}) };
+  for (const [key, value] of Object.entries(merged)) {
+    if (value === undefined) delete merged[key];
+  }
+  return Object.keys(merged).length ? merged : undefined;
 }
 
 function formatCliOutput(stdout: string, outputFormat: GenericCliRuntimeOptions["outputFormat"]): string {

@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { execFile } from "node:child_process";
-import type { JsonObject, JsonValue } from "../../core.js";
+import type { JsonObject } from "../../core.js";
 import { isKnowledgeDocumentType, isKnowledgeScope } from "../../knowledge/store.js";
 import type {
   KnowledgeDocumentPatch,

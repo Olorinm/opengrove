@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { FileSearch, FolderOpen, PanelLeft } from "lucide-react";
 import { bridgeHeaders, fetchJson } from "../../bridge";
 import { formatDate } from "../../format";
 import { MarkdownCodeEditor } from "./markdown-code-editor";
@@ -179,7 +180,17 @@ export function KnowledgeDetailPanel(props: {
   if (!document) {
     return (
       <div className="knowledge-document-area">
-        <div className="knowledge-empty">选择一条页面查看属性、关系和动态。</div>
+        <div className="knowledge-empty knowledge-empty-selection">
+          <span className="knowledge-empty-icon" aria-hidden="true">
+            <FileSearch size={21} />
+          </span>
+          <strong>选择一篇文档开始查看</strong>
+          <p>从左侧文件树打开笔记、skill 或记忆文件，这里会显示正文、属性、关系和动态。</p>
+          <div className="knowledge-empty-steps" aria-hidden="true">
+            <span><PanelLeft size={13} /> 左侧文件树</span>
+            <span><FolderOpen size={13} /> 本地资料库</span>
+          </div>
+        </div>
       </div>
     );
   }

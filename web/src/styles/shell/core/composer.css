@@ -30,6 +30,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .opengrove-model-menu {
@@ -121,15 +122,16 @@
   white-space: nowrap;
 }
 
-.opengrove-model-option-check::before {
-  content: "";
+.opengrove-model-option-check {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: #7a7d82;
 }
 
-.opengrove-model-option[aria-selected="true"] .opengrove-model-option-check::before {
-  content: "✓";
-  color: #565952;
-  font-size: 13px;
-  font-weight: var(--fw-semibold);
+.opengrove-model-option-check svg {
+  display: block;
 }
 
 .opengrove-composer-resize-handle {
@@ -235,6 +237,7 @@
 
 .opengrove-composer-footer-right {
   flex: 0 0 auto;
+  gap: 4px;
 }
 
 .opengrove-composer-plus {
@@ -264,6 +267,28 @@
 .opengrove-composer-plus:hover {
   background: var(--c-surface-hover);
   color: var(--c-text-2);
+}
+
+.opengrove-composer-mic[data-state="recording"] {
+  background: rgba(224, 68, 52, 0.12);
+  color: #b9322b;
+}
+
+.opengrove-composer-mic {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin-right: -1px;
+}
+
+.opengrove-composer-mic svg {
+  width: 14px;
+  height: 14px;
+}
+
+.opengrove-composer-mic[data-state="transcribing"] {
+  background: rgba(42, 101, 196, 0.1);
+  color: #2f5fba;
 }
 
 .opengrove-action.opengrove-composer-plus:focus-visible {
@@ -378,4 +403,3 @@
   font-weight: var(--fw-medium);
   border-radius: 0 0 15px 15px;
 }
-

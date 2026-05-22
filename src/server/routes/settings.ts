@@ -9,6 +9,11 @@ import {
   saveBridgeSettings,
 } from "../bridge-state.js";
 import type { BridgeState } from "../bridge-types.js";
+import {
+  getCopilotAuthSnapshot,
+  startCopilotTerminalLogin,
+} from "../copilot-auth.js";
+import { refreshRemoteRuntime } from "../remote/runtime-manager.js";
 import { applySystemProviderDiscovery } from "../system-provider-discovery.js";
 
 type SendJson = (response: ServerResponse, status: number, data: unknown) => void;
@@ -27,6 +32,16 @@ export async function handleSettingsRoute(options: {
 
   if (request.method === "GET" && url.pathname === "/settings") {
     sendJson(response, 200, { ok: true, settings: getBridgeSettingsSnapshot(state) });
+    return true;
+  }
+
+  if (request.method === "GET" && url.pathname === "/settings/kernel-auth/copilot") {
+    sendJson(response, 200, { ok: true, auth: await getCopilotAuthSnapshot(state) });
+    return true;
+  }
+
+  if (request.method === "POST" && url.pathname === "/settings/kernel-auth/copilot/login") {
+    sendJson(response, 200, { ok: true, auth: await startCopilotTerminalLogin(state) });
     return true;
   }
 
@@ -98,6 +113,7 @@ export async function handleSettingsRoute(options: {
     nextSettings.workspaceRoot !== previousSettings.workspaceRoot ||
     nextSettings.providerHttpCaptureEnabled !== previousSettings.providerHttpCaptureEnabled ||
     nextSettings.codexRawEventCaptureEnabled !== previousSettings.codexRawEventCaptureEnabled ||
+    JSON.stringify(nextSettings.mountedApps) !== JSON.stringify(previousSettings.mountedApps) ||
     JSON.stringify(nextSettings.kernelProxy) !== JSON.stringify(previousSettings.kernelProxy) ||
     JSON.stringify(nextSettings.kernelPathOverrides) !== JSON.stringify(previousSettings.kernelPathOverrides) ||
     JSON.stringify(nextSettings.kernelProviderBindings) !== JSON.stringify(previousSettings.kernelProviderBindings) ||
@@ -106,6 +122,7 @@ export async function handleSettingsRoute(options: {
   if (!restartRequired) {
     state.settings = nextSettings;
     saveBridgeSettings(state);
+    refreshRemoteRuntime(state);
     sendJson(response, 200, {
       ok: true,
       restarted: false,
@@ -121,10 +138,12 @@ export async function handleSettingsRoute(options: {
   try {
     recreateBridgeApp(state);
     saveBridgeSettings(state);
+    refreshRemoteRuntime(state);
   } catch (error) {
     state.settings = previousSettings;
     try {
       recreateBridgeApp(state);
+      refreshRemoteRuntime(state);
     } catch {
       // Keep the original error visible; recovery can fail only if the prior runtime vanished.
     }

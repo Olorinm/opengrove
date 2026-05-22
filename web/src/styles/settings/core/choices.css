@@ -72,6 +72,67 @@
   line-height: 1.45;
 }
 
+.settings-choice-card-description {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-kernel-auth-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
+.settings-kernel-auth-separator {
+  color: #9aa09a;
+}
+
+.settings-kernel-auth-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #92998f;
+}
+
+.settings-kernel-auth-status[data-status="authenticated"] {
+  color: #2f7d4f;
+}
+
+.settings-kernel-auth-status[data-status="authenticated"] .settings-kernel-auth-dot {
+  background: #2f9e62;
+}
+
+.settings-kernel-auth-status[data-status="checking"] {
+  color: #2d67b1;
+}
+
+.settings-kernel-auth-status[data-status="checking"] .settings-kernel-auth-dot {
+  background: #3b82f6;
+}
+
+.settings-kernel-auth-status[data-status="missing"],
+.settings-kernel-auth-status[data-status="unconfirmed"] {
+  color: #926513;
+}
+
+.settings-kernel-auth-status[data-status="missing"] .settings-kernel-auth-dot,
+.settings-kernel-auth-status[data-status="unconfirmed"] .settings-kernel-auth-dot {
+  background: #d99b1f;
+}
+
+.settings-kernel-auth-status[data-status="error"] {
+  color: #b4462d;
+}
+
+.settings-kernel-auth-status[data-status="error"] .settings-kernel-auth-dot {
+  background: #d9573a;
+}
+
 .settings-kernel-choice-grid {
   gap: 10px;
 }
@@ -241,6 +302,12 @@
   font-weight: var(--fw-bold);
 }
 
+.settings-kernel-install-button.with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .settings-kernel-install-button:hover,
 .settings-kernel-install-button:focus-visible {
   border-color: rgba(52, 84, 44, 0.28);
@@ -278,4 +345,3 @@
   cursor: not-allowed;
   opacity: 0.45;
 }
-

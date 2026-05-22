@@ -1,7 +1,10 @@
 /* Rooms, refined around existing OpenGrove chat primitives. */
 .rooms-view {
   grid-template-columns: var(--opengrove-sidebar-width, 284px) minmax(0, 1fr);
-  background: #ffffff;
+  box-sizing: border-box;
+  gap: 10px;
+  background: transparent;
+  padding: 10px;
 }
 
 .rooms-view[data-members-open="true"] {
@@ -11,7 +14,10 @@
 .rooms-list-panel {
   grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 12px;
+  border: 1px solid var(--og-border);
+  border-radius: var(--r-lg);
   background: var(--og-sidebar-bg);
+  overflow: hidden;
   padding: 18px 10px 12px;
 }
 
@@ -105,8 +111,10 @@
 
 .room-main-panel {
   grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid var(--og-border);
+  border-radius: var(--r-lg);
   background: #ffffff;
-  border-right: 1px solid var(--rooms-border);
+  overflow: hidden;
 }
 
 .room-header {
@@ -265,4 +273,3 @@
   color: #374151;
   outline: 0;
 }
-

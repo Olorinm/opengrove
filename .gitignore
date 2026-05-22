@@ -2,8 +2,10 @@ node_modules/
 dist/
 data/
 doc/
+docs.local/
 .DS_Store
 web-dist/
+*.tgz
 .claude/
 .codex/
 .obsidian/

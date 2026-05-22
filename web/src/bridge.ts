@@ -50,6 +50,9 @@ export interface RuntimeControls {
 }
 export type ViewId =
   | "chat"
+  | "app"
+  | "ops"
+  | "extensions"
   | "rooms"
   | "contacts"
   | "library"
@@ -316,7 +319,113 @@ export interface InventoryResponse {
   skills: SkillRecord[];
   packs: Record<string, unknown>[];
   tools: Record<string, unknown>[];
+  extensions?: ExtensionInventoryRecord;
   capabilities: Record<string, unknown>[];
+}
+
+export interface ExtensionInventoryRecord {
+  scannedAt: string;
+  workspaceRoot: string;
+  items: ExtensionItemRecord[];
+  deployments: ExtensionDeploymentRecord[];
+  commandUsages: Record<string, unknown>[];
+  summary: {
+    itemCount?: number;
+    deploymentCount?: number;
+    enabledDeploymentCount?: number;
+    byKind?: Record<string, number>;
+    byKernel?: Record<string, number>;
+    [key: string]: unknown;
+  };
+}
+
+export interface ExtensionItemRecord {
+  id: string;
+  kind: string;
+  name: string;
+  title: string;
+  description: string;
+  enabled: boolean;
+  managedByOpenGrove: boolean;
+  readonly: boolean;
+  system: boolean;
+  source?: Record<string, unknown>;
+  deployments: ExtensionDeploymentRecord[];
+  permissions: Record<string, unknown>[];
+  commandUsages: Record<string, unknown>[];
+  childIds: string[];
+  tags: string[];
+  metadata: Record<string, unknown>;
+}
+
+export interface ExtensionDeploymentRecord {
+  id: string;
+  itemId: string;
+  kind: string;
+  kernelId?: string;
+  scope: string;
+  status: string;
+  enabled: boolean;
+  managedByOpenGrove: boolean;
+  readonly: boolean;
+  system: boolean;
+  sourcePath?: string;
+  targetPath?: string;
+  configPath?: string;
+  configFormat?: string;
+  markerPath?: string;
+  reason?: string;
+  command?: string;
+  args?: string[];
+  envKeys?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface MountedAppFileEntry {
+  name: string;
+  path: string;
+  kind: "file" | "directory";
+  size?: number;
+  mimeType?: string;
+  updatedAt?: string;
+  children?: MountedAppFileEntry[];
+}
+
+export interface MountedAppRouteInfo {
+  id: string;
+  title: string;
+  appRoot: string;
+  workspaceRoot: string;
+  workspaceKind?: string;
+}
+
+export interface MountedAppFilesResponse {
+  ok: boolean;
+  app: MountedAppRouteInfo;
+  path: string;
+  entries: MountedAppFileEntry[];
+  truncated?: boolean;
+  error?: string;
+}
+
+export interface MountedAppFileResponse {
+  ok: boolean;
+  app: MountedAppRouteInfo;
+  file?: MountedAppFileEntry & {
+    content?: string;
+    contentTruncated?: boolean;
+  };
+  error?: string;
+}
+
+export interface MountedAppFileSystemResponse {
+  ok: boolean;
+  app: MountedAppRouteInfo;
+  entry?: MountedAppFileEntry;
+  deletedPath?: string;
+  entries: MountedAppFileEntry[];
+  truncated?: boolean;
+  error?: string;
 }
 
 export interface ApprovalsResponse {
@@ -422,15 +531,245 @@ export interface MatrixSettings {
   homeserverUrl: string;
   userId: string;
   accessToken?: string;
-  roomBindings?: Record<string, MatrixRoomBinding>;
+  bindings?: Record<string, RemoteRoomBinding>;
 }
 
-export interface MatrixRoomBinding {
-  matrixRoomId: string;
+export interface RemoteSettings {
+  matrix: MatrixSettings;
+}
+
+export interface RemoteRoomBinding {
+  provider: "matrix";
+  accountId: string;
+  remoteRoomId: string;
   homeserverUrl: string;
   title: string;
   createdAt: string;
-  syncToken?: string;
+  syncCursor?: string;
+  enabled: boolean;
+}
+
+export type VoiceSttProviderId = "openai" | "groq" | "local-whisper" | "browser";
+
+export interface VoiceSettings {
+  stt: VoiceSttSettings;
+  sttProviders?: VoiceSttProviderInfo[];
+}
+
+export interface VoiceSttSettings {
+  provider: VoiceSttProviderId;
+  language: string;
+  openai: VoiceCloudSttProviderSettings;
+  groq: VoiceCloudSttProviderSettings;
+  localWhisper: VoiceLocalWhisperSettings;
+  browser: VoiceBrowserSttSettings;
+}
+
+export interface VoiceCloudSttProviderSettings {
+  model: string;
+  baseUrl: string;
+  apiKey?: string;
+  apiKeyEnv: string;
+}
+
+export interface VoiceLocalWhisperSettings {
+  model: string;
+  command?: string;
+  language: string;
+}
+
+export interface VoiceBrowserSttSettings {
+  language: string;
+}
+
+export interface VoiceSttProviderInfo {
+  id: VoiceSttProviderId;
+  label: string;
+  mode: "browser" | "recorded-upload" | "local-command";
+  configured: boolean;
+  defaultModel?: string;
+  notes?: string[];
+}
+
+export interface VoiceTranscriptionResponse {
+  ok: boolean;
+  transcript?: string;
+  language?: string;
+  durationMs?: number;
+  provider?: VoiceSttProviderId;
+  model?: string;
+  error?: string;
+}
+
+export type DeveloperSessionStatus =
+  | "draft"
+  | "context_ready"
+  | "running"
+  | "ready"
+  | "accepted"
+  | "reverted"
+  | "blocked";
+
+export type VisualAnnotationKind = "element" | "box" | "stroke" | "note" | "voice";
+export type VisualAnnotationStatus = "pending" | "acknowledged" | "replied" | "resolved" | "dismissed";
+
+export interface VisualAnnotationRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface VisualAnnotationPoint {
+  x: number;
+  y: number;
+}
+
+export interface VisualAnnotationTarget {
+  capture?: Record<string, unknown>;
+  selector?: string;
+  elementPath?: string;
+  fullPath?: string;
+  tagName?: string;
+  text?: string;
+  className?: string;
+  cssClasses?: string[];
+  ariaLabel?: string;
+  role?: string;
+  boundingBox?: VisualAnnotationRect;
+  selectionRect?: VisualAnnotationRect;
+  selectedText?: string;
+  nearbyText?: string;
+  nearbyElements?: Array<Record<string, unknown>>;
+  computedStyles?: Record<string, unknown>;
+  accessibility?: Record<string, unknown>;
+  isFixed?: boolean;
+  reactPath?: string;
+  reactComponents?: string[];
+  sourceHint?: string;
+  sourceFile?: string;
+  elementBoundingBoxes?: Array<Record<string, unknown>>;
+}
+
+export interface VisualAnnotation {
+  id: string;
+  kind: VisualAnnotationKind;
+  status?: VisualAnnotationStatus;
+  comment: string;
+  transcript?: string;
+  url: string;
+  viewport: { width: number; height: number };
+  rect?: VisualAnnotationRect;
+  points?: VisualAnnotationPoint[];
+  target?: VisualAnnotationTarget;
+  thread?: VisualAnnotationThreadMessage[];
+  resolvedAt?: string;
+  resolvedBy?: "user" | "agent";
+  sentAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VisualAnnotationThreadMessage {
+  id: string;
+  role: "user" | "agent";
+  content: string;
+  createdAt: string;
+}
+
+export interface DeveloperSessionBoundaryCheck {
+  status: "clean" | "warning" | "blocked";
+  targetRoot: string;
+  touchedFiles: Array<{
+    path: string;
+    insideTargetRoot: boolean;
+    changeKind: "added" | "modified" | "deleted" | "renamed" | "unknown";
+  }>;
+  message?: string;
+}
+
+export interface DeveloperSessionRun {
+  id: string;
+  sessionId: string;
+  threadId: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "blocked" | "cancelled";
+  inputContextId: string;
+  touchedFiles: string[];
+  diffSummary?: string;
+  boundaryCheck?: DeveloperSessionBoundaryCheck;
+  startedAt: string;
+  finishedAt?: string;
+}
+
+export interface DeveloperSessionCore {
+  coreId: string;
+  name: string;
+  kernel: string;
+  model: string;
+}
+
+export interface DeveloperSession {
+  id: string;
+  kind: "developer_session";
+  title: string;
+  description: string;
+  threadId: string;
+  targetRoot: string;
+  targetUrl: string;
+  core?: DeveloperSessionCore;
+  status: DeveloperSessionStatus;
+  preview: {
+    status: "idle" | "loading" | "ready" | "error";
+    lastLoadedAt?: string;
+    error?: string;
+  };
+  annotations: VisualAnnotation[];
+  runs: DeveloperSessionRun[];
+  baseline?: Record<string, unknown>;
+  latestRunId?: string;
+  riskLevel?: "none" | "warning" | "blocked";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DeveloperSessionContextPacket {
+  sessionId: string;
+  kind: "developer_session";
+  userIntent: string;
+  target: {
+    workspaceRoot: string;
+    url: string;
+    viewport?: { width: number; height: number };
+  };
+  core?: DeveloperSessionCore;
+  inputs: Array<Record<string, unknown>>;
+  constraints: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+}
+
+export interface DeveloperSessionsResponse {
+  ok: boolean;
+  sessions: DeveloperSession[];
+  error?: string;
+}
+
+export interface DeveloperPreviewServiceResult {
+  status: "restarted" | "unsupported" | "failed";
+  message?: string;
+  command?: string;
+  args?: string[];
+  ready?: boolean;
+  pid?: number;
+}
+
+export interface DeveloperSessionResponse {
+  ok: boolean;
+  session?: DeveloperSession;
+  context?: DeveloperSessionContextPacket;
+  previewService?: DeveloperPreviewServiceResult;
+  diffSummary?: string;
+  boundaryCheck?: DeveloperSessionBoundaryCheck;
+  error?: string;
 }
 
 export interface BridgeSettings {
@@ -442,16 +781,25 @@ export interface BridgeSettings {
   kernels: KernelOption[];
   providers?: ProviderProfile[];
   customProviders?: ProviderProfile[];
+  mountedApps?: MountedAppSettings[];
   kernelProviderBindings?: Record<string, string>;
   providerBindings?: ProviderBinding[];
   kernelPathOverrides?: Record<string, KernelPathOverride>;
   kernelKnowledgeSourceEnabled?: Record<string, Record<string, boolean>>;
   kernelProxy: KernelProxySettings;
   inviteLanding?: InviteLandingSettings;
-  matrix?: MatrixSettings;
+  remote?: RemoteSettings;
+  voice?: VoiceSettings;
   providerHttpCapture: ProviderHttpCaptureSettings;
   codexRawEventCaptureEnabled?: boolean;
   settingsPath?: string;
+}
+
+export interface MountedAppSettings {
+  id: string;
+  path: string;
+  enabled: boolean;
+  title?: string;
 }
 
 export interface KernelPathOverride {
@@ -511,6 +859,33 @@ export interface KernelInstallResponse {
   settings?: BridgeSettings;
   error?: string;
 }
+
+export type KernelAuthStatus =
+  | "authenticated"
+  | "missing"
+  | "checking"
+  | "unconfirmed"
+  | "unknown"
+  | "error";
+
+export interface KernelAuthState {
+  kernelId: string;
+  status: KernelAuthStatus;
+  method: "env-token" | "stored-credential" | "terminal" | "none" | "unknown";
+  loginAvailable: boolean;
+  message?: string;
+  startedAt?: string;
+  deadlineAt?: string;
+  lastCheckedAt?: string;
+}
+
+export interface KernelAuthResponse {
+  ok: boolean;
+  auth: KernelAuthState;
+  error?: string;
+}
+
+export interface KernelAuthLoginResponse extends KernelAuthResponse {}
 
 export interface WorkspaceDirectoryResponse {
   ok: boolean;
@@ -581,31 +956,33 @@ export function modelLabel(modelId: string): string {
 }
 
 export function supportedView(value: string): ViewId {
-  if (value === "rooms" || value === "team" || value === "team-chat" || value === "collaboration") {
+  if (value === "app" || value === "apps" || value === "mounted-app" || value === "user-app") {
+    return "app";
+  }
+  if (value === "ops" || value === "ops-center" || value === "sessions" || value === "runs" || value === "activity" || value === "automation") {
+    return "ops";
+  }
+  if (value === "extensions" || value === "extension-manager" || value === "skills" || value === "tools" || value === "mcp") {
+    return "extensions";
+  }
+  if (
+    value === "rooms"
+    || value === "team"
+    || value === "team-chat"
+    || value === "collaboration"
+    || value === "contacts"
+    || value === "address-book"
+    || value === "people"
+  ) {
     return "rooms";
   }
-  if (value === "contacts" || value === "address-book" || value === "people") {
-    return "contacts";
-  }
-  if (value === "library" || value === "inbox" || value === "artifacts") {
+  if (value === "library" || value === "object-studio" || value === "objects" || value === "inbox" || value === "artifacts") {
     return "library";
   }
-  if (value === "settings" || value === "context" || value === "memory" || value === "skills" || value === "tools") {
+  if (value === "settings" || value === "capability-settings" || value === "context" || value === "memory") {
     return "settings";
   }
   return "chat";
-}
-
-export function viewTitle(view: ViewId): string {
-  return (
-    {
-      chat: "新线程",
-      rooms: "消息",
-      contacts: "通讯录",
-      library: "资料库",
-      settings: "设置",
-    }[view] ?? "新线程"
-  );
 }
 
 export function bridgeHeaders(includeContentType = true): HeadersInit {
@@ -661,6 +1038,128 @@ export async function patchJson<T>(path: string, payload: unknown): Promise<T> {
   });
 }
 
+export async function deleteJson<T>(path: string): Promise<T> {
+  return fetchJson<T>(path, {
+    method: "DELETE",
+    headers: bridgeHeaders(false),
+  });
+}
+
+export async function listDeveloperSessions(): Promise<DeveloperSessionsResponse> {
+  return getJson<DeveloperSessionsResponse>("/developer/sessions");
+}
+
+export async function listMountedAppFiles(appId: string): Promise<MountedAppFilesResponse> {
+  return getJson<MountedAppFilesResponse>(`/apps/${encodeURIComponent(appId)}/files`);
+}
+
+export async function getMountedAppFile(appId: string, path: string): Promise<MountedAppFileResponse> {
+  const params = new URLSearchParams({ path });
+  return getJson<MountedAppFileResponse>(`/apps/${encodeURIComponent(appId)}/file?${params.toString()}`);
+}
+
+export async function createMountedAppFileSystemEntry(appId: string, payload: {
+  kind: "file" | "folder";
+  parentPath: string;
+  name: string;
+  content?: string;
+}): Promise<MountedAppFileSystemResponse> {
+  return postJson<MountedAppFileSystemResponse>(`/apps/${encodeURIComponent(appId)}/file-system`, payload);
+}
+
+export async function moveMountedAppFileSystemEntry(appId: string, payload: {
+  sourcePath: string;
+  targetParentPath: string;
+}): Promise<MountedAppFileSystemResponse> {
+  return postJson<MountedAppFileSystemResponse>(`/apps/${encodeURIComponent(appId)}/file-system/move`, payload);
+}
+
+export async function renameMountedAppFileSystemEntry(appId: string, payload: {
+  sourcePath: string;
+  name: string;
+}): Promise<MountedAppFileSystemResponse> {
+  return postJson<MountedAppFileSystemResponse>(`/apps/${encodeURIComponent(appId)}/file-system/rename`, payload);
+}
+
+export async function deleteMountedAppFileSystemEntry(appId: string, payload: {
+  sourcePath: string;
+}): Promise<MountedAppFileSystemResponse> {
+  return postJson<MountedAppFileSystemResponse>(`/apps/${encodeURIComponent(appId)}/file-system/delete`, payload);
+}
+
+export async function createDeveloperSession(payload: {
+  title?: string;
+  description: string;
+  targetRoot: string;
+  targetUrl: string;
+  core?: DeveloperSessionCore;
+  threadId?: string;
+}): Promise<DeveloperSessionResponse> {
+  return postJson<DeveloperSessionResponse>("/developer/sessions", payload);
+}
+
+export async function patchDeveloperSession(sessionId: string, payload: Partial<Pick<DeveloperSession,
+  "title" | "description" | "targetRoot" | "targetUrl" | "core" | "status" | "preview" | "riskLevel"
+>>): Promise<DeveloperSessionResponse> {
+  return patchJson<DeveloperSessionResponse>(`/developer/sessions/${encodeURIComponent(sessionId)}`, payload);
+}
+
+export async function addDeveloperSessionAnnotation(sessionId: string, payload: {
+  kind: VisualAnnotationKind;
+  status?: VisualAnnotationStatus;
+  comment?: string;
+  transcript?: string;
+  url?: string;
+  viewport?: { width: number; height: number };
+  rect?: VisualAnnotationRect;
+  points?: VisualAnnotationPoint[];
+  target?: VisualAnnotationTarget;
+}): Promise<DeveloperSessionResponse> {
+  return postJson<DeveloperSessionResponse>(`/developer/sessions/${encodeURIComponent(sessionId)}/annotations`, payload);
+}
+
+export async function patchDeveloperSessionAnnotation(sessionId: string, annotationId: string, payload: {
+  comment?: string;
+  status?: VisualAnnotationStatus;
+  resolvedBy?: "user" | "agent";
+}): Promise<DeveloperSessionResponse> {
+  return patchJson<DeveloperSessionResponse>(
+    `/developer/sessions/${encodeURIComponent(sessionId)}/annotations/${encodeURIComponent(annotationId)}`,
+    payload,
+  );
+}
+
+export async function addDeveloperSessionAnnotationThread(sessionId: string, annotationId: string, payload: {
+  role?: "user" | "agent";
+  content: string;
+}): Promise<DeveloperSessionResponse> {
+  return postJson<DeveloperSessionResponse>(
+    `/developer/sessions/${encodeURIComponent(sessionId)}/annotations/${encodeURIComponent(annotationId)}/thread`,
+    payload,
+  );
+}
+
+export async function deleteDeveloperSessionAnnotation(sessionId: string, annotationId: string): Promise<DeveloperSessionResponse> {
+  return deleteJson<DeveloperSessionResponse>(
+    `/developer/sessions/${encodeURIComponent(sessionId)}/annotations/${encodeURIComponent(annotationId)}`,
+  );
+}
+
+export async function restartDeveloperPreviewService(sessionId: string): Promise<DeveloperSessionResponse> {
+  return postJson<DeveloperSessionResponse>(`/developer/sessions/${encodeURIComponent(sessionId)}/preview/restart`, {});
+}
+
+export async function transcribeVoiceAudio(payload: {
+  audioBase64: string;
+  mimeType?: string;
+  filename?: string;
+  language?: string;
+  provider?: VoiceSttProviderId;
+  sessionId?: string;
+}): Promise<VoiceTranscriptionResponse> {
+  return postJson<VoiceTranscriptionResponse>("/voice/transcriptions", payload);
+}
+
 export async function runAskStream(
   payload: {
     question: string;
@@ -670,6 +1169,7 @@ export async function runAskStream(
     responseSpeed?: ResponseSpeed;
     accessMode?: RuntimeAccessMode;
     threadId: string;
+    appId?: string;
     snapshot: unknown;
     computerSnapshot: unknown;
     allowMemory: boolean;

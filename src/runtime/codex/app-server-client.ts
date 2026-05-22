@@ -1,4 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { delimiter, dirname, resolve } from "node:path";
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 import type { JsonValue } from "../../core.js";
 import { resolveCommandInvocation } from "../../kernel/discovery.js";
@@ -8,7 +11,6 @@ import {
   isCodexApprovalRequest,
 } from "./approval-bridge.js";
 import { readCodexAuthRefreshResponse } from "./auth.js";
-import { isJsonObject } from "./json.js";
 import type {
   CodexInitializeResponse,
   RpcMessage,
@@ -18,6 +20,14 @@ import type {
   ServerRequestHandler,
 } from "./types.js";
 import { MIN_CODEX_APP_SERVER_VERSION } from "./types.js";
+
+export const CODEX_APP_SERVER_OPT_OUT_NOTIFICATION_METHODS: string[] = [
+  "command/exec/outputDelta",
+  "item/plan/delta",
+  "item/fileChange/outputDelta",
+  "item/reasoning/summaryTextDelta",
+  "item/reasoning/textDelta",
+];
 
 export class CodexAppServerClient {
   private readonly child: ChildProcessWithoutNullStreams;
@@ -67,7 +77,7 @@ export class CodexAppServerClient {
   }): CodexAppServerClient {
     const invocation = resolveCommandInvocation(options.command, options.args);
     const child = spawn(invocation.command, invocation.args, {
-      env: { ...process.env, ...options.env },
+      env: buildCodexAppServerEnv(invocation.command, options.env),
       stdio: ["pipe", "pipe", "pipe"],
     });
     options.rpcCapture?.recordLifecycle("app_server.spawned", {
@@ -82,6 +92,19 @@ export class CodexAppServerClient {
     return this.closed;
   }
 
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.rpcCapture?.recordLifecycle("app_server.closed", { reason: "closed_by_host" });
+    this.lines.close();
+    this.child.kill("SIGTERM");
+    for (const pending of this.pending.values()) {
+      pending.cleanup();
+      pending.reject(new Error("codex app-server closed"));
+    }
+    this.pending.clear();
+  }
+
   async initialize(): Promise<void> {
     const response = await this.request<CodexInitializeResponse>("initialize", {
       clientInfo: {
@@ -91,14 +114,7 @@ export class CodexAppServerClient {
       },
       capabilities: {
         experimentalApi: true,
-        optOutNotificationMethods: [
-          "command/exec/outputDelta",
-          "item/agentMessage/delta",
-          "item/plan/delta",
-          "item/fileChange/outputDelta",
-          "item/reasoning/summaryTextDelta",
-          "item/reasoning/textDelta",
-        ],
+        optOutNotificationMethods: CODEX_APP_SERVER_OPT_OUT_NOTIFICATION_METHODS,
       },
     });
     assertSupportedCodexAppServerVersion(response);
@@ -291,6 +307,59 @@ export class CodexAppServerClient {
       pending.reject(error);
     }
     this.pending.clear();
+  }
+}
+
+export function buildCodexAppServerEnv(
+  command: string,
+  env: NodeJS.ProcessEnv | undefined,
+): NodeJS.ProcessEnv {
+  const merged = { ...process.env, ...env };
+  merged.PATH = augmentedCodexRuntimePath(command, merged.PATH);
+  return merged;
+}
+
+function augmentedCodexRuntimePath(command: string, pathValue: string | undefined): string {
+  const existing = splitPath(pathValue);
+  const additions = defaultCodexRuntimePathAdditions(command);
+  return dedupePathEntries([...existing, ...additions]).join(delimiter);
+}
+
+function defaultCodexRuntimePathAdditions(command: string): string[] {
+  const additions = [
+    command.includes("/") || command.includes("\\") ? dirname(command) : "",
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/local/sbin",
+    resolve(homedir(), ".local", "bin"),
+    resolve(homedir(), ".cargo", "bin"),
+    resolve(homedir(), ".bun", "bin"),
+  ];
+  return additions.filter((path) => path && safeDirectoryExists(path));
+}
+
+function splitPath(pathValue: string | undefined): string[] {
+  return (pathValue || "").split(delimiter).filter(Boolean);
+}
+
+function dedupePathEntries(entries: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const entry of entries) {
+    const normalized = entry.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function safeDirectoryExists(path: string): boolean {
+  try {
+    return existsSync(path);
+  } catch {
+    return false;
   }
 }
 

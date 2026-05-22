@@ -41,6 +41,7 @@
 .app-topbar-actions {
   display: flex;
   gap: 8px;
+  margin-left: auto;
 }
 
 .app-topbar-actions .ghost-button {
@@ -133,4 +134,3 @@
   line-height: var(--lh-relaxed);
   white-space: pre-wrap;
 }
-

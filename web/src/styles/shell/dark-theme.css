@@ -85,6 +85,7 @@
 :root[data-resolved-theme="dark"] .rooms-mention-menu,
 :root[data-resolved-theme="dark"] .rooms-room-menu,
 :root[data-resolved-theme="dark"] .rooms-create-menu,
+:root[data-resolved-theme="dark"] .sidebar-tree-menu,
 :root[data-resolved-theme="dark"] .rooms-member-picker,
 :root[data-resolved-theme="dark"] .contacts-search,
 :root[data-resolved-theme="dark"] .rooms-member-search,
@@ -181,6 +182,8 @@
 :root[data-resolved-theme="dark"] .employee-dialog-kernel-option:focus-visible,
 :root[data-resolved-theme="dark"] .rooms-create-group-member:hover,
 :root[data-resolved-theme="dark"] .rooms-create-group-member:focus-within,
+:root[data-resolved-theme="dark"] .sidebar-tree-menu button:hover,
+:root[data-resolved-theme="dark"] .sidebar-tree-menu button:focus-visible,
 :root[data-resolved-theme="dark"] .overview-icon-button:hover {
   background: var(--og-surface-subtle);
   color: var(--og-text-strong);

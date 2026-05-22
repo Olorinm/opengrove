@@ -34,7 +34,6 @@
 :root[data-resolved-theme="dark"] .settings-install-card,
 :root[data-resolved-theme="dark"] .settings-install-action,
 :root[data-resolved-theme="dark"] .settings-select,
-:root[data-resolved-theme="dark"] .settings-capture-grid,
 :root[data-resolved-theme="dark"] .settings-restart-note {
   border-color: var(--og-border);
   background: var(--og-surface);
@@ -46,7 +45,6 @@
 }
 
 :root[data-resolved-theme="dark"] .settings-section-title,
-:root[data-resolved-theme="dark"] .settings-capture-grid strong,
 :root[data-resolved-theme="dark"] .settings-choice-card strong,
 :root[data-resolved-theme="dark"] .settings-choice-card.unavailable strong,
 :root[data-resolved-theme="dark"] .settings-choice-card:disabled strong {
@@ -105,7 +103,6 @@
   color: var(--og-text-strong);
 }
 
-:root[data-resolved-theme="dark"] .settings-capture-grid code,
 :root[data-resolved-theme="dark"] .settings-help code {
   background: rgba(236, 232, 221, 0.075);
   color: var(--og-text-strong);
@@ -114,4 +111,203 @@
 :root[data-resolved-theme="dark"] .settings-warning {
   background: rgba(240, 179, 92, 0.13);
   color: #efc486;
+}
+
+:root[data-resolved-theme="dark"] .extensions-header h1,
+:root[data-resolved-theme="dark"] .settings-extension-workspace-heading h2,
+:root[data-resolved-theme="dark"] .settings-extension-title strong,
+:root[data-resolved-theme="dark"] .settings-extension-title-button,
+:root[data-resolved-theme="dark"] .settings-extension-manager-title-line strong,
+:root[data-resolved-theme="dark"] .settings-extension-manager-title-button,
+:root[data-resolved-theme="dark"] .settings-extension-target-cell strong,
+:root[data-resolved-theme="dark"] .settings-extension-target-dialog-skill strong,
+:root[data-resolved-theme="dark"] .settings-extension-empty strong {
+  color: var(--og-text-strong);
+}
+
+:root[data-resolved-theme="dark"] .extensions-header p,
+:root[data-resolved-theme="dark"] .settings-extension-workspace-heading p,
+:root[data-resolved-theme="dark"] .settings-extension-table-header,
+:root[data-resolved-theme="dark"] .settings-extension-title small,
+:root[data-resolved-theme="dark"] .settings-extension-meta-cell small,
+:root[data-resolved-theme="dark"] .settings-extension-policy-cell small,
+:root[data-resolved-theme="dark"] .settings-extension-manager-copy > small,
+:root[data-resolved-theme="dark"] .settings-extension-manager-meta > span,
+:root[data-resolved-theme="dark"] .settings-extension-target-empty,
+:root[data-resolved-theme="dark"] .settings-extension-target-cell small,
+:root[data-resolved-theme="dark"] .settings-extension-target-dialog-skill small,
+:root[data-resolved-theme="dark"] .settings-extension-target-dialog-empty,
+:root[data-resolved-theme="dark"] .settings-extension-empty,
+:root[data-resolved-theme="dark"] .settings-extension-empty small,
+:root[data-resolved-theme="dark"] .settings-extension-muted {
+  color: var(--og-text-muted);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-table-row,
+:root[data-resolved-theme="dark"] .settings-extension-manager-row,
+:root[data-resolved-theme="dark"] .settings-extension-empty {
+  border-top-color: var(--og-border);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-table-row:last-child,
+:root[data-resolved-theme="dark"] .settings-extension-manager-row:last-child {
+  border-bottom-color: var(--og-border);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-workspace-tabs button,
+:root[data-resolved-theme="dark"] .settings-extension-target-add,
+:root[data-resolved-theme="dark"] .settings-extension-target-dialog-option,
+:root[data-resolved-theme="dark"] .settings-extension-target-cell,
+:root[data-resolved-theme="dark"] .settings-extension-row-actions button {
+  border-color: var(--og-border);
+  background: rgba(236, 232, 221, 0.055);
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-workspace-tabs button:hover,
+:root[data-resolved-theme="dark"] .settings-extension-workspace-tabs button:focus-visible,
+:root[data-resolved-theme="dark"] .settings-extension-workspace-tabs button.active,
+:root[data-resolved-theme="dark"] .settings-extension-target-add:hover:not(:disabled),
+:root[data-resolved-theme="dark"] .settings-extension-target-add:focus-visible,
+:root[data-resolved-theme="dark"] .settings-extension-target-dialog-option:hover:not(:disabled),
+:root[data-resolved-theme="dark"] .settings-extension-target-dialog-option:focus-visible,
+:root[data-resolved-theme="dark"] button.settings-extension-target-cell:hover:not(:disabled),
+:root[data-resolved-theme="dark"] button.settings-extension-target-cell:focus-visible,
+:root[data-resolved-theme="dark"] .settings-extension-row-actions button:hover:not(:disabled),
+:root[data-resolved-theme="dark"] .settings-extension-row-actions button:focus-visible {
+  border-color: var(--og-border-strong);
+  background: var(--og-surface-subtle);
+  color: var(--og-text-strong);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-workspace-tabs button small,
+:root[data-resolved-theme="dark"] .settings-extension-count,
+:root[data-resolved-theme="dark"] .settings-extension-target-overflow,
+:root[data-resolved-theme="dark"] .settings-extension-mini-badge,
+:root[data-resolved-theme="dark"] .settings-extension-badge {
+  background: rgba(236, 232, 221, 0.08);
+  color: var(--og-text-muted);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-workspace-tabs button.active small {
+  background: rgba(111, 191, 115, 0.16);
+  color: #d9efd8;
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-kind-icon,
+:root[data-resolved-theme="dark"] .settings-extension-policy-cell > svg {
+  background: rgba(236, 232, 221, 0.075);
+  color: var(--og-text);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-title-button:hover,
+:root[data-resolved-theme="dark"] .settings-extension-title-button:focus-visible,
+:root[data-resolved-theme="dark"] .settings-extension-manager-title-button:hover,
+:root[data-resolved-theme="dark"] .settings-extension-manager-title-button:focus-visible {
+  color: var(--og-text-strong);
+  text-decoration-color: rgba(236, 232, 221, 0.42);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-title-tooltip[data-local-path]::after {
+  border-color: var(--og-border);
+  background: #302f2c;
+  color: var(--og-text-muted);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-source-tag,
+:root[data-resolved-theme="dark"] .settings-extension-source-tag[data-source="user"],
+:root[data-resolved-theme="dark"] .settings-extension-source-tag[data-source="native"],
+:root[data-resolved-theme="dark"] .settings-extension-source-tag[data-source="unknown"] {
+  border-color: var(--og-border);
+  background: rgba(236, 232, 221, 0.07);
+  color: var(--og-text-muted);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-source-tag[data-source="user"] {
+  border-color: rgba(111, 191, 115, 0.3);
+  background: rgba(111, 191, 115, 0.12);
+  color: #cde8ce;
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-source-tag[data-source="native"] {
+  border-color: rgba(240, 179, 92, 0.28);
+  background: rgba(240, 179, 92, 0.12);
+  color: #e8c684;
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-modified-tag,
+:root[data-resolved-theme="dark"] .settings-extension-target-sync {
+  border-color: rgba(240, 179, 92, 0.32);
+  background: rgba(240, 179, 92, 0.14);
+  color: #efc486;
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-target-sync:hover:not(:disabled),
+:root[data-resolved-theme="dark"] .settings-extension-target-sync:focus-visible {
+  border-color: rgba(240, 179, 92, 0.5);
+  background: rgba(240, 179, 92, 0.2);
+  color: #ffe0a3;
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-target-icon[data-selected="true"] {
+  border-color: var(--og-border-strong);
+  background: rgba(236, 232, 221, 0.07);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 0 0 3px rgba(111, 191, 115, 0.08);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-target-icon[data-selected="true"][data-enabled="false"],
+:root[data-resolved-theme="dark"] .settings-extension-manager-target-icon[data-enabled="false"] {
+  border-color: rgba(240, 179, 92, 0.28);
+  background: rgba(240, 179, 92, 0.08);
+  opacity: 0.72;
+  box-shadow: 0 0 0 3px rgba(240, 179, 92, 0.05);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-target-icon:hover:not(:disabled),
+:root[data-resolved-theme="dark"] .settings-extension-target-icon:focus-visible {
+  border-color: rgba(111, 191, 115, 0.48);
+  background: rgba(236, 232, 221, 0.12);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.26),
+    0 0 0 3px rgba(111, 191, 115, 0.12);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-target-icon .entity-icon {
+  color: var(--og-text-strong);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-target-tooltip {
+  background: #dbeafe;
+  color: #172033;
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-target-dialog-skill {
+  background: rgba(236, 232, 221, 0.06);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-target-cell.published {
+  border-color: rgba(111, 191, 115, 0.34);
+  background: rgba(111, 191, 115, 0.12);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-target-cell.published small {
+  color: #bfe4c1;
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-target-cell.native {
+  border-color: rgba(106, 174, 252, 0.28);
+  background: rgba(106, 174, 252, 0.1);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-target-cell.disabled {
+  border-color: rgba(240, 179, 92, 0.28);
+  background: rgba(240, 179, 92, 0.1);
+}
+
+:root[data-resolved-theme="dark"] .settings-extension-manager-local-target {
+  border-color: var(--og-border);
+  background: rgba(236, 232, 221, 0.05);
+  color: var(--og-text-muted);
 }

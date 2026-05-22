@@ -4,13 +4,40 @@
   outline-offset: 2px;
 }
 
+button,
+[role="button"],
+summary,
+input,
+textarea,
+select {
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+button:active:not(:disabled),
+[role="button"]:active:not([aria-disabled="true"]) {
+  transform: scale(0.985);
+}
+
 /* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+
+  button:active:not(:disabled),
+  [role="button"]:active:not([aria-disabled="true"]) {
+    transform: none;
   }
 }
 
@@ -30,7 +57,11 @@
 }
 
 @keyframes slide-up {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.985); }
 }
 
 @keyframes spin {
@@ -40,13 +71,16 @@
 /* ── Scrollbar ── */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+  scrollbar-color: color-mix(in srgb, var(--c-text) 18%, transparent) transparent;
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); border-radius: var(--r-pill); }
-::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--c-text) 18%, transparent);
+  border-radius: var(--r-pill);
+}
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--c-text) 28%, transparent); }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* ── Selection ── */
-::selection { background: rgba(201, 79, 36, 0.1); }
+::selection { background: var(--c-accent-soft); }

@@ -485,8 +485,24 @@ export function listKnowledgeInventoryDocuments(
   const documents = filterEnabledKnowledgeDocuments(
     state,
     state.app.knowledge.list({ lifecycle: "active" }),
-  );
+  ).sort(compareKnowledgeInventoryDocuments);
   return Number.isFinite(limit) && limit > 0 ? documents.slice(0, limit) : documents;
+}
+
+function compareKnowledgeInventoryDocuments(left: KnowledgeDocument, right: KnowledgeDocument): number {
+  return (
+    knowledgeInventoryPriority(left) - knowledgeInventoryPriority(right) ||
+    right.updatedAt.localeCompare(left.updatedAt) ||
+    left.title.localeCompare(right.title, "zh-CN")
+  );
+}
+
+function knowledgeInventoryPriority(document: KnowledgeDocument): number {
+  const metadata = document.metadata ?? {};
+  if (safeVaultPath(metadata.vaultPath) || metadata.nativeGlobalKnowledge === true) return 0;
+  if (document.type === "memory" || document.type === "artifact_ref") return 1;
+  if (document.type === "skill" || metadata.parentSkillId) return 2;
+  return 3;
 }
 
 export function writeKnowledgeFile(

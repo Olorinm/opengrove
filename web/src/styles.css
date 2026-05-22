@@ -4,4 +4,6 @@
 @import "./styles/settings.css";
 @import "./styles/thread.css";
 @import "./styles/knowledge.css";
+@import "./styles/visual.css";
+@import "./styles/app-workspace.css";
 @import "./styles/shell.css";

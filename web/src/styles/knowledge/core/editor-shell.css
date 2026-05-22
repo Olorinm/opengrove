@@ -11,13 +11,13 @@
   gap: 0;
   align-content: start;
   box-sizing: border-box;
-  width: min(820px, calc(100vw - 360px));
+  width: min(900px, calc(100vw - 360px));
   max-width: 100%;
   min-height: calc(100vh - 118px);
   margin: 0 auto;
   overflow-x: hidden;
   background: transparent;
-  padding: 58px 38px 44px;
+  padding: 58px 44px 48px;
 }
 
 .md-note-editor {
@@ -175,8 +175,8 @@
   min-height: 220px;
   resize: none;
   color: #3f423b;
-  font-size: 15px;
-  line-height: 1.75;
+  font-size: 16px;
+  line-height: 1.78;
 }
 
 .knowledge-markdown-source,
@@ -196,8 +196,8 @@
 
 .knowledge-markdown-codemirror {
   width: 100%;
-  font-size: 15px;
-  line-height: 1.75;
+  font-size: 16px;
+  line-height: 1.78;
 }
 
 .knowledge-markdown-codemirror .cm-editor {
@@ -297,4 +297,3 @@
   color: #4f544b;
   opacity: 1;
 }
-

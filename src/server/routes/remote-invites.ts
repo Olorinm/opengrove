@@ -7,7 +7,7 @@ import { record, stringValue } from "../http-utils.js";
 import {
   createMatrixInviteForRoom,
   matrixReady,
-} from "./matrix-invites.js";
+} from "../remote/matrix/invites.js";
 
 type SendJson = (response: ServerResponse, status: number, data: unknown) => void;
 type ReadJsonBody = (request: IncomingMessage) => Promise<unknown>;
@@ -33,7 +33,8 @@ export async function handleRemoteInviteRoute(options: {
     return true;
   }
 
-  if (matrixReady(state.settings.matrix)) {
+  const matrix = state.settings.remote.matrix;
+  if (matrixReady(matrix)) {
     if (!normalizePublicLandingBaseUrl(state.settings.inviteLanding.baseUrl)) {
       sendJson(response, 400, {
         ok: false,
@@ -45,16 +46,17 @@ export async function handleRemoteInviteRoute(options: {
       return true;
     }
     try {
-      const result = await createMatrixInviteForRoom(state, state.settings.matrix, localRoomId, roomTitle);
-      const matrix = {
-        homeserverUrl: result.binding.homeserverUrl,
-        roomId: result.binding.matrixRoomId,
+      const result = await createMatrixInviteForRoom(state, matrix, localRoomId, roomTitle);
+      const remote = {
+        provider: "matrix" as const,
+        accountId: result.binding.accountId,
+        remoteRoomId: result.binding.remoteRoomId,
         mode: "host" as const,
       };
       if (state.app.rooms.getRoom(localRoomId)) {
-        state.app.rooms.patchRoom(localRoomId, { badge: "Matrix", matrix });
+        state.app.rooms.patchRoom(localRoomId, { badge: "Matrix", remote });
       } else {
-        state.app.rooms.createRoom({ id: localRoomId, title: roomTitle, badge: "Matrix", matrix });
+        state.app.rooms.createRoom({ id: localRoomId, title: roomTitle, badge: "Matrix", remote });
       }
       state.app.rooms.postSystemMessage({
         roomId: localRoomId,

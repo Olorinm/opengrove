@@ -85,8 +85,12 @@ const remote: RoomChannelMember = {
   sourceLabel: "远程",
   inviteStatus: "accepted",
   homeNodeLabel: "Friend Node",
-  matrixUserId: "@friend:example.com",
-  matrixAgentId: "remote-claude",
+  remote: {
+    provider: "matrix",
+    accountId: "default",
+    ownerId: "@friend:example.com",
+    agentId: "remote-claude",
+  },
 };
 
 const matrixRoom = store.createRoom({
@@ -94,9 +98,10 @@ const matrixRoom = store.createRoom({
   title: "Matrix shared",
   memberIds: [codex.id],
   badge: "Matrix",
-  matrix: {
-    homeserverUrl: "https://matrix.example.com",
-    roomId: "!room:example.com",
+  remote: {
+    provider: "matrix",
+    accountId: "default",
+    remoteRoomId: "!room:example.com",
     localMemberId: codex.id,
     mode: "host",
   },
@@ -111,10 +116,15 @@ const matrixPost = store.postUserMessage({
 const remotePlaceholder = matrixPost.assistantMessages[0];
 assert.ok(remotePlaceholder, "remote target should still get a ledger placeholder");
 const deliveredRemote = store.updateMessage(matrixRoom.id, remotePlaceholder.id, {
-  matrixEventId: "$agent-request",
-  matrixTurnId: "turn-remote-1",
+  remote: {
+    provider: "matrix",
+    accountId: "default",
+    remoteRoomId: "!room:example.com",
+    eventId: "$agent-request",
+    turnId: "turn-remote-1",
+  },
 });
-assert.equal(deliveredRemote.matrixEventId, "$agent-request");
+assert.equal(deliveredRemote.remote?.eventId, "$agent-request");
 store.patchMember(remote.id, { disabled: true, status: "offline", lastActive: "已移除" });
 assert.ok(
   store.eventsAfter(matrixPost.currentEventSeq).events.some((event) => event.type === "room.member.updated" && event.memberId === remote.id),
@@ -123,20 +133,79 @@ assert.ok(
 
 const restoredMatrix = new RoomChannelStore();
 restoredMatrix.restore(store.snapshot());
-assert.deepEqual(restoredMatrix.getRoom(matrixRoom.id)?.matrix, {
-  homeserverUrl: "https://matrix.example.com",
-  roomId: "!room:example.com",
+assert.deepEqual(restoredMatrix.getRoom(matrixRoom.id)?.remote, {
+  provider: "matrix",
+  accountId: "default",
+  remoteRoomId: "!room:example.com",
   localMemberId: codex.id,
   mode: "host",
 });
 const restoredRemote = restoredMatrix.listMembers().find((member) => member.id === remote.id);
-assert.equal(restoredRemote?.matrixUserId, "@friend:example.com");
-assert.equal(restoredRemote?.matrixAgentId, "remote-claude");
+assert.equal(restoredRemote?.remote?.ownerId, "@friend:example.com");
+assert.equal(restoredRemote?.remote?.agentId, "remote-claude");
 assert.equal(restoredRemote?.disabled, true);
 assert.ok(restoredMatrix.listDeletedMemberIds().includes(remote.id), "deleted member ids should survive restore");
 const restoredRemoteMessage = restoredMatrix.listMessages(matrixRoom.id).find((message) => message.id === remotePlaceholder.id);
-assert.equal(restoredRemoteMessage?.matrixEventId, "$agent-request");
-assert.equal(restoredRemoteMessage?.matrixTurnId, "turn-remote-1");
+assert.equal(restoredRemoteMessage?.remote?.eventId, "$agent-request");
+assert.equal(restoredRemoteMessage?.remote?.turnId, "turn-remote-1");
+
+const legacyStore = new RoomChannelStore();
+legacyStore.restore({
+  version: 1,
+  currentEventSeq: 0,
+  rooms: [{
+    id: "room-legacy-matrix",
+    kind: "group",
+    title: "Legacy Matrix",
+    badge: "Matrix",
+    memberIds: ["employee-legacy-remote"],
+    unread: 0,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    matrix: {
+      roomId: "!legacy:example.com",
+      localMemberId: codex.id,
+      mode: "guest",
+    },
+  }],
+  members: [{
+    id: "employee-legacy-remote",
+    name: "Legacy Remote",
+    kernel: "claude-code",
+    model: "remote-default",
+    role: "remote collaborator",
+    status: "idle",
+    color: "#7c3aed",
+    lastActive: "now",
+    source: "remote",
+    matrixUserId: "@legacy:example.com",
+    matrixAgentId: "legacy-agent",
+  }],
+  messages: [{
+    id: "message-legacy",
+    roomId: "room-legacy-matrix",
+    channelSeq: 1,
+    senderId: "employee-legacy-remote",
+    senderName: "Legacy Remote",
+    senderType: "agent",
+    text: "legacy",
+    targetIds: [],
+    status: "done",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    matrixEventId: "$legacy-event",
+    matrixTurnId: "legacy-turn",
+  }],
+  events: [],
+} as any);
+const legacyRoom = legacyStore.getRoom("room-legacy-matrix");
+const legacyMember = legacyStore.listMembers().find((member) => member.id === "employee-legacy-remote");
+const legacyMessage = legacyStore.listMessages("room-legacy-matrix")[0];
+assert.equal(legacyRoom?.remote?.remoteRoomId, "!legacy:example.com");
+assert.equal((legacyRoom as any)?.matrix, undefined);
+assert.equal(legacyMember?.remote?.ownerId, "@legacy:example.com");
+assert.equal((legacyMember as any)?.matrixUserId, undefined);
+assert.equal(legacyMessage?.remote?.eventId, "$legacy-event");
+assert.equal((legacyMessage as any)?.matrixEventId, undefined);
 
 const firstEventPage = restoredMatrix.eventsAfter(0, 1);
 assert.equal(firstEventPage.events.length, 1);

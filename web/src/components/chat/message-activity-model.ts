@@ -144,10 +144,6 @@ export function summarizeActivityItems(
   if (options.active) {
     return activeActivitySummary(items);
   }
-  const compactSummary = compactCompletedActivitySummary(items);
-  if (compactSummary) {
-    return compactSummary;
-  }
 
   if (stats.readCount) {
     fragments.push(`已探索 ${stats.readCount} 个文件`);
@@ -164,7 +160,7 @@ export function summarizeActivityItems(
     fragments.push(`浏览 ${stats.browseCount} 次`);
   }
   if (stats.commandCount) {
-    fragments.push(`已运行 ${stats.commandCount} 个命令`);
+    fragments.push(`已运行 ${stats.commandCount} 条命令`);
   }
   if (stats.editCount) {
     fragments.push(`已编辑 ${stats.editCount} 个文件`);
@@ -186,7 +182,7 @@ export function summarizeActivityItems(
     fragments.push(options.fallbackStatus || `已完成 ${items.length} 个步骤`);
   }
 
-  return fragments.join("，");
+  return fragments.join(" ");
 }
 
 function activityStats(items: ActivityItem[]) {
@@ -231,32 +227,6 @@ function activeActivitySummary(items: ActivityItem[]): string {
       return "正在加载能力";
     default:
       return "正在处理";
-  }
-}
-
-function compactCompletedActivitySummary(items: ActivityItem[]): string {
-  if (items.length !== 1) {
-    return "";
-  }
-  const item = items[0];
-  const target = activityTargetLabel(item);
-  switch (activityItemKind(item)) {
-    case "search":
-      return target ? `已搜索 ${target}` : "已搜索文件";
-    case "read":
-      return target ? `已读取 ${target}` : "已读取文件";
-    case "edit":
-      return target ? `已编辑 ${target}` : "已编辑文件";
-    case "command":
-      return target ? `已运行 ${target}` : "已运行命令";
-    case "browser":
-      return target ? `已浏览 ${target}` : "已浏览页面";
-    case "skill": {
-      const skill = item.type === "skill" ? item.part.skillName || item.part.title || item.part.skillId : "";
-      return skill ? `已使用 /${skill.replace(/^\//, "")}` : "已使用能力";
-    }
-    default:
-      return "";
   }
 }
 

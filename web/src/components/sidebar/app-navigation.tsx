@@ -1,33 +1,60 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 import {
+  Activity,
   BookOpenText,
   Camera,
-  ChevronLeft,
   ChevronRight,
-  ContactRound,
+  Code2,
+  LogOut,
   MessageSquare,
   MessagesSquare,
+  MoreHorizontal,
+  Package,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
   Settings,
+  Trash2,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
 import { useIconStylePreference } from "../../appearance";
-import type { ViewId } from "../../bridge";
-import { useI18n } from "../../i18n";
+import type { ExtensionItemRecord, ViewId } from "../../bridge";
+import {
+  MOBILE_APPS,
+  RAIL_APPS,
+  railSectionForView as catalogRailSectionForView,
+  type AppIconName,
+  type RailSectionId,
+} from "../../apps/catalog";
+import { useI18n, type TranslationFn } from "../../i18n";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 
-export type RailSectionId = "chat" | "rooms" | "contacts" | "library" | "settings";
-export type PixelIconName = "chat" | "rooms" | "messages" | "contacts" | "library" | "folder" | "document" | "search" | "plus" | "settings" | "user";
+export type PixelIconName = AppIconName;
+export type { RailSectionId } from "../../apps/catalog";
 
-type NavItem = { id: ViewId; labelKey: "app.rooms" | "app.library"; icon: PixelIconName; professionalIcon: LucideIcon };
-
-const PRIMARY_NAV_ITEMS: NavItem[] = [
-  { id: "rooms", labelKey: "app.rooms", icon: "rooms", professionalIcon: MessagesSquare },
-  { id: "library", labelKey: "app.library", icon: "library", professionalIcon: BookOpenText },
-];
+const PROFESSIONAL_ICONS: Record<PixelIconName, LucideIcon> = {
+  chat: MessageSquare,
+  rooms: MessagesSquare,
+  messages: MessagesSquare,
+  contacts: UserRound,
+  library: BookOpenText,
+  folder: BookOpenText,
+  document: BookOpenText,
+  search: BookOpenText,
+  plus: Plus,
+  settings: Settings,
+  user: UserRound,
+  ops: Activity,
+  extensions: Package,
+};
 
 const USER_PROFILE_STORAGE_KEY = "opengrove.userProfile.v1";
+const PRIMARY_RAIL_APPS = RAIL_APPS.filter((app) => app.layer !== "user");
+const CONFIGURATION_RAIL_APPS = PRIMARY_RAIL_APPS.filter((app) => app.section === "extensions");
+const NATIVE_RAIL_APPS = PRIMARY_RAIL_APPS.filter((app) => app.section !== "extensions");
 
 type UserProfile = {
   displayName: string;
@@ -62,11 +89,7 @@ function profileInitial(profile: UserProfile): string {
 }
 
 export function railSectionForView(view: ViewId): RailSectionId {
-  if (view === "settings") return "settings";
-  if (view === "rooms") return "rooms";
-  if (view === "contacts") return "contacts";
-  if (view === "library") return "library";
-  return "chat";
+  return catalogRailSectionForView(view);
 }
 
 export function AppRail(props: {
@@ -74,7 +97,15 @@ export function AppRail(props: {
   expanded: boolean;
   onOpenSection(section: RailSectionId): void;
   onOpenSettings(): void;
+  onCreateApp(): void;
+  onSelectMountedApp?(appId: string): void;
+  onEnterMountedAppDeveloperMode?(appId: string): void;
+  onExitMountedAppDeveloperMode?(appId: string): void;
+  onDeleteMountedApp?(appId: string): void;
   onSetExpanded(expanded: boolean): void;
+  mountedApps?: ExtensionItemRecord[];
+  activeMountedAppId?: string;
+  mountedAppDeveloperModeIds?: string[];
 }) {
   const { t } = useI18n();
   const { preference: iconStyle } = useIconStylePreference();
@@ -84,6 +115,7 @@ export function AppRail(props: {
   const [profileDraft, setProfileDraft] = useState<UserProfile>(() => readUserProfile());
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const mountedApps = [...(props.mountedApps ?? [])].sort((a, b) => a.title.localeCompare(b.title));
 
   useEffect(() => {
     if (!profileMenuOpen) return;
@@ -116,11 +148,6 @@ export function AppRail(props: {
     setProfileDialogOpen(false);
   }
 
-  function openSettingsFromMenu() {
-    setProfileMenuOpen(false);
-    props.onOpenSettings();
-  }
-
   function handleProfileAvatarChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -140,59 +167,92 @@ export function AppRail(props: {
         <button
           className="app-rail-brand"
           type="button"
-          onClick={() => {
-            if (!props.expanded) props.onSetExpanded(true);
-          }}
-          aria-label={props.expanded ? "OpenGrove" : "展开 OpenGrove 侧边栏"}
-          title={props.expanded ? "OpenGrove" : "展开 OpenGrove 侧边栏"}
+          onClick={() => props.onSetExpanded(!props.expanded)}
+          aria-label={props.expanded ? "收起 OpenGrove 侧边栏" : "展开 OpenGrove 侧边栏"}
+          title={props.expanded ? "收起" : "展开"}
         >
-          <OpenGroveSaplingMark />
-        </button>
-        <span className="app-rail-wordmark" aria-hidden="true">
-          Open<span>Grove</span>
-        </span>
-        <button className="app-rail-collapse" type="button" onClick={() => props.onSetExpanded(false)} aria-label="收起 OpenGrove 侧边栏" title="收起">
-          <ChevronLeft size={14} />
+          <span className="app-rail-brand-icon" aria-hidden="true">
+            <span className="app-rail-brand-logo">
+              <OpenGroveSaplingMark />
+            </span>
+            <span className="app-rail-brand-toggle">
+              {props.expanded ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+            </span>
+          </span>
+          <span className="app-rail-wordmark" aria-hidden="true">
+            Open<span>Grove</span>
+          </span>
         </button>
       </div>
       <nav className="app-rail-nav">
-        <RailButton
-          active={props.activeSection === "chat"}
-          label={t("app.chat")}
-          icon="chat"
-          professionalIcon={MessageSquare}
-          iconStyle={iconStyle}
-          onClick={() => props.onOpenSection("chat")}
-        />
-        <RailButton
-          active={props.activeSection === "rooms"}
-          label={t("app.rooms")}
-          icon="rooms"
-          professionalIcon={MessagesSquare}
-          iconStyle={iconStyle}
-          onClick={() => props.onOpenSection("rooms")}
-        />
-        <RailButton
-          active={props.activeSection === "contacts"}
-          label="通讯录"
-          icon="contacts"
-          professionalIcon={ContactRound}
-          iconStyle={iconStyle}
-          onClick={() => props.onOpenSection("contacts")}
-        />
-        <RailButton
-          active={props.activeSection === "library"}
-          label={t("app.library")}
-          icon="library"
-          professionalIcon={BookOpenText}
-          iconStyle={iconStyle}
-          onClick={() => props.onOpenSection("library")}
-        />
+        <RailSection title={t("app.nativeApps")}>
+          {NATIVE_RAIL_APPS.map((app) => (
+            <RailButton
+              key={app.id}
+              active={props.activeSection === app.section}
+              label={appNavLabel(app.view, t)}
+              icon={app.icon}
+              professionalIcon={PROFESSIONAL_ICONS[app.icon]}
+              iconStyle={iconStyle}
+              onClick={() => props.onOpenSection(app.section)}
+            />
+          ))}
+        </RailSection>
+        <RailSection title={t("app.loadedApps")}>
+          <div className="app-rail-user-app-tabs" aria-label={t("app.userApps")}>
+            {mountedApps.map((app) => (
+              <UserAppRailItem
+                key={app.id}
+                active={props.activeSection === "apps" && app.name === props.activeMountedAppId}
+                id={app.name}
+                title={app.title}
+                icon="folder"
+                professionalIcon={BookOpenText}
+                iconStyle={iconStyle}
+                onClick={() => props.onSelectMountedApp?.(app.name)}
+                developerMode={props.mountedAppDeveloperModeIds?.includes(app.name)}
+                onEnterDeveloperMode={props.onEnterMountedAppDeveloperMode}
+                onExitDeveloperMode={props.onExitMountedAppDeveloperMode}
+                onDelete={props.onDeleteMountedApp}
+                deleteLabel="删除"
+              />
+            ))}
+            <RailButton
+              active={false}
+              label={t("app.createApp")}
+              icon="plus"
+              professionalIcon={Plus}
+              iconStyle={iconStyle}
+              onClick={props.onCreateApp}
+            />
+          </div>
+        </RailSection>
+        <RailSection title={t("app.configuration")}>
+          {CONFIGURATION_RAIL_APPS.map((app) => (
+            <RailButton
+              key={app.id}
+              active={props.activeSection === app.section}
+              label={appNavLabel(app.view, t)}
+              icon={app.icon}
+              professionalIcon={PROFESSIONAL_ICONS[app.icon]}
+              iconStyle={iconStyle}
+              onClick={() => props.onOpenSection(app.section)}
+            />
+          ))}
+          <RailButton
+            active={props.activeSection === "settings"}
+            label={t("app.settings")}
+            icon="settings"
+            professionalIcon={Settings}
+            iconStyle={iconStyle}
+            onClick={props.onOpenSettings}
+          />
+        </RailSection>
       </nav>
       <div className="app-rail-bottom" ref={menuRef}>
         <button
           className="app-user-button"
-          data-active={profileMenuOpen || props.activeSection === "settings" ? "true" : "false"}
+          data-active={profileMenuOpen ? "true" : "false"}
           type="button"
           onClick={() => setProfileMenuOpen((open) => !open)}
           aria-label="我"
@@ -213,15 +273,6 @@ export function AppRail(props: {
                 <small>@{profile.username}</small>
               </span>
               <ChevronRight size={17} />
-            </button>
-            <div className="app-user-menu-divider" />
-            <button className="app-user-menu-item" type="button" role="menuitem" onClick={openProfileDialog}>
-              <ThemedPixelIcon pixelIcon="user" professionalIcon={UserRound} professionalSize={18} pixelSize={18} />
-              <span>个人资料</span>
-            </button>
-            <button className="app-user-menu-item" type="button" role="menuitem" onClick={openSettingsFromMenu}>
-              <ThemedPixelIcon pixelIcon="settings" professionalIcon={Settings} professionalSize={18} pixelSize={18} />
-              <span>{t("app.settings")}</span>
             </button>
           </div>
         ) : null}
@@ -273,7 +324,19 @@ export function AppRail(props: {
   );
 }
 
-function OpenGroveSaplingMark() {
+function RailSection(props: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="app-rail-section" aria-label={props.title}>
+      <h2 className="app-rail-section-title">{props.title}</h2>
+      <div className="app-rail-section-items">{props.children}</div>
+    </section>
+  );
+}
+
+export function OpenGroveSaplingMark() {
   return (
     <svg viewBox="0 0 128 128" aria-hidden="true" shapeRendering="crispEdges">
       <g transform="translate(24 18) scale(0.72)">
@@ -298,36 +361,19 @@ export function MobileNav(props: {
   const { preference: iconStyle } = useIconStylePreference();
   return (
     <nav className="mobile-nav" aria-label={t("app.mobileNav")}>
-      <button
-        className={clsx("mobile-nav-item", props.activeView === "chat" && "active")}
-        type="button"
-        onClick={() => props.onSelect("chat")}
-      >
-        <RailIcon iconStyle={iconStyle} pixelIcon="chat" professionalIcon={MessageSquare} />
-        <span>{t("app.chat")}</span>
-      </button>
-      {PRIMARY_NAV_ITEMS.map((item) => {
-        const label = t(item.labelKey);
+      {MOBILE_APPS.map((item) => {
         return (
           <button
-            className={clsx("mobile-nav-item", props.activeView === item.id && "active")}
+            className={clsx("mobile-nav-item", props.activeView === item.view && "active")}
             key={item.id}
             type="button"
-            onClick={() => props.onSelect(item.id)}
+            onClick={() => props.onSelect(item.view)}
           >
-            <RailIcon iconStyle={iconStyle} pixelIcon={item.icon} professionalIcon={item.professionalIcon} />
-            <span>{label}</span>
+            <RailIcon iconStyle={iconStyle} pixelIcon={item.icon} professionalIcon={PROFESSIONAL_ICONS[item.icon]} />
+            <span>{appNavLabel(item.view, t)}</span>
           </button>
         );
       })}
-      <button
-        className={clsx("mobile-nav-item", props.activeView === "contacts" && "active")}
-        type="button"
-        onClick={() => props.onSelect("contacts")}
-      >
-        <RailIcon iconStyle={iconStyle} pixelIcon="contacts" professionalIcon={ContactRound} />
-        <span>通讯录</span>
-      </button>
     </nav>
   );
 }
@@ -355,6 +401,156 @@ function RailButton(props: {
   );
 }
 
+function UserAppRailItem(props: {
+  active?: boolean;
+  id: string;
+  title: string;
+  icon: PixelIconName;
+  professionalIcon: LucideIcon;
+  iconStyle: "professional" | "pixel";
+  onClick(): void;
+  developerMode?: boolean;
+  onEnterDeveloperMode?(id: string): void;
+  onExitDeveloperMode?(id: string): void;
+  onDelete?(id: string): void;
+  deleteLabel?: string;
+}) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const floatingMenuRef = useRef<HTMLDivElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<CSSProperties | undefined>(undefined);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) return;
+      if (target instanceof Node && floatingMenuRef.current?.contains(target)) return;
+      setMenuOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuOpen(false);
+    }
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen]);
+
+  function toggleMenu(button: HTMLButtonElement) {
+    const opening = !menuOpen;
+    setMenuOpen(opening);
+    setMenuAnchor(opening ? menuAnchorFromButton(button) : undefined);
+  }
+
+  function toggleDeveloperMode() {
+    setMenuOpen(false);
+    if (props.developerMode) {
+      props.onExitDeveloperMode?.(props.id);
+      return;
+    }
+    props.onEnterDeveloperMode?.(props.id);
+  }
+  const canToggleDeveloperMode = props.developerMode
+    ? Boolean(props.onExitDeveloperMode)
+    : Boolean(props.onEnterDeveloperMode);
+
+  return (
+    <div
+      className="app-rail-user-tab-wrap"
+      data-developer-mode={props.developerMode ? "true" : "false"}
+      data-menu-open={menuOpen ? "true" : "false"}
+      ref={menuRef}
+    >
+      <button
+        className="app-rail-button app-rail-user-tab"
+        data-active={props.active ? "true" : "false"}
+        type="button"
+        onClick={props.onClick}
+        aria-label={props.title}
+        title={props.title}
+      >
+        <span className="app-rail-user-tab-icon" aria-hidden="true">
+          <RailIcon iconStyle={props.iconStyle} pixelIcon={props.icon} professionalIcon={props.professionalIcon} />
+          <span className="app-rail-user-tab-marker" />
+        </span>
+        <span>{props.title}</span>
+      </button>
+      <button
+        className="app-rail-user-tab-menu-button"
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          toggleMenu(event.currentTarget);
+        }}
+        aria-label={`${props.title} 更多操作`}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        title="更多"
+      >
+        <MoreHorizontal size={15} />
+      </button>
+      {menuOpen ? createPortal(
+        <div
+          className="app-rail-user-app-menu"
+          data-floating="true"
+          role="menu"
+          aria-label={`${props.title} 操作`}
+          ref={floatingMenuRef}
+          style={menuAnchor}
+        >
+          {canToggleDeveloperMode ? (
+            <button type="button" role="menuitem" onClick={toggleDeveloperMode}>
+              {props.developerMode ? <LogOut size={15} /> : <Code2 size={15} />}
+              <span>{props.developerMode ? "退出开发者模式" : "进入开发者模式"}</span>
+            </button>
+          ) : null}
+          {props.onDelete ? (
+            <>
+              {canToggleDeveloperMode ? <div className="app-rail-user-app-menu-divider" /> : null}
+              <button
+                className="app-rail-user-app-menu-danger"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  props.onDelete?.(props.id);
+                }}
+              >
+                <Trash2 size={15} />
+                <span>{props.deleteLabel ?? "删除应用"}</span>
+              </button>
+            </>
+          ) : null}
+        </div>,
+        document.body,
+      ) : null}
+    </div>
+  );
+}
+
+function menuAnchorFromButton(button: HTMLElement): CSSProperties {
+  const rect = button.getBoundingClientRect();
+  const margin = 8;
+  const menuWidth = 176;
+  const menuHeight = 84;
+  const left = window.innerWidth - rect.right - margin >= menuWidth
+    ? rect.right + 8
+    : Math.max(margin, rect.left - menuWidth - 8);
+  const top = Math.min(
+    Math.max(margin, rect.top + rect.height / 2 - menuHeight / 2),
+    window.innerHeight - menuHeight - margin,
+  );
+  return {
+    position: "fixed",
+    left,
+    top,
+    zIndex: 1000,
+  };
+}
+
 function RailIcon(props: {
   iconStyle: "professional" | "pixel";
   pixelIcon: PixelIconName;
@@ -365,6 +561,17 @@ function RailIcon(props: {
   }
   const Icon = props.professionalIcon;
   return <Icon size={19} />;
+}
+
+function appNavLabel(view: ViewId, t: TranslationFn): string {
+  if (view === "chat") return t("app.chat");
+  if (view === "app") return t("app.userApps");
+  if (view === "rooms" || view === "contacts") return t("app.rooms");
+  if (view === "library") return t("app.library");
+  if (view === "ops") return t("app.ops");
+  if (view === "extensions") return t("app.extensions");
+  if (view === "settings") return t("app.settings");
+  return t("app.chat");
 }
 
 export function ThemedPixelIcon(props: {
@@ -504,6 +711,35 @@ export function PixelIcon(props: { name: PixelIconName; size?: number; className
           <rect className="pixel-icon__main" x="4" y="12" width="8" height="1" />
           <rect className="pixel-icon__accent" x="7" y="5" width="2" height="6" />
           <rect className="pixel-icon__accent" x="5" y="7" width="6" height="2" />
+        </>
+      ) : null}
+      {props.name === "ops" ? (
+        <>
+          <rect className="pixel-icon__main" x="2" y="3" width="12" height="1" />
+          <rect className="pixel-icon__main" x="2" y="12" width="12" height="1" />
+          <rect className="pixel-icon__main" x="2" y="4" width="1" height="8" />
+          <rect className="pixel-icon__main" x="13" y="4" width="1" height="8" />
+          <rect className="pixel-icon__accent" x="4" y="9" width="1" height="2" />
+          <rect className="pixel-icon__accent" x="6" y="7" width="1" height="4" />
+          <rect className="pixel-icon__accent" x="8" y="5" width="1" height="6" />
+          <rect className="pixel-icon__accent" x="10" y="8" width="1" height="3" />
+          <rect className="pixel-icon__main" x="4" y="5" width="1" height="1" />
+          <rect className="pixel-icon__main" x="5" y="6" width="1" height="1" />
+          <rect className="pixel-icon__main" x="9" y="6" width="1" height="1" />
+          <rect className="pixel-icon__main" x="10" y="5" width="1" height="1" />
+        </>
+      ) : null}
+      {props.name === "extensions" ? (
+        <>
+          <rect className="pixel-icon__main" x="4" y="2" width="8" height="1" />
+          <rect className="pixel-icon__main" x="3" y="3" width="1" height="10" />
+          <rect className="pixel-icon__main" x="12" y="3" width="1" height="10" />
+          <rect className="pixel-icon__main" x="4" y="13" width="8" height="1" />
+          <rect className="pixel-icon__main" x="5" y="5" width="2" height="2" />
+          <rect className="pixel-icon__main" x="9" y="5" width="2" height="2" />
+          <rect className="pixel-icon__main" x="5" y="9" width="2" height="2" />
+          <rect className="pixel-icon__main" x="9" y="9" width="2" height="2" />
+          <rect className="pixel-icon__accent" x="7" y="7" width="2" height="2" />
         </>
       ) : null}
       {props.name === "settings" ? (

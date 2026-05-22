@@ -193,13 +193,15 @@
   position: fixed;
   z-index: var(--z-overlay);
   display: grid;
-  min-width: 148px;
+  box-sizing: border-box;
+  width: 168px;
+  min-width: 150px;
   gap: 2px;
-  border: 1px solid rgba(92, 88, 78, 0.16);
-  border-radius: var(--r-lg);
-  padding: 7px;
-  background: rgba(255, 254, 250, 0.98);
-  box-shadow: 0 16px 38px rgba(31, 28, 22, 0.15);
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 8px;
+  padding: 6px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
 }
 
 .sidebar-tree-menu button {
@@ -207,32 +209,33 @@
   grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  min-height: 30px;
+  min-height: 32px;
   border: 0;
-  border-radius: var(--r-md);
+  border-radius: 6px;
   background: transparent;
-  color: var(--c-text-2);
+  color: #3f4441;
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-  font-weight: var(--fw-semibold);
+  font-weight: var(--fw-medium);
+  padding: 0 8px;
   text-align: left;
 }
 
 .sidebar-tree-menu button:hover,
 .sidebar-tree-menu button:focus-visible {
-  background: #efede6;
+  background: var(--codex-sidebar-hover);
   outline: 0;
 }
 
 .sidebar-tree-menu button.danger {
-  color: #9b3a2d;
+  color: #9b3328;
 }
 
 .sidebar-tree-menu-separator {
   height: 1px;
-  margin: 4px 2px;
-  background: rgba(92, 88, 78, 0.12);
+  margin: 4px 4px;
+  background: rgba(17, 24, 39, 0.08);
 }
 
 .sidebar-skill-tree-section,
@@ -372,4 +375,3 @@
   opacity: 0 !important;
   pointer-events: none !important;
 }
-

@@ -1,8 +1,6 @@
 import type {
   ArtifactCreateRequest,
   ArtifactRecord,
-  JsonObject,
-  JsonValue,
   MemoryRecord,
   WorkingStateRecord,
 } from "../core.js";
@@ -48,6 +46,7 @@ export function normalizeAskPayload(input: unknown): BridgeAskPayload {
     responseSpeed: normalizeResponseSpeed(object.responseSpeed),
     accessMode: normalizeRuntimeAccessMode(object.accessMode),
     threadId: normalizeThreadId(object.threadId, normalizedSnapshot),
+    appId: stringValue(object.appId).trim() || undefined,
     allowMemory: booleanValue(object.allowMemory),
     saveCandidateNote: booleanValue(object.saveCandidateNote),
     requestedSkill: normalizeRequestedSkill(object.requestedSkill),

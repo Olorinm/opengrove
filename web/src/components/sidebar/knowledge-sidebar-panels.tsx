@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, DragEvent, KeyboardEvent } from "react";
-import { ChevronRight, FilePlus2, FileText, Folder, FolderCog, FolderPlus, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ChevronRight, FilePlus2, FileText, Folder, FolderCog, FolderPlus, Pencil, Trash2 } from "lucide-react";
 import {
   knowledgeVaultPath,
 } from "../knowledge/knowledge-model";
 import { APP_STORAGE_KEYS } from "../../identity";
 import { useI18n } from "../../i18n";
+import {
+  DirectoryTree,
+  findDirectoryTreeElement,
+  parentDirectoryPath,
+  parentDirectoryPaths,
+  safeDirectoryTreePath,
+  type DirectoryTreeMenuAnchor,
+  type DirectoryTreeMenuState,
+  type DirectoryTreeNode,
+} from "../shared/directory-tree";
 import { ThemedPixelIcon } from "./app-navigation";
 
 type VaultTreeNode = {
@@ -13,6 +22,7 @@ type VaultTreeNode = {
   name: string;
   kind: "folder" | "file";
   path: string;
+  data?: any;
   document?: any;
   children: VaultTreeNode[];
 };
@@ -28,14 +38,8 @@ type VaultFolderState = {
   defaultOpen: boolean;
 };
 
-type VaultMenuAnchor = {
-  left: number;
-  top: number;
-};
-
-type VaultMenuState = VaultMenuAnchor & {
-  path: string;
-};
+type VaultMenuAnchor = DirectoryTreeMenuAnchor;
+type VaultMenuState = DirectoryTreeMenuState;
 
 const DEFAULT_VAULT_OPEN_PATHS: Record<string, boolean> = {
   OpenGrove: true,
@@ -53,6 +57,7 @@ export function VaultSidebarPanel(props: {
   focusedKnowledgeId: string;
   forceOpen?: boolean;
   expandRequest?: { id: number; open: boolean };
+  revealPathRequest?: { id: number; path: string };
   editingPath?: string;
   onCreateFolder(parentPath: string): void;
   onCreateNote(parentPath: string): void;
@@ -73,15 +78,18 @@ export function VaultSidebarPanel(props: {
   const [openPaths, setOpenPaths] = useState<Record<string, boolean>>(readStoredVaultOpenPaths);
   const [treeOrder, setTreeOrder] = useState<VaultTreeOrder>(readStoredVaultTreeOrder);
   const lastExpandRequestIdRef = useRef<number>(props.expandRequest?.id ?? 0);
-  const lastFocusedKnowledgeIdRef = useRef(props.focusedKnowledgeId);
+  const lastRevealPathRequestIdRef = useRef<number>(props.revealPathRequest?.id ?? 0);
+  const lastFocusedKnowledgePathRef = useRef("");
   const lastEditingPathRef = useRef(props.editingPath ?? "");
   const tree = useMemo(() => buildVaultTree(props.documents, props.folders ?? [], treeOrder), [props.documents, props.folders, treeOrder]);
   const folderStates = useMemo(() => collectVaultFolderStates(tree), [tree]);
   const folderPaths = useMemo(() => folderStates.map((folder) => folder.path), [folderStates]);
-  const focusedFolderPath = useMemo(
-    () => parentVaultPath(props.documents.find((document) => document?.id === props.focusedKnowledgeId)),
+  const focusedDocument = useMemo(
+    () => props.documents.find((document) => document?.id === props.focusedKnowledgeId),
     [props.documents, props.focusedKnowledgeId],
   );
+  const focusedVaultPath = useMemo(() => focusedDocument ? knowledgeVaultPath(focusedDocument) : "", [focusedDocument]);
+  const focusedFolderPath = useMemo(() => parentVaultPath(focusedDocument), [focusedDocument]);
   const activeRootPath = rootVaultPath(selectedFolderPath || focusedFolderPath || tree[0]?.path || "OpenGrove");
   const menuPath = menuState?.path ?? "";
   const userNodes = tree.filter((node) => !isProtectedVaultRoot(node.name));
@@ -133,8 +141,32 @@ export function VaultSidebarPanel(props: {
   }, [props.expandRequest?.id, props.expandRequest?.open, folderPaths, hasKernelNodes]);
 
   useEffect(() => {
-    lastFocusedKnowledgeIdRef.current = props.focusedKnowledgeId;
-  }, [props.focusedKnowledgeId]);
+    if (!props.revealPathRequest) return;
+    if (props.revealPathRequest.id === lastRevealPathRequestIdRef.current) return;
+    lastRevealPathRequestIdRef.current = props.revealPathRequest.id;
+    const parentPaths = parentVaultPathsFromTreePath(props.revealPathRequest.path);
+    if (!parentPaths.length) return;
+    setOpenPaths((current) => ({
+      ...current,
+      ...Object.fromEntries(parentPaths.map((path) => [path, true])),
+      ...(isProtectedVaultRoot(rootVaultPath(props.revealPathRequest!.path)) ? { __kernels__: true } : {}),
+    }));
+    scheduleVaultPathReveal(props.revealPathRequest.path);
+  }, [props.revealPathRequest]);
+
+  useEffect(() => {
+    if (!props.focusedKnowledgeId || !focusedVaultPath || !focusedFolderPath) return;
+    const focusKey = `${props.focusedKnowledgeId}:${focusedVaultPath}`;
+    if (focusKey === lastFocusedKnowledgePathRef.current) return;
+    lastFocusedKnowledgePathRef.current = focusKey;
+    const parentPaths = [...parentVaultPathsFromTreePath(focusedFolderPath), focusedFolderPath];
+    setOpenPaths((current) => ({
+      ...current,
+      ...Object.fromEntries(parentPaths.map((path) => [path, true])),
+      ...(isProtectedVaultRoot(rootVaultPath(focusedFolderPath)) ? { __kernels__: true } : {}),
+    }));
+    scheduleVaultPathReveal(focusedVaultPath);
+  }, [focusedFolderPath, focusedVaultPath, props.focusedKnowledgeId]);
 
   useEffect(() => {
     if ((props.editingPath ?? "") === lastEditingPathRef.current) return;
@@ -192,40 +224,78 @@ export function VaultSidebarPanel(props: {
     });
   }
 
-  const renderNode = (node: VaultTreeNode, depth: number) => (
-    <VaultTreeNodeView
-      depth={depth}
-      focusedKnowledgeId={props.focusedKnowledgeId}
-      forceOpen={props.forceOpen}
-      key={node.id}
-      node={node}
+  const treeLabels = {
+    more: t("conversation.more"),
+    newFile: t("vault.newNote"),
+    newFolder: t("vault.newFolder"),
+    rename: t("vault.rename"),
+    delete: t("common.delete"),
+  };
+
+  const renderTree = (nodes: VaultTreeNode[], initialDepth = 0) => (
+    <DirectoryTree
+      asFragment
+      initialDepth={initialDepth}
+      nodes={nodes}
+      labels={treeLabels}
+      openPaths={openPaths}
       dragSourcePath={dragSourcePath}
       dropTargetPath={dropTargetPath}
       editingPath={props.editingPath}
-      menuAnchor={menuState}
-      menuPath={menuPath}
+      forceOpen={props.forceOpen}
+      menuState={menuState}
+      pathDataAttribute="data-vault-path"
+      canModify={(node, depth) => node.kind !== "folder" || depth > 0 || !isProtectedVaultRoot(node.name)}
+      canDropOn={(sourcePath, target) => canReorderVaultEntry(sourcePath, target.path) || (target.kind === "folder" && isDroppableVaultTarget(sourcePath, target.path))}
+      defaultOpen={(_, depth) => depth < 1}
+      displayName={(node) => node.kind === "file" ? displayVaultFileName(node.name) : node.name}
+      isActive={(node) => {
+        const document = vaultTreeDocument(node);
+        return document?.id === props.focusedKnowledgeId || node.path === focusedVaultPath;
+      }}
+      renderIcon={({ node }) => (
+        node.kind === "folder"
+          ? <ThemedPixelIcon pixelIcon="folder" professionalIcon={Folder} professionalSize={13} pixelSize={15} />
+          : <ThemedPixelIcon pixelIcon="document" professionalIcon={FileText} professionalSize={13} pixelSize={15} />
+      )}
+      renderMenuIcon={(action) => {
+        if (action === "new-file") return <ThemedPixelIcon pixelIcon="document" professionalIcon={FilePlus2} professionalSize={13} pixelSize={15} />;
+        if (action === "new-folder") return <ThemedPixelIcon pixelIcon="folder" professionalIcon={FolderPlus} professionalSize={13} pixelSize={15} />;
+        if (action === "rename") return <Pencil size={13} />;
+        return <Trash2 size={13} />;
+      }}
       onCancelRename={props.onCancelRename}
-      onCreateFolder={props.onCreateFolder}
-      onCreateNote={props.onCreateNote}
-      onDeleteEntry={props.onDeleteEntry}
-      onFocusKnowledge={props.onFocusKnowledge}
+      onCreateFile={(parentPath) => props.onCreateNote(parentPath)}
+      onCreateFolder={(parentPath) => props.onCreateFolder(parentPath)}
+      onDeleteEntry={(node, displayName) => props.onDeleteEntry(node.path, node.kind, displayName)}
+      onDrop={(sourcePath, target) => {
+        if (canReorderVaultEntry(sourcePath, target.path)) {
+          reorderEntry(sourcePath, target.path);
+          return;
+        }
+        if (target.kind === "folder") {
+          moveEntryToFolder(sourcePath, target.path);
+        }
+      }}
       onOpenMenu={openMenu}
-      onRenameEntry={props.onRenameEntry}
-      onReorderEntry={reorderEntry}
-      onStartRename={props.onStartRename}
-      onMoveEntry={moveEntryToFolder}
-      onSelectFolder={setSelectedFolderPath}
+      onRenameEntry={(sourcePath, name) => props.onRenameEntry(sourcePath, name)}
+      onSelectFile={(node) => {
+        const document = vaultTreeDocument(node);
+        setSelectedFolderPath(parentVaultPath(document));
+        if (document?.id) props.onFocusKnowledge(document.id);
+      }}
+      onSelectFolder={(node) => setSelectedFolderPath(node.path)}
       onSetDropTarget={setDropTargetPath}
       onSetDragSource={setDragSourcePath}
-      onToggleNode={toggleNode}
-      openPaths={openPaths}
+      onStartRename={(sourcePath) => props.onStartRename(sourcePath)}
+      onToggleFolder={(path, currentlyOpen) => toggleNode(path, currentlyOpen)}
     />
   );
 
   return (
     <section className="sidebar-library-panel" aria-label={t("vault.files")}>
       <div className="sidebar-library-files">
-        {userNodes.length ? userNodes.map((node) => renderNode(node, 0)) : null}
+        {userNodes.length ? renderTree(userNodes) : null}
         {hasKernelNodes ? (
           <div className="vault-kernels-folder">
             <div
@@ -242,7 +312,7 @@ export function VaultSidebarPanel(props: {
             </div>
             {kernelsOpen ? (
               <div className="sidebar-vault-tree-children">
-                {kernelNodes.map((node) => renderNode(node, 1))}
+                {renderTree(kernelNodes, 1)}
               </div>
             ) : null}
           </div>
@@ -310,323 +380,6 @@ function writeStoredVaultTreeOrder(order: VaultTreeOrder): void {
   }
 }
 
-function VaultTreeNodeView(props: {
-  depth: number;
-  focusedKnowledgeId: string;
-  forceOpen?: boolean;
-  node: VaultTreeNode;
-  openPaths: Record<string, boolean>;
-  dragSourcePath: string;
-  dropTargetPath: string;
-  editingPath?: string;
-  menuAnchor: VaultMenuState | null;
-  menuPath: string;
-  onCancelRename(): void;
-  onCreateFolder(parentPath: string): void;
-  onCreateNote(parentPath: string): void;
-  onDeleteEntry(sourcePath: string, kind: "folder" | "file", name: string): void;
-  onFocusKnowledge(knowledgeId: string): void;
-  onMoveEntry(sourcePath: string, targetParentPath: string): void;
-  onOpenMenu(path: string, anchor?: VaultMenuAnchor): void;
-  onRenameEntry(sourcePath: string, name: string): void;
-  onReorderEntry(sourcePath: string, targetPath: string): void;
-  onStartRename(sourcePath: string): void;
-  onSelectFolder(path: string): void;
-  onSetDropTarget(path: string): void;
-  onSetDragSource(path: string): void;
-  onToggleNode(path: string, currentlyOpen: boolean): void;
-}) {
-  const isFolder = props.node.kind === "folder";
-  const nodeOpen = props.forceOpen || (props.openPaths[props.node.path] ?? props.depth < 1);
-  const style: CSSProperties = { paddingLeft: `${7 + props.depth * 12 + (isFolder ? 0 : 17)}px` };
-  const canDragFolder = isFolder;
-  const canModify = !isFolder || props.depth > 0 || !isProtectedVaultRoot(props.node.name);
-  const isEditing = props.editingPath === props.node.path;
-  const menuOpen = props.menuPath === props.node.path;
-  const displayName = isFolder ? props.node.name : displayVaultFileName(props.node.name);
-  const { t } = useI18n();
-  const [draftName, setDraftName] = useState(displayName);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (!isEditing) return;
-    setDraftName(displayName);
-    window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    });
-  }, [displayName, isEditing]);
-
-  function startDrag(event: DragEvent<HTMLElement>, path: string) {
-    props.onSetDragSource(path);
-    event.dataTransfer.setData("text/plain", path);
-    event.dataTransfer.effectAllowed = "move";
-  }
-
-  function dragSourceFromEvent(event: DragEvent<HTMLElement>): string {
-    return props.dragSourcePath || event.dataTransfer.getData("text/plain");
-  }
-
-  function finishDrag() {
-    props.onSetDragSource("");
-    props.onSetDropTarget("");
-  }
-
-  function handleFolderDragOver(event: DragEvent<HTMLElement>) {
-    const sourcePath = dragSourceFromEvent(event);
-    if (!canReorderVaultEntry(sourcePath, props.node.path) && !isDroppableVaultTarget(sourcePath, props.node.path)) {
-      props.onSetDropTarget("");
-      return;
-    }
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    props.onSetDropTarget(props.node.path);
-  }
-
-  function handleFolderDrop(event: DragEvent<HTMLElement>) {
-    const sourcePath = dragSourceFromEvent(event);
-    if (!canReorderVaultEntry(sourcePath, props.node.path) && !isDroppableVaultTarget(sourcePath, props.node.path)) {
-      finishDrag();
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    if (canReorderVaultEntry(sourcePath, props.node.path)) {
-      props.onReorderEntry(sourcePath, props.node.path);
-      return;
-    }
-    props.onMoveEntry(sourcePath, props.node.path);
-  }
-
-  function handleFileDragOver(event: DragEvent<HTMLElement>) {
-    const sourcePath = dragSourceFromEvent(event);
-    if (!canReorderVaultEntry(sourcePath, props.node.path)) {
-      props.onSetDropTarget("");
-      return;
-    }
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    props.onSetDropTarget(props.node.path);
-  }
-
-  function handleFileDrop(event: DragEvent<HTMLElement>) {
-    const sourcePath = dragSourceFromEvent(event);
-    if (!canReorderVaultEntry(sourcePath, props.node.path)) {
-      finishDrag();
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    props.onReorderEntry(sourcePath, props.node.path);
-  }
-
-  function commitRename() {
-    const nextName = draftName.trim();
-    if (!nextName || nextName === displayName) {
-      props.onCancelRename();
-      return;
-    }
-    props.onRenameEntry(props.node.path, nextName);
-  }
-
-  function handleNodeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (isEditing) return;
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    if (isFolder) {
-      props.onToggleNode(props.node.path, Boolean(nodeOpen));
-    } else {
-      props.onSelectFolder(parentVaultPath(props.node.document));
-      props.node.document?.id && props.onFocusKnowledge(props.node.document.id);
-    }
-  }
-
-  const label = isEditing ? (
-    <input
-      ref={inputRef}
-      className="sidebar-tree-rename-input"
-      value={draftName}
-      onChange={(event) => setDraftName(event.target.value)}
-      onClick={(event) => event.stopPropagation()}
-      onBlur={commitRename}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          commitRename();
-        }
-        if (event.key === "Escape") {
-          event.preventDefault();
-          props.onCancelRename();
-        }
-      }}
-    />
-  ) : (
-    <span>{displayName}</span>
-  );
-
-  const actionMenu = menuOpen ? (
-    <div
-      className="sidebar-tree-menu"
-      role="menu"
-      style={props.menuAnchor ? { left: props.menuAnchor.left, top: props.menuAnchor.top } : undefined}
-      onClick={(event) => event.stopPropagation()}
-    >
-      {isFolder ? (
-        <>
-          <button type="button" role="menuitem" onClick={() => {
-            props.onOpenMenu("");
-            props.onCreateNote(props.node.path);
-          }}>
-            <ThemedPixelIcon pixelIcon="document" professionalIcon={FilePlus2} professionalSize={13} pixelSize={15} />
-            <span>{t("vault.newNote")}</span>
-          </button>
-          <button type="button" role="menuitem" onClick={() => {
-            props.onOpenMenu("");
-            props.onCreateFolder(props.node.path);
-          }}>
-            <ThemedPixelIcon pixelIcon="folder" professionalIcon={FolderPlus} professionalSize={13} pixelSize={15} />
-            <span>{t("vault.newFolder")}</span>
-          </button>
-        </>
-      ) : null}
-      {canModify ? (
-        <>
-          {isFolder ? <div className="sidebar-tree-menu-separator" /> : null}
-          <button type="button" role="menuitem" onClick={() => {
-            props.onOpenMenu("");
-            props.onStartRename(props.node.path);
-          }}>
-            <Pencil size={13} />
-            <span>{t("vault.rename")}</span>
-          </button>
-          <button className="danger" type="button" role="menuitem" onClick={() => {
-            props.onOpenMenu("");
-            props.onDeleteEntry(props.node.path, props.node.kind, displayName);
-          }}>
-            <Trash2 size={13} />
-            <span>{t("common.delete")}</span>
-          </button>
-        </>
-      ) : null}
-    </div>
-  ) : null;
-
-  if (isFolder) {
-    return (
-      <div className="sidebar-vault-tree-item">
-        <div
-          className="sidebar-library-file sidebar-tree-folder"
-          data-drop-target={props.dropTargetPath === props.node.path ? "true" : "false"}
-          draggable={canDragFolder}
-          role="button"
-          style={style}
-          tabIndex={0}
-          onDragLeave={() => props.onSetDropTarget("")}
-          onDragEnd={finishDrag}
-          onDragOver={handleFolderDragOver}
-          onDragStart={(event) => canDragFolder ? startDrag(event, props.node.path) : event.preventDefault()}
-          onDrop={handleFolderDrop}
-          onClick={() => props.onToggleNode(props.node.path, Boolean(nodeOpen))}
-          onKeyDown={handleNodeKeyDown}
-          aria-expanded={nodeOpen}
-        >
-          <ChevronRight className="sidebar-tree-chevron" size={13} data-open={nodeOpen ? "true" : "false"} />
-          <ThemedPixelIcon pixelIcon="folder" professionalIcon={Folder} professionalSize={13} pixelSize={15} />
-          {label}
-          <button
-            className="sidebar-tree-more"
-            type="button"
-            aria-label={`${props.node.name} ${t("conversation.more")}`}
-            aria-expanded={menuOpen}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              props.onOpenMenu(menuOpen ? "" : props.node.path, menuAnchorFromButton(event.currentTarget));
-            }}
-          >
-            <MoreHorizontal size={13} />
-          </button>
-          {actionMenu}
-        </div>
-        {nodeOpen ? (
-          <div className="sidebar-vault-tree-children">
-            {props.node.children.map((child) => (
-              <VaultTreeNodeView
-                depth={props.depth + 1}
-                focusedKnowledgeId={props.focusedKnowledgeId}
-                forceOpen={props.forceOpen}
-                key={child.id}
-                node={child}
-                dragSourcePath={props.dragSourcePath}
-                dropTargetPath={props.dropTargetPath}
-                editingPath={props.editingPath}
-                menuAnchor={props.menuAnchor}
-                menuPath={props.menuPath}
-                onCancelRename={props.onCancelRename}
-                onCreateFolder={props.onCreateFolder}
-                onCreateNote={props.onCreateNote}
-                onDeleteEntry={props.onDeleteEntry}
-                onFocusKnowledge={props.onFocusKnowledge}
-                onOpenMenu={props.onOpenMenu}
-                onRenameEntry={props.onRenameEntry}
-                onReorderEntry={props.onReorderEntry}
-                onStartRename={props.onStartRename}
-                onMoveEntry={props.onMoveEntry}
-                onSelectFolder={props.onSelectFolder}
-                onSetDropTarget={props.onSetDropTarget}
-                onSetDragSource={props.onSetDragSource}
-                onToggleNode={props.onToggleNode}
-                openPaths={props.openPaths}
-              />
-            ))}
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="sidebar-library-file sidebar-tree-file"
-      data-active={props.node.document?.id === props.focusedKnowledgeId ? "true" : "false"}
-      data-drop-target={props.dropTargetPath === props.node.path ? "true" : "false"}
-      draggable={!isEditing}
-      role="button"
-      style={style}
-      onDragLeave={() => props.onSetDropTarget("")}
-      onDragEnd={finishDrag}
-      onDragOver={handleFileDragOver}
-      onDragStart={(event) => startDrag(event, props.node.path)}
-      onDrop={handleFileDrop}
-      onClick={() => {
-        if (isEditing) return;
-        props.onSelectFolder(parentVaultPath(props.node.document));
-        props.node.document?.id && props.onFocusKnowledge(props.node.document.id);
-      }}
-      onKeyDown={handleNodeKeyDown}
-      tabIndex={0}
-      title={props.node.path}
-    >
-      <ThemedPixelIcon pixelIcon="document" professionalIcon={FileText} professionalSize={13} pixelSize={15} />
-      {label}
-      <button
-        className="sidebar-tree-more"
-        type="button"
-        aria-label={`${displayName} ${t("conversation.more")}`}
-        aria-expanded={menuOpen}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          props.onOpenMenu(menuOpen ? "" : props.node.path, menuAnchorFromButton(event.currentTarget));
-        }}
-      >
-        <MoreHorizontal size={13} />
-      </button>
-      {actionMenu}
-    </div>
-  );
-}
-
 function buildVaultTree(documents: any[], folders: VaultFolderRecord[] = [], order: VaultTreeOrder = {}): VaultTreeNode[] {
   const root: VaultTreeNode = { id: "vault", name: "vault", kind: "folder", path: "", children: [] };
   for (const folder of folders) {
@@ -657,13 +410,25 @@ function buildVaultTree(documents: any[], folders: VaultFolderRecord[] = [], ord
         current.children.push(child);
       }
       if (isFile) {
-        child.document = document;
+        if (shouldUseVaultTreeDocument(child.document, document)) {
+          child.document = document;
+        }
       }
       current = child;
     });
   }
   sortVaultTree(root.children, "", order);
   return root.children;
+}
+
+function shouldUseVaultTreeDocument(existing: any, next: any): boolean {
+  if (!existing) return true;
+  if (next?.type === "skill" && existing?.type !== "skill") return true;
+  if (existing?.type === "skill" && next?.type !== "skill") return false;
+  const existingImported = existing?.metadata?.createdBy === "opengrove.import-folder";
+  const nextImported = next?.metadata?.createdBy === "opengrove.import-folder";
+  if (existingImported !== nextImported) return !nextImported;
+  return false;
 }
 
 function ensureVaultFolderNode(root: VaultTreeNode, segments: string[]): VaultTreeNode {
@@ -694,19 +459,31 @@ function parentVaultPath(document: any): string {
   return segments.slice(0, -1).join("/");
 }
 
+function vaultTreeDocument(node: DirectoryTreeNode<any>): any {
+  return (node as VaultTreeNode).document ?? node.data;
+}
+
 function parentVaultPathsFromTreePath(path: string): string[] {
-  const segments = safeVaultTreePath(path).split("/").filter(Boolean);
-  const parents: string[] = [];
-  for (let index = 1; index < segments.length; index += 1) {
-    parents.push(segments.slice(0, index).join("/"));
-  }
-  return parents;
+  return parentDirectoryPaths(path);
+}
+
+function scheduleVaultPathReveal(path: string): void {
+  const targetPath = safeVaultTreePath(path);
+  if (!targetPath || typeof window === "undefined") return;
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      const target = findVaultTreeElement(targetPath) || findVaultTreeElement(parentVaultPathFromTreePath(targetPath));
+      target?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+    });
+  });
+}
+
+function findVaultTreeElement(path: string): HTMLElement | undefined {
+  return findDirectoryTreeElement(path, "data-vault-path");
 }
 
 function parentVaultPathFromTreePath(path: string): string {
-  const segments = safeVaultTreePath(path).split("/").filter(Boolean);
-  if (segments.length <= 1) return "";
-  return segments.slice(0, -1).join("/");
+  return parentDirectoryPath(path);
 }
 
 function rootVaultPath(path: string): string {
@@ -729,24 +506,11 @@ function canReorderVaultEntry(sourcePath: string, targetPath: string): boolean {
 }
 
 function safeVaultTreePath(path: unknown): string {
-  if (typeof path !== "string") return "";
-  return path.replace(/\\/g, "/").split("/").map((segment) => segment.trim()).filter(Boolean).join("/");
+  return safeDirectoryTreePath(path);
 }
 
 function displayVaultFileName(name: string): string {
   return name.replace(/\.(?:md|markdown|mdx)$/i, "");
-}
-
-function menuAnchorFromButton(button: HTMLElement): VaultMenuAnchor {
-  const rect = button.getBoundingClientRect();
-  const menuWidth = 168;
-  const menuHeight = 188;
-  const margin = 8;
-  const left = Math.min(Math.max(margin, rect.right - menuWidth), window.innerWidth - menuWidth - margin);
-  const top = window.innerHeight - rect.bottom - margin >= menuHeight
-    ? rect.bottom + 6
-    : Math.max(margin, rect.top - menuHeight - 6);
-  return { left, top };
 }
 
 function collectVaultFolderStates(nodes: VaultTreeNode[], depth = 0): VaultFolderState[] {

@@ -1,0 +1,32 @@
+/* Keep the shared composer wrapper functional without making it read as a separate panel. */
+.composer-region {
+  background: transparent !important;
+  box-shadow: none;
+}
+
+.room-composer {
+  position: relative;
+  z-index: 4;
+  border-top: 0 !important;
+  background: transparent !important;
+}
+
+.room-message-stream {
+  position: relative;
+  z-index: 1;
+}
+
+.room-composer .room-composer-og,
+.room-composer .opengrove-composer {
+  overflow: visible;
+}
+
+.mounted-app-room-chat > .room-composer {
+  background: transparent !important;
+  overflow: visible;
+}
+
+.mounted-app-room-chat > .room-composer .room-composer-og,
+.mounted-app-room-chat > .room-composer .opengrove-composer {
+  overflow: visible;
+}

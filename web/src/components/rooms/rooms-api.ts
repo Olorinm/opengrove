@@ -54,6 +54,7 @@ export async function postServerRoomMessage(input: {
   text: string;
   targetIds: string[];
   attachments: unknown[];
+  appContextText?: string;
   userMessageId?: string;
   assistantMessageIds?: string[];
 }): Promise<PostRoomMessageResponse> {
@@ -61,6 +62,7 @@ export async function postServerRoomMessage(input: {
     text: input.text,
     targetIds: input.targetIds,
     attachments: input.attachments,
+    appContextText: input.appContextText,
     userMessageId: input.userMessageId,
     assistantMessageIds: input.assistantMessageIds,
   });
@@ -72,7 +74,6 @@ export async function createServerRoom(room: Room): Promise<void> {
     title: room.title,
     memberIds: room.memberIds,
     badge: room.badge,
-    matrix: room.matrix,
   });
 }
 
@@ -80,7 +81,7 @@ export async function openServerDirectRoom(memberId: string, title?: string): Pr
   await postJson("/rooms/dm", { memberId, title });
 }
 
-export async function patchServerRoom(roomId: string, patch: Partial<Pick<Room, "title" | "pinned" | "badge" | "matrix">> & { archived?: boolean }): Promise<void> {
+export async function patchServerRoom(roomId: string, patch: Partial<Pick<Room, "title" | "pinned" | "badge">> & { archived?: boolean }): Promise<void> {
   await fetchJson(`/rooms/${encodeURIComponent(roomId)}`, {
     method: "PATCH",
     headers: bridgeHeaders(),
@@ -216,7 +217,7 @@ function mergeRoomRecord(current: Room, incoming: Room): Room {
   return {
     ...current,
     ...incoming,
-    matrix: incoming.matrix ?? current.matrix,
+    remote: incoming.remote ?? current.remote,
     memberIds: incoming.memberIds.length ? uniqueIds(incoming.memberIds) : current.memberIds,
     messages,
   };
